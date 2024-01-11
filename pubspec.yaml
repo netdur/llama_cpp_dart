@@ -11,8 +11,28 @@ dependencies:
   flutter:
     sdk: flutter
   ffi: ^2.1.0
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
+  ffigen: ^11.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+    - assets/models/
+
+ffigen:
+  name: 'llama_cpp'
+  description: 'llama.cpp binding'
+  output: 'lib/llama_cpp.dart'
+  headers:
+    entry-points:
+      - 'macos/Runner/llama.h'
+      - 'macos/Runner/llm.h'
+  compiler-opts:
+    - '-Wno-nullability-completeness'
+

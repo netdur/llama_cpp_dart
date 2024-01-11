@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:isolate';
 
-import 'model_manager.dart';
+import 'llm.dart';
 
 class LlamaProcessor {
   final String path;
   late Isolate _modelIsolate;
   late SendPort _modelSendPort;
   final ReceivePort _receivePort = ReceivePort();
-  final StreamController<String> _controller = StreamController<String>();
+  final StreamController<String> _controller =
+      StreamController<String>.broadcast();
 
   LlamaProcessor(this.path) {
     _loadModelIsolate();
@@ -36,43 +37,46 @@ class LlamaProcessor {
     ReceivePort isolateReceivePort = ReceivePort();
     mainSendPort.send(isolateReceivePort.sendPort);
 
-    var modelManager = ModelManager();
+    LLM llm = LLM();
+    bool flagForStop = false;
 
-    isolateReceivePort.listen((message) {
+    isolateReceivePort.listen((message) async {
       if (message is Map) {
         switch (message['command']) {
           case 'load':
-            modelManager.loadModel(message['path']);
+            llm.loadModel(message['path']);
             break;
-          case 'setup':
-            modelManager.createContext();
-            modelManager.setup(message['prompt']);
+          case 'prompt':
+            llm.setTextIter(message['prompt']);
+            bool isRunning = true;
+            while (isRunning) {
+              if (flagForStop) {
+                flagForStop = false;
+                break;
+              }
+              var (text, hasNext, _) = llm.getNext();
+              if (!hasNext) break;
+              mainSendPort.send(text);
+              await Future.delayed(Duration.zero);
+            }
             break;
-          case 'getNext':
-            String result = modelManager.getNext();
-            mainSendPort.send(result);
-            break;
-          case 'clear':
-            modelManager.clearContext();
+          case 'stop':
+            flagForStop = true;
             break;
           case 'unload':
-            modelManager.unloadModel();
+            llm.unloadModel();
             break;
         }
       }
     });
   }
 
-  void setup(String prompt) {
-    _modelSendPort.send({'command': 'setup', 'prompt': prompt});
+  void prompt(String prompt) {
+    _modelSendPort.send({'command': 'prompt', 'prompt': prompt});
   }
 
-  void getNext() {
-    _modelSendPort.send({'command': 'getNext'});
-  }
-
-  void clear() {
-    _modelSendPort.send({'command': 'clear'});
+  void stop() {
+    _modelSendPort.send({'command': 'stop'});
   }
 
   void unloadModel() {

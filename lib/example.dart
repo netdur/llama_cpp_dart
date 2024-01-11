@@ -1,5 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'llama_processor.dart';
+
+import 'dart:io';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
 
 void main() async {
   runApp(const App());
@@ -34,14 +40,33 @@ class _LandingPageState extends State<LandingPage> {
   final TextEditingController _resultController = TextEditingController();
 
   LlamaProcessor? llamaProcessor;
-
-  bool flagForStop = false;
+  StreamSubscription<String>? _streamSubscription;
+  bool isModelLoaded = false;
 
   @override
   void initState() {
-    _modelPathController.text = "mistral-7b-openorca.Q5_K_M.gguf";
-    _promptController.text = "The current USA president is...";
     super.initState();
+    _modelPathController.text = "";
+    _promptController.text = "### Human: divide by zero please\n### Assistant:";
+    _extractModel();
+  }
+
+  /*static */ _extractModel() async {
+    String model = "phi-2-dpo.Q5_K_S.gguf";
+
+    final directory = await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/$model';
+
+    final fileExists = await File(filePath).exists();
+    if (!fileExists) {
+      final byteData = await rootBundle.load('assets/models/$model');
+      final file = File(filePath);
+      await file.writeAsBytes(byteData.buffer
+          .asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
+    }
+
+    _modelPathController.text = filePath;
+    setState(() {});
   }
 
   @override
@@ -68,19 +93,25 @@ class _LandingPageState extends State<LandingPage> {
                 labelText: 'Prompt',
                 border: OutlineInputBorder(),
               ),
+              minLines: 5,
+              maxLines: null,
             ),
             const SizedBox(height: 10),
             Expanded(
               child: TextField(
-                controller: _resultController,
-                decoration: const InputDecoration(
-                  labelText: 'Result',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: null,
-                expands: true,
-              ),
+                  controller: _resultController,
+                  decoration: const InputDecoration(
+                    labelText: 'Result',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top),
             ),
+            const SizedBox(height: 10),
+            Text(isModelLoaded
+                ? 'Model Loaded'
+                : 'Model Not Loaded'), // Model loaded indicator
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -88,41 +119,45 @@ class _LandingPageState extends State<LandingPage> {
                 ElevatedButton(
                   onPressed: () {
                     llamaProcessor = LlamaProcessor(_modelPathController.text);
+                    setState(() {
+                      isModelLoaded = true;
+                    });
                   },
                   child: const Text('Load Model'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    llamaProcessor?.clear();
-                    llamaProcessor?.unloadModel();
-                  },
+                  onPressed: isModelLoaded
+                      ? () {
+                          llamaProcessor?.unloadModel();
+                          setState(() {
+                            isModelLoaded = false;
+                          });
+                        }
+                      : null,
                   child: const Text('Unload Model'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    _resultController.text = "";
-                    llamaProcessor?.stream.listen((data) {
-                      _resultController.text += data;
-                    }, onError: (error) {
-                      _resultController.text = "Error: $error";
-                    }, onDone: () {
-                      llamaProcessor?.clear();
-                    });
-                    llamaProcessor?.setup(_promptController.text);
-                    for (int i = 0; i < 600; i++) {
-                      if (flagForStop == true) {
-                        flagForStop = false;
-                        break;
-                      }
-                      llamaProcessor?.getNext();
-                    }
-                  },
+                  onPressed: isModelLoaded
+                      ? () {
+                          _streamSubscription?.cancel();
+                          _resultController.text = "";
+                          _streamSubscription =
+                              llamaProcessor?.stream.listen((data) {
+                            _resultController.text += data;
+                          }, onError: (error) {
+                            _resultController.text = "Error: $error";
+                          }, onDone: () {});
+                          llamaProcessor?.prompt(_promptController.text);
+                        }
+                      : null,
                   child: const Text('Run Prompt'),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    flagForStop = true;
-                  },
+                  onPressed: isModelLoaded
+                      ? () {
+                          llamaProcessor?.stop();
+                        }
+                      : null,
                   child: const Text('Stop Prompt'),
                 ),
               ],
@@ -135,6 +170,7 @@ class _LandingPageState extends State<LandingPage> {
 
   @override
   void dispose() {
+    _streamSubscription?.cancel();
     _modelPathController.dispose();
     _promptController.dispose();
     _resultController.dispose();
