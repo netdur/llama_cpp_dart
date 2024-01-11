@@ -17,7 +17,7 @@ This guide outlines the steps to integrate the llama.cpp library into your Dart 
    - Then execute: `codesign --force --verify --verbose --sign "Apple Development: ... (...)" libllm.dylib`.
 
 3. **Add `libllm.dylib` to Your Xcode Project:**
-   - Drag `llama.cpp/build/install/usr/local/lib/libllm.dylib` into your Xcode project.
+   - Drag `libllm.dylib` into your Xcode project.
    - Ensure you select "Copy items if needed" and opt to "Embed & Sign" in the dialog.
 
 4. **Add Metal Shader File:**
