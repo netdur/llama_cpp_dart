@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:isolate';
 
-import 'llm.dart';
+import 'package:llama_cpp_dart/gpt_params.dart';
+import 'package:llama_cpp_dart/llm.dart';
 
 class LlamaProcessor {
   final String path;
@@ -44,7 +45,9 @@ class LlamaProcessor {
       if (message is Map) {
         switch (message['command']) {
           case 'load':
-            llm.loadModel(message['path']);
+            GptParams gptParams = GptParams();
+            gptParams.model = message['path'];
+            llm.loadModel(gptParams);
             break;
           case 'prompt':
             llm.setTextIter(message['prompt']);

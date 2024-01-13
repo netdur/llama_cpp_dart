@@ -1,7 +1,10 @@
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
+import 'float_array.dart';
+import 'int_array.dart';
 
+import 'gpt_params.dart';
 import 'llama_cpp.dart';
 
 class LLM {
@@ -12,18 +15,28 @@ class LLM {
     _lib = llama_cpp(DynamicLibrary.process());
   }
 
-  llm_inference_parameters createInferenceParameters() {
-    return _lib.llm_create_inference_parameters();
+  List<int> decode(String prompt) {
+    Pointer<Char> converted = prompt.toNativeUtf8().cast<Char>();
+    llm_int_array decoded = _lib.llm_encode(_pointer, converted);
+    var array = IntArray.fromNative(decoded);
+    calloc.free(converted);
+    var data = array.data;
+    array.dispose();
+    return data;
   }
 
-  llm_gpt_params createGPTParams() {
-    return _lib.llm_create_gpt_params();
+  List<double> embded(String prompt) {
+    Pointer<Char> converted = prompt.toNativeUtf8().cast<Char>();
+    llm_float_array features = _lib.llm_embed(_pointer, converted);
+    var array = FloatArray.fromNative(features);
+    calloc.free(converted);
+    var data = array.data;
+    array.dispose();
+    return data;
   }
 
-  void loadModel(String path) {
-    llm_gpt_params parameters = _lib.llm_create_gpt_params();
-    parameters.model = path.toNativeUtf8().cast<Char>();
-    _pointer = _lib.llm_load_model(parameters);
+  void loadModel(GptParams gptParams) {
+    _pointer = _lib.llm_load_model(gptParams.get());
   }
 
   void unloadModel() {
@@ -31,15 +44,18 @@ class LLM {
   }
 
   String? getText(String prompt) {
-    Pointer<Char> text =
-        _lib.llm_get_text(_pointer, prompt.toNativeUtf8().cast<Char>());
+    Pointer<Char> converted = prompt.toNativeUtf8().cast<Char>();
+    Pointer<Char> text = _lib.llm_get_text(_pointer, converted);
+    calloc.free(converted);
     String? result = pointerToString(text);
     malloc.free(text);
     return result;
   }
 
   void setTextIter(String prompt) {
-    _lib.llm_set_text_iter(_pointer, prompt.toNativeUtf8().cast<Char>());
+    Pointer<Char> converted = prompt.toNativeUtf8().cast<Char>();
+    _lib.llm_set_text_iter(_pointer, converted);
+    calloc.free(converted);
   }
 
   (String?, bool, int) getNext() {
@@ -49,6 +65,17 @@ class LLM {
     int token = output.ref.token;
     malloc.free(output);
     return (text, hasNext, token);
+  }
+
+  Stream<String> prompt(String initialText) async* {
+    setTextIter(initialText);
+    while (true) {
+      var (text, hasNext, _) = getNext();
+      yield text ?? "";
+      if (!hasNext) {
+        break;
+      }
+    }
   }
 
   static String? pointerToString(Pointer<Char> pointer) {
