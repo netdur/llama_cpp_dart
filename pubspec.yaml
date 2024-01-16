@@ -4,7 +4,7 @@ version: 0.0.1
 homepage: https://github.com/netdur/llama_cpp_dart
 
 environment:
-  sdk: '>=3.2.3 <4.0.0'
+  sdk: '>=3.2.0 <4.0.0'
   flutter: ">=1.17.0"
 
 dependencies:
@@ -32,7 +32,5 @@ ffigen:
   headers:
     entry-points:
       - 'macos/Runner/llama.h'
-      - 'macos/Runner/llm.h'
   compiler-opts:
     - '-Wno-nullability-completeness'
-

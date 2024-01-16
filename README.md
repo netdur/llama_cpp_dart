@@ -1,43 +1,268 @@
-# Dart Binding for llama.cpp
+# llama.cpp Text Generation
 
-## Integration Guide for the llama.cpp Library
+## Overview
+A Dart-based library designed for efficient text generation using the llama.cpp library. This library supports both Dart console applications and Flutter mobile applications, providing an easy-to-use interface for advanced text generation tasks.
 
-This guide outlines the steps to integrate the llama.cpp library into your Dart projects, with a specific focus on macOS/iOS environments using Xcode.
+## Features
+- Asynchronous text generation with Dart isolates for high performance.
+- Customizable model and context parameters for flexible configuration.
+- Stream-based output for real-time text generation in Flutter apps.
+
+## Getting Started
+To get started with the llama.cpp Dart Library, there are a few prerequisites and steps you need to follow. Please note that this is a pure Dart package and not a Flutter plugin.
+
+### Building `llama.cpp` Library
+1. **Download the Source**: First, download or clone the `llama.cpp` library from its source repository.
+2. **Compile for Your Platform**: Using your system's C++ compiler, build the `llama.cpp` library as a shared library (.dll, .so, or .dylib file depending on your OS).
+
+3. **Place the Compiled Library**: Once compiled, place the shared library file in an appropriate directory where your Dart application can access it.
 
 ### Prerequisites
-- Xcode installed on your macOS/iOS device.
-- CMake installed on your system.
+- Dart SDK (for console application)
+- Flutter SDK (for Flutter application)
+- Additional dependencies as per your project requirements
 
-### Step 1: Integrating the Library into Xcode
-1. **Download Pre-Built Binaries:**
-   - Acquire the pre-built binaries from [llama_common_c](https://github.com/netdur/llama_common_c/releases).
+### Installation
 
-2. **Code Signing (if necessary):**
-   - You may need to sign `libllm.dylib`. Use `security find-identity -p codesigning -v` to find your certificate.
-   - Then execute: `codesign --force --verify --verbose --sign "Apple Development: ... (...)" libllm.dylib`.
 
-3. **Add `libllm.dylib` to Your Xcode Project:**
-   - Drag `libllm.dylib` into your Xcode project.
-   - Ensure you select "Copy items if needed" and opt to "Embed & Sign" in the dialog.
+## Usage
 
-4. **Add Metal Shader File:**
-   - Drag the `ggml-metal.metal` file into your Xcode project.
-   - In the file inspector on the right, set its type to "Data".
-   - Navigate to the "Build Phases" tab in your project settings.
-   - Under "Copy Bundle Resources," include the [`ggml-metal.metal`](https://github.com/ggerganov/llama.cpp/blob/master/ggml-metal.metal) file.
+### Dart Console Application
+```dart
+import 'dart:io';
+import 'package:llama_text_generation/llama.dart';
+import 'package:llama_text_generation/context_params.dart';
+import 'package:llama_text_generation/model_params.dart';
 
-### Understanding the Sandbox in macOS
-- **Sandbox Constraints:**
-  - macOS enforces sandboxing, limiting apps from accessing files outside their container directories.
-  - Adjust sandbox settings in your macOS system to permit file access as required by your application.
+void main() {
+  ContextParams contextParams = ContextParams();
+  int size = 32768;
+  size = 8192 * 4;
+  contextParams.batch = 8192 ~/ 4;
+  contextParams.context = size;
+  contextParams.ropeFreqBase = 57200 * 4;
+  contextParams.ropeFreqScale = 0.75 / 4;
 
-- **Alternative Approach:**
-  - Alternatively, ship models as assets and extract them within the application.
+  Llama llama = Llama(
+      "mistral-7b-openorca.Q5_K_M.gguf",
+      ModelParams(),
+      contextParams);
 
-### Library Overview
-- **`llama_cpp`:** This module offers direct binding for `llama.h`.
-- **`LLM`:** high-level class for simplified model interaction.
-- **`LlamaProcessor`:** Designed for use with Flutter widgets, this higher-level class provides an easy-to-use interface for interacting with models.
+  llama.setPrompt("Your prompt here");
 
-### Usage Example
-For a practical implementation example, please see example.dart This example demonstrates how to use the llama.cpp library effectively within a Dart project.
+  // Asynchronous generation
+  await for (String token in llama.prompt(prompt)) {
+    stdout.write(token);
+  }
+
+  // Synchronous generation
+  while (true) {
+    var (token, done) = llama.getNext();
+    stdout.write(token);
+    if (done) {
+      break;
+    }
+  }
+
+  llama.dispose();
+}
+```
+
+### Flutter Application
+```dart
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import 'dart:io';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:path_provider/path_provider.dart';
+
+import 'src/llama_processor.dart';
+
+void main() async {
+  runApp(const App());
+}
+
+class App extends StatelessWidget {
+  const App({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Flutter llama.cpp Demo',
+      themeMode: ThemeMode.dark,
+      darkTheme: ThemeData.dark(
+        useMaterial3: true,
+      ),
+      home: const LandingPage(),
+    );
+  }
+}
+
+class LandingPage extends StatefulWidget {
+  const LandingPage({super.key});
+
+  @override
+  State<LandingPage> createState() => _LandingPageState();
+}
+
+class _LandingPageState extends State<LandingPage> {
+  final TextEditingController _modelPathController = TextEditingController();
+  final TextEditingController _promptController = TextEditingController();
+  final TextEditingController _resultController = TextEditingController();
+
+  LlamaProcessor? llamaProcessor;
+  StreamSubscription<String>? _streamSubscription;
+  bool isModelLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _modelPathController.text = "";
+    _promptController.text = "### Human: divide by zero please\n### Assistant:";
+    // _extractModel();
+  }
+
+  // ignore: unused_element
+  /*static */ _extractModel() async {
+    String model = "phi-2-dpo.Q5_K_S.gguf";
+
+    final directory = await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/$model';
+
+    final fileExists = await File(filePath).exists();
+    if (!fileExists) {
+      final byteData = await rootBundle.load('assets/models/$model');
+      final file = File(filePath);
+      await file.writeAsBytes(byteData.buffer
+          .asUint8List(byteData.offsetInBytes, byteData.lengthInBytes));
+    }
+
+    _modelPathController.text = filePath;
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Model Interaction'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: _modelPathController,
+              decoration: const InputDecoration(
+                labelText: 'Model Path',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _promptController,
+              decoration: const InputDecoration(
+                labelText: 'Prompt',
+                border: OutlineInputBorder(),
+              ),
+              minLines: 5,
+              maxLines: null,
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: TextField(
+                  controller: _resultController,
+                  decoration: const InputDecoration(
+                    labelText: 'Result',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top),
+            ),
+            const SizedBox(height: 10),
+            Text(isModelLoaded ? 'Model Loaded' : 'Model Not Loaded'),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton(
+                  onPressed: () {
+                    llamaProcessor = LlamaProcessor(_modelPathController.text);
+                    setState(() {
+                      isModelLoaded = true;
+                    });
+                  },
+                  child: const Text('Load Model'),
+                ),
+                ElevatedButton(
+                  onPressed: isModelLoaded
+                      ? () {
+                          llamaProcessor?.unloadModel();
+                          setState(() {
+                            isModelLoaded = false;
+                          });
+                        }
+                      : null,
+                  child: const Text('Unload Model'),
+                ),
+                ElevatedButton(
+                  onPressed: isModelLoaded
+                      ? () {
+                          _streamSubscription?.cancel();
+                          _resultController.text = "";
+                          _streamSubscription =
+                              llamaProcessor?.stream.listen((data) {
+                            _resultController.text += data;
+                          }, onError: (error) {
+                            _resultController.text = "Error: $error";
+                          }, onDone: () {});
+                          llamaProcessor?.prompt(_promptController.text);
+                        }
+                      : null,
+                  child: const Text('Run Prompt'),
+                ),
+                ElevatedButton(
+                  onPressed: isModelLoaded
+                      ? () {
+                          llamaProcessor?.stop();
+                        }
+                      : null,
+                  child: const Text('Stop Prompt'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _streamSubscription?.cancel();
+    _modelPathController.dispose();
+    _promptController.dispose();
+    _resultController.dispose();
+    llamaProcessor?.unloadModel();
+    super.dispose();
+  }
+}
+```
+
+## Documentation
+For more detailed information about the classes and their functionalities, please refer to the following documentation:
+
+- [ContextParams](docs/context_params.md) - Configuration settings for the Llama model.
+- [Llama](docs/llama.md) - Interface for interacting with the Llama model.
+- [LlamaProcessor](docs/llama_processor.md) - Handles asynchronous operation of a Llama model in a separate isolate.
+- [LlamaSplitMode](docs/llama_split_mode.md) - Enumerates modes for splitting the Llama model across multiple GPUs.
+- [ModelParams](docs/model_params.md) - Configuration settings for how the model is split and operated across multiple GPUs.
+
+## Contributing
+Contributions are welcome. Please read `CONTRIBUTING.md` for details on our code of conduct, and the process for submitting pull requests.
+
+## License
+This project is licensed under the MIT License - see the `LICENSE.md` file for details.
