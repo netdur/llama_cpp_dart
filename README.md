@@ -255,11 +255,11 @@ class _LandingPageState extends State<LandingPage> {
 ## Documentation
 For more detailed information about the classes and their functionalities, please refer to the following documentation:
 
-- [ContextParams](docs/context_params.md) - Configuration settings for the Llama model.
-- [Llama](docs/llama.md) - Interface for interacting with the Llama model.
-- [LlamaProcessor](docs/llama_processor.md) - Handles asynchronous operation of a Llama model in a separate isolate.
-- [LlamaSplitMode](docs/llama_split_mode.md) - Enumerates modes for splitting the Llama model across multiple GPUs.
-- [ModelParams](docs/model_params.md) - Configuration settings for how the model is split and operated across multiple GPUs.
+- [ContextParams](doc/context_params.md) - Configuration settings for the Llama model.
+- [Llama](doc/llama.md) - Interface for interacting with the Llama model.
+- [LlamaProcessor](doc/llama_processor.md) - Handles asynchronous operation of a Llama model in a separate isolate.
+- [LlamaSplitMode](doc/llama_split_mode.md) - Enumerates modes for splitting the Llama model across multiple GPUs.
+- [ModelParams](doc/model_params.md) - Configuration settings for how the model is split and operated across multiple GPUs.
 
 ## Contributing
 Contributions are welcome. Please read `CONTRIBUTING.md` for details on our code of conduct, and the process for submitting pull requests.
