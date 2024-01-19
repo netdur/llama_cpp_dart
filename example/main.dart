@@ -1,84 +1,11 @@
-# llama.cpp Text Generation
-
-## Overview
-A Dart-based library designed for efficient text generation using the llama.cpp library. This library supports both Dart console applications and Flutter mobile applications, providing an easy-to-use interface for advanced text generation tasks.
-
-## Features
-- Asynchronous text generation with Dart isolates for high performance.
-- Customizable model and context parameters for flexible configuration.
-- Stream-based output for real-time text generation in Flutter apps.
-
-## Getting Started
-To get started with the llama.cpp Dart Library, there are a few prerequisites and steps you need to follow. Please note that this is a pure Dart package and not a Flutter plugin.
-
-### Building `llama.cpp` Library
-1. **Download the Source**: First, download or clone the `llama.cpp` library from its source repository.
-2. **Compile for Your Platform**: Using your system's C++ compiler, build the `llama.cpp` library as a shared library (.dll, .so, or .dylib file depending on your OS).
-
-3. **Place the Compiled Library**: Once compiled, place the shared library file in an appropriate directory where your Dart application can access it.
-
-### Prerequisites
-- Dart SDK (for console application)
-- Flutter SDK (for Flutter application)
-- Additional dependencies as per your project requirements
-
-### Installation
-
-
-## Usage
-
-### Dart Console Application
-```dart
-import 'dart:io';
-import 'package:llama_text_generation/llama.dart';
-import 'package:llama_text_generation/context_params.dart';
-import 'package:llama_text_generation/model_params.dart';
-
-void main() {
-  ContextParams contextParams = ContextParams();
-  int size = 32768;
-  size = 8192 * 4;
-  contextParams.batch = 8192 ~/ 4;
-  contextParams.context = size;
-  contextParams.ropeFreqBase = 57200 * 4;
-  contextParams.ropeFreqScale = 0.75 / 4;
-
-  Llama llama = Llama(
-      "mistral-7b-openorca.Q5_K_M.gguf",
-      ModelParams(),
-      contextParams);
-
-  llama.setPrompt("Your prompt here");
-
-  // Asynchronous generation
-  await for (String token in llama.prompt(prompt)) {
-    stdout.write(token);
-  }
-
-  // Synchronous generation
-  while (true) {
-    var (token, done) = llama.getNext();
-    stdout.write(token);
-    if (done) {
-      break;
-    }
-  }
-
-  llama.dispose();
-}
-```
-
-### Flutter Application
-```dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
 import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:path_provider/path_provider.dart';
-
-import 'src/llama_processor.dart';
 
 void main() async {
   runApp(const App());
@@ -250,16 +177,3 @@ class _LandingPageState extends State<LandingPage> {
     super.dispose();
   }
 }
-```
-
-## Documentation
-For more detailed information about the classes and their functionalities, please refer to the following documentation:
-
-- [ContextParams](doc/context_params.md) - Configuration settings for the Llama model.
-- [Llama](doc/llama.md) - Interface for interacting with the Llama model.
-- [LlamaProcessor](doc/llama_processor.md) - Handles asynchronous operation of a Llama model in a separate isolate.
-- [LlamaSplitMode](doc/llama_split_mode.md) - Enumerates modes for splitting the Llama model across multiple GPUs.
-- [ModelParams](doc/model_params.md) - Configuration settings for how the model is split and operated across multiple GPUs.
-
-## License
-This project is licensed under the MIT License - see the `LICENSE.md` file for details.

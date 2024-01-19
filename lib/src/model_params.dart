@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 
-import '../llama.dart';
-import '../llama_cpp.dart';
+import 'llama.dart';
+import 'llama_cpp.dart';
 // import 'llama_split_mode.dart';
 
 /// ModelParams configures how the model is split and operated across multiple GPUs.

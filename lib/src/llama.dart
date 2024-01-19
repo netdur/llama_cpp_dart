@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'model_params.dart';
 
-import '../llama_cpp.dart';
+import 'llama_cpp.dart';
 import 'context_params.dart';
 
 /// The `Llama` class provides an interface to interact with the Llama model.

@@ -1,6 +1,6 @@
 name: llama_cpp_dart
-description: "Dart binding for llama.cpp"
-version: 0.0.1
+description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
+version: 0.0.2
 homepage: https://github.com/netdur/llama_cpp_dart
 
 environment:
@@ -25,10 +25,14 @@ flutter:
     - assets/
     - assets/models/
 
+analyzer:
+  exclude:
+    - 'lib/src/llama_cpp.dart'
+
 ffigen:
   name: 'llama_cpp'
   description: 'llama.cpp binding'
-  output: 'lib/llama_cpp.dart'
+  output: 'lib/src/llama_cpp.dart'
   headers:
     entry-points:
       - 'macos/Runner/llama.h'
