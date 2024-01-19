@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:convert';
 
 import 'llama_cpp.dart';
 import 'llama.dart';
@@ -144,4 +145,12 @@ class ContextParams {
         'embedding': embedding,
         'offloadKqv': offloadKqv,
       };
+
+  /// Returns a string representation of the `ContextParams` instance.
+  ///
+  /// Useful for debugging and logging.
+  @override
+  String toString() {
+    return jsonEncode(toJson());
+  }
 }
