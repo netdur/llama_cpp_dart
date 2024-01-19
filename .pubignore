@@ -1,13 +1,1 @@
-llama.cpp
-llama.cpp/*
-
-llama.cpp/.clang-tidy
-llama.cpp/examples/chat-13B.bat
-llama.cpp/examples/llama.swiftui/llama.swiftui.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
-llama.cpp/models/.editorconfig
-llama.cpp/models/ggml-vocab-aquila.gguf
-llama.cpp/models/ggml-vocab-baichuan.gguf
-llama.cpp/models/ggml-vocab-falcon.gguf
-llama.cpp/models/ggml-vocab-gpt-neox.gguf
-llama.cpp/models/ggml-vocab-gpt2.gguf
-llama.cpp/models/ggml-vocab-llama.gguf
+llama.cpp/
