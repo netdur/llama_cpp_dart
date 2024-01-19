@@ -1,3 +1,7 @@
+## 0.0.4
+
+* `ModelParams` disabled options `splitsMode`, `tensorSplit` and `metadataOverride`
+
 ## 0.0.3
 
 * LlamaProcessor now take context and model parameters
