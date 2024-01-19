@@ -13,6 +13,12 @@ class LlamaProcessor {
   /// The path to the model file.
   final String path;
 
+  /// context parameters
+  final ContextParams contextParams;
+
+  /// model parameters
+  final ModelParams modelParams;
+
   /// The isolate where the Llama model is loaded and run.
   late Isolate _modelIsolate;
 
@@ -29,7 +35,7 @@ class LlamaProcessor {
   /// Constructor for LlamaProcessor.
   ///
   /// Initializes the processor and starts the model isolate.
-  LlamaProcessor(this.path) {
+  LlamaProcessor(this.path, this.modelParams, this.contextParams) {
     _loadModelIsolate();
   }
 
@@ -50,7 +56,12 @@ class LlamaProcessor {
     _receivePort.listen((message) {
       if (message is SendPort) {
         _modelSendPort = message;
-        _modelSendPort.send({'command': 'load', 'path': path});
+        _modelSendPort.send({
+          'command': 'load',
+          'path': path,
+          'modelParams': modelParams.toJson(),
+          'contextParams': contextParams.toJson()
+        });
       } else if (message is String) {
         _controller.add(message);
       }
@@ -71,12 +82,11 @@ class LlamaProcessor {
       if (message is Map) {
         switch (message['command']) {
           case 'load':
-            ContextParams contextParams = ContextParams();
-            int size = 512 * 4;
-            contextParams.batch = size;
-            contextParams.context = size;
-            contextParams.ropeFreqScale = 8;
-            llama = Llama(message['path'], ModelParams(), contextParams);
+            ContextParams contextParams =
+                ContextParams.fromJson(message['contextParams']);
+            ModelParams modelParams =
+                ModelParams.fromJson(message['modelParams']);
+            llama = Llama(message['path'], modelParams, contextParams);
             break;
           case 'prompt':
             llama?.setPrompt(message['prompt']);

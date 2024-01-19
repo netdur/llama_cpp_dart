@@ -4,7 +4,7 @@ import 'package:ffi/ffi.dart';
 
 import 'llama.dart';
 import 'llama_cpp.dart';
-// import 'llama_split_mode.dart';
+import 'llama_split_mode.dart';
 
 /// ModelParams configures how the model is split and operated across multiple GPUs.
 ///
@@ -12,7 +12,7 @@ import 'llama_cpp.dart';
 /// and memory management options.
 class ModelParams {
   // how to split the model across multiple GPUs
-  // LlamaSplitMode splitsMode = LlamaSplitMode.layer;
+  LlamaSplitMode splitsMode = LlamaSplitMode.layer;
 
   /// Proportion of the model (layers or rows) to offload to each GPU.
   /// Size is defined by LLAMA_MAX_DEVICES.
@@ -108,7 +108,7 @@ class ModelParams {
   /// The JSON map should contain key-value pairs corresponding to the
   /// properties of this class.
   ModelParams.fromJson(Map<String, dynamic> json) {
-    // splitsMode = LlamaSplitMode.values[json['splitsMode'] ?? 0];
+    splitsMode = LlamaSplitMode.values[json['splitsMode'] ?? 0];
     tensorSplit = List<int>.from(json['tensorSplit'] ?? []);
     metadataOverride =
         Map<String, dynamic>.from(json['metadataOverride'] ?? {});
@@ -124,7 +124,7 @@ class ModelParams {
   /// Useful for serialization and debugging.
   Map<String, dynamic> toJson() {
     return {
-      // 'splitsMode': splitsMode.index,
+      'splitsMode': splitsMode.index,
       'tensorSplit': tensorSplit,
       'metadataOverride': metadataOverride,
       'gpuLayerLayer': gpuLayerLayer,

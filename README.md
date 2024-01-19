@@ -30,9 +30,7 @@ To get started with the llama.cpp Dart Library, there are a few prerequisites an
 ### Dart Console Application
 ```dart
 import 'dart:io';
-import 'package:llama_text_generation/llama.dart';
-import 'package:llama_text_generation/context_params.dart';
-import 'package:llama_text_generation/model_params.dart';
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 void main() {
   ContextParams contextParams = ContextParams();
@@ -78,7 +76,7 @@ import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 
-import 'src/llama_processor.dart';
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 void main() async {
   runApp(const App());

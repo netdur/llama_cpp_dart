@@ -80,7 +80,11 @@ class Llama {
     batch = lib.llama_batch_init(cparams.batch, 0, 1);
   }
 
-  /// Releases all allocated resources.
+  /// Releases all resources associated with the Llama instance.
+  ///
+  /// Frees the memory allocated for the model, context, and batch,
+  /// and calls the backend cleanup routines.
+  /// This method should be called when the Llama instance is no longer needed.
   dispose() {
     lib.llama_batch_free(batch);
 
@@ -95,20 +99,11 @@ class Llama {
     lib.llama_backend_free();
   }
 
-  /// Returns information about the model.
-  String modelInfo() {
-    final Pointer<Char> result = malloc.allocate<Char>(256);
-    try {
-      int length = lib.llama_model_desc(model, result, 256);
-      return result.cast<Utf8>().toDartString(length: length);
-    } finally {
-      malloc.free(result);
-    }
-  }
-
-  /// Sets the prompt for the model.
+  /// Sets the initial prompt for the model to begin generating text.
   ///
-  /// Tokenizes the input prompt and prepares it for processing.
+  /// Tokenizes the input prompt and prepares the model for text generation.
+  /// An exception is thrown if the required KV cache size exceeds the context's limit.
+  /// The function also initializes the batch for token processing.
   setPrompt(String prompt) {
     tokensList = tokenize(prompt, true);
     temporaryInvalidCChars = [];
@@ -137,7 +132,11 @@ class Llama {
     cursor = batch.n_tokens;
   }
 
-  /// Generates and returns the next token in the sequence.
+  /// Generates and returns the next token in the sequence based on the current context.
+  ///
+  /// This function handles the selection and decoding of the next token.
+  /// Returns a tuple with the generated text and a boolean indicating if the end-of-sequence token is reached.
+  /// An exception is thrown if llama_decode fails during processing.
   (String, bool) getNext() {
     int newTokenId = 0;
     final nVocab = lib.llama_n_vocab(model);
@@ -184,9 +183,11 @@ class Llama {
     return (newTokenStr, newTokenId == lib.llama_token_eos(model));
   }
 
-  /// Stream of generated text based on the given prompt.
+  /// Asynchronously generates text based on a given prompt.
   ///
-  /// Continuously yields generated text until the end of the sequence.
+  /// This is a generator function that continuously yields generated text.
+  /// It continues generating text until an end-of-sequence condition is met.
+  /// This is ideal for use cases that require streaming output.
   Stream<String> prompt(String prompt) async* {
     setPrompt(prompt);
     while (true) {
@@ -198,7 +199,10 @@ class Llama {
     }
   }
 
-  /// Clears the current token list and temporary data.
+  /// Resets the state of the Llama instance.
+  ///
+  /// Clears the current token list and temporary data, and flushes the KV cache.
+  /// This method should be used to reset the state before starting a new text generation session.
   void clear() {
     tokensList.clear();
     temporaryInvalidCChars.clear();
@@ -207,6 +211,11 @@ class Llama {
 
   // Utility methods
 
+  /// Adds a token to the batch for processing.
+  ///
+  /// Appends a token with its associated position and sequence IDs to the batch.
+  /// The 'logits' flag indicates whether logits should be calculated for this token.
+  /// This is a utility method used internally during token processing.
   void batchAdd(
       llama_batch batch, int id, int pos, List<int> seqIds, bool logits) {
     batch.token[batch.n_tokens] = id;
@@ -219,6 +228,11 @@ class Llama {
     batch.n_tokens += 1;
   }
 
+  /// Converts a text string to a list of token IDs.
+  ///
+  /// This function tokenizes the given string into a sequence of integers representing tokens.
+  /// An optional flag 'addBos' indicates whether to prepend a beginning-of-sentence token.
+  /// The function handles memory allocation and conversion between Dart strings and native character arrays.
   List<int> tokenize(String text, bool addBos) {
     Pointer<Char> cchar = text.toNativeUtf8().cast<Char>();
 
@@ -244,6 +258,11 @@ class Llama {
     }
   }
 
+  /// Converts a token ID to its corresponding string representation.
+  ///
+  /// This utility function takes a token ID and returns the associated text piece.
+  /// It handles the conversion and memory management involved in this process.
+  /// This is typically used in decoding the output of the model.
   String tokenToPiece(int token) {
     Pointer<Uint8> result = malloc.allocate<Uint8>(8);
     try {

@@ -117,7 +117,12 @@ class _LandingPageState extends State<LandingPage> {
               children: [
                 ElevatedButton(
                   onPressed: () {
-                    llamaProcessor = LlamaProcessor(_modelPathController.text);
+                    ModelParams modelParams = ModelParams();
+                    ContextParams contextParams = ContextParams();
+                    contextParams.batch = 512;
+                    contextParams.context = 512;
+                    llamaProcessor = LlamaProcessor(
+                        _modelPathController.text, modelParams, contextParams);
                     setState(() {
                       isModelLoaded = true;
                     });

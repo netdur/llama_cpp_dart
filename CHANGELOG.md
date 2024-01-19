@@ -1,3 +1,7 @@
+## 0.0.3
+
+* LlamaProcessor now take context and model parameters
+
 ## 0.0.2
 
 * refactored code to follow dart package structure
