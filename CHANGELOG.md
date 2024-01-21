@@ -1,3 +1,8 @@
+## 0.0.5
+
+* removed assets defination
+* added static property `Llama.libraryPath` to set library path, in order to support linux and other platforms
+
 ## 0.0.4
 
 * `ModelParams` disabled options `splitsMode`, `tensorSplit` and `metadataOverride`

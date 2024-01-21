@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.0.4
+version: 0.0.5
 homepage: https://github.com/netdur/llama_cpp_dart
 
 environment:
@@ -11,19 +11,13 @@ dependencies:
   flutter:
     sdk: flutter
   ffi: ^2.1.0
-  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^2.0.0
   ffigen: ^11.0.0
-
-flutter:
-  uses-material-design: true
-  assets:
-    - assets/
-    - assets/models/
+  path_provider: ^2.1.2
 
 analyzer:
   exclude:

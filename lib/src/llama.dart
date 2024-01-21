@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:ffi';
-import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 import 'model_params.dart';
@@ -39,13 +38,16 @@ class Llama {
   /// Counter for decoding operations. Default is 0.
   int decode = 0;
 
+  /// set llama.cpp library path
+  static String? libraryPath;
+
   /// Getter for the Llama library.
   ///
   /// Loads the library based on the current platform.
   static llama_cpp get lib {
     if (_lib == null) {
-      if (Platform.isAndroid) {
-        _lib = llama_cpp(DynamicLibrary.open("libllama.so"));
+      if (libraryPath != null) {
+        _lib = llama_cpp(DynamicLibrary.open(libraryPath!));
       } else {
         _lib = llama_cpp(DynamicLibrary.process());
       }
