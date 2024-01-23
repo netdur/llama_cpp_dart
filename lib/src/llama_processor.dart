@@ -97,8 +97,7 @@ class LlamaProcessor {
             break;
           case 'prompt':
             llama?.setPrompt(message['prompt']);
-            bool isRunning = true;
-            while (isRunning) {
+            while (true) {
               if (flagForStop) {
                 flagForStop = false;
                 break;

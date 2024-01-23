@@ -55,15 +55,24 @@ class Llama {
     return _lib!;
   }
 
+  ContextParams contextParams;
+  ModelParams modelParams;
+
+  String loraBase;
+  List<(String, double)> loraAdapters;
+
   /// Constructor for Llama.
   ///
   /// Loads the model and context based on provided model and context parameters.
-  Llama(String modelPath, [ModelParams? mparams, ContextParams? cparams]) {
-    mparams ??= ModelParams();
-    cparams ??= ContextParams();
-
+  Llama(String modelPath,
+      [ModelParams? modelParams,
+      ContextParams? contextParams,
+      this.loraBase = "",
+      this.loraAdapters = const []])
+      : modelParams = modelParams ?? ModelParams(),
+        contextParams = contextParams ?? ContextParams() {
     lib.llama_backend_init(false);
-    llama_model_params modelParams = mparams.get();
+    llama_model_params modelParams = this.modelParams.get();
 
     Pointer<Char> char = modelPath.toNativeUtf8().cast<Char>();
     model = lib.llama_load_model_from_file(char, modelParams);
@@ -73,13 +82,34 @@ class Llama {
       throw Exception("Could not load model at $modelPath");
     }
 
-    llama_context_params contextParams = cparams.get();
+    llama_context_params contextParams = this.contextParams.get();
     context = lib.llama_new_context_with_model(model, contextParams);
     if (context.address == 0) {
       throw Exception("Could not load context!");
     }
 
-    batch = lib.llama_batch_init(cparams.batch, 0, 1);
+    batch = lib.llama_batch_init(this.contextParams.batch, 0, 1);
+
+    Pointer<Char> cLoraBase = loraBase.toNativeUtf8().cast<Char>();
+    for (int i = 0; i < loraAdapters.length; i++) {
+      Pointer<Char> loraAdapter =
+          loraAdapters[i].$1.toNativeUtf8().cast<Char>();
+      double loraScale = loraAdapters[i].$2;
+      int err = lib.llama_model_apply_lora_from_file(
+          model,
+          loraAdapter,
+          loraScale,
+          loraBase.isNotEmpty ? cLoraBase : nullptr,
+          this.contextParams.threads);
+      malloc.free(loraAdapter);
+      if (err != 0) {
+        lib.llama_batch_free(batch);
+        lib.llama_free(context);
+        lib.llama_free_model(model);
+        throw Exception("failed to apply lora adapter");
+      }
+    }
+    malloc.free(cLoraBase);
   }
 
   /// Releases all resources associated with the Llama instance.
