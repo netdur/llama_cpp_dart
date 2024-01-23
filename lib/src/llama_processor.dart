@@ -50,7 +50,7 @@ class LlamaProcessor {
   Future<void> _loadModelIsolate() async {
     _modelIsolate = await Isolate.spawn(
       _modelIsolateEntryPoint,
-      _receivePort.sendPort,
+      {'port': _receivePort.sendPort, 'libraryPath': Llama.libraryPath},
     );
 
     _receivePort.listen((message) {
@@ -71,9 +71,12 @@ class LlamaProcessor {
   /// Entry point for the model isolate.
   ///
   /// Handles commands sent to the isolate, such as loading the model, generating text, and stopping the operation.
-  static void _modelIsolateEntryPoint(SendPort mainSendPort) {
+  static void _modelIsolateEntryPoint(Map<String, dynamic> args) {
+    SendPort mainSendPort = args['port'] as SendPort;
     ReceivePort isolateReceivePort = ReceivePort();
     mainSendPort.send(isolateReceivePort.sendPort);
+
+    Llama.libraryPath = args['libraryPath'] as String;
 
     Llama? llama;
     bool flagForStop = false;
