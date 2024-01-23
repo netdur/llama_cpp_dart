@@ -65,6 +65,7 @@ class LlamaProcessor {
           'modelParams': modelParams.toJson(),
           'contextParams': contextParams.toJson()
         });
+        _uninitialized.complete();
       } else if (message is String) {
         _controller.add(message);
       }
