@@ -76,7 +76,7 @@ class LlamaProcessor {
     ReceivePort isolateReceivePort = ReceivePort();
     mainSendPort.send(isolateReceivePort.sendPort);
 
-    Llama.libraryPath = args['libraryPath'] as String;
+    Llama.libraryPath = args['libraryPath'] as String?;
 
     Llama? llama;
     bool flagForStop = false;
