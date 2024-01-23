@@ -6,6 +6,9 @@ import 'llama.dart';
 import 'llama_cpp.dart';
 // import 'llama_split_mode.dart';
 
+/// An enumeration representing different types of LLM Prompt Formats.
+enum PromptFormat { raw, chatml, alpaca }
+
 /// ModelParams configures how the model is split and operated across multiple GPUs.
 ///
 /// It includes settings for tensor splitting, metadata overrides, GPU layer storage,
@@ -20,6 +23,9 @@ class ModelParams {
 
   /// Override key-value pairs of the model metadata.
   // Map<String, dynamic> metadataOverride = {};
+
+  /// Prompt format. Defaults to `PromptFormat.raw`.
+  PromptFormat format = PromptFormat.raw;
 
   /// Number of layers to store in VRAM. Default is 99.
   int gpuLayerLayer = 99;

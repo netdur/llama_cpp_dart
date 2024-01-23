@@ -67,7 +67,7 @@ class LlamaProcessor {
         });
         _uninitialized.complete();
       } else if (message is String) {
-        _controller.add(message);
+        _parseResponse(message);
       }
     });
   }
@@ -119,6 +119,23 @@ class LlamaProcessor {
         }
       }
     });
+  }
+
+  void _parseResponse(String response) {
+    switch (modelParams.format) {
+      case PromptFormat.raw:
+        _controller.add(response);
+        break;
+      case PromptFormat.alpaca:
+        _controller.add(response);
+        break;
+      case PromptFormat.chatml:
+        _controller.add(response);
+        break;
+      default:
+        _controller.add(response);
+        break;
+    }
   }
 
   /// Sends a prompt to the model isolate for text generation.
