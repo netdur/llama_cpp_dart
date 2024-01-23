@@ -25,6 +25,9 @@ class LlamaProcessor {
   /// SendPort for sending messages to the model isolate.
   late SendPort _modelSendPort;
 
+  /// Completer for the initialization of _modelSendPort.
+  Completer _uninitialized = Completer();
+
   /// ReceivePort for receiving messages from the model isolate.
   final ReceivePort _receivePort = ReceivePort();
 
@@ -121,23 +124,30 @@ class LlamaProcessor {
   ///
   /// The generated text will be sent back to the main thread and emitted through the stream.
   void prompt(String prompt) {
-    _modelSendPort.send({'command': 'prompt', 'prompt': prompt});
+    _uninitialized.future.then((_) {
+      _modelSendPort.send({'command': 'prompt', 'prompt': prompt});
+    });
   }
 
   /// Sends a stop command to the model isolate.
   ///
   /// This command interrupts the current text generation process.
   void stop() {
-    _modelSendPort.send({'command': 'stop'});
+    _uninitialized.future.then((_) {
+      _modelSendPort.send({'command': 'stop'});
+    });
   }
 
   /// Unloads the model and terminates the isolate.
   ///
   /// Closes the communication ports and stream controller.
   void unloadModel() {
-    _modelSendPort.send({'command': 'clear'});
-    _modelIsolate.kill(priority: Isolate.immediate);
-    _receivePort.close();
-    _controller.close();
+    _uninitialized.future.then((_) {
+      _modelSendPort.send({'command': 'clear'});
+      _modelIsolate.kill(priority: Isolate.immediate);
+      _receivePort.close();
+      _controller.close();
+      _uninitialized = Completer();
+    });
   }
 }
