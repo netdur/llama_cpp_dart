@@ -1,3 +1,9 @@
+## 0.0.6
+
+* added initial support to load lora
+* dart cli example
+* fixed #3 by @danemadsen
+
 ## 0.0.5
 
 * removed assets defination

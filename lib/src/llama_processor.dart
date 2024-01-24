@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'package:llama_cpp_dart/src/chat_ml_filter.dart';
+import 'package:llama_cpp_dart/src/prompt_format.dart';
+
+import 'alpaca_filter.dart';
 import 'model_params.dart';
 import 'sequence_filter.dart';
 import 'context_params.dart';
@@ -20,10 +24,13 @@ class LlamaProcessor {
   final ModelParams modelParams;
 
   /// The sequence filter for the Alpaca format.
-  final SequenceFilter _alpacaFilter = SequenceFilter(['### Input:', '### Response:']);
+  final SequenceFilter _alpacaFilter = AlpacaFilter();
 
   /// The sequence filter for the ChatML format.
-  final SequenceFilter _chatmlFilter = SequenceFilter(['<|im_start|>user', '<|im_start|>assistant', '<|im_end|>']);
+  final SequenceFilter _chatmlFilter = ChatMLFilter();
+
+  /// Prompt format. Defaults to `PromptFormat.raw`.
+  PromptFormat format = PromptFormat.raw;
 
   /// The isolate where the Llama model is loaded and run.
   late Isolate _modelIsolate;
@@ -127,7 +134,7 @@ class LlamaProcessor {
   }
 
   void _parseResponse(String response) {
-    switch (modelParams.format) {
+    switch (format) {
       case PromptFormat.raw:
         _controller.add(response);
         break;
@@ -150,8 +157,9 @@ class LlamaProcessor {
   /// The generated text will be sent back to the main thread and emitted through the stream.
   void prompt(String prompt) {
     _uninitialized.future.then((_) {
-      var formattedPrompt = prompt;
-      
+      var formattedPrompt = PromptFormatter.formatPrompt(format, prompt);
+
+      /*
       switch (modelParams.format) {
         case PromptFormat.raw:
           break;
@@ -159,11 +167,13 @@ class LlamaProcessor {
           formattedPrompt = '### Input:\n\n$prompt\n\n### Response:\n\n';
           break;
         case PromptFormat.chatml:
-          formattedPrompt = '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
+          formattedPrompt =
+              '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
           break;
         default:
           break;
       }
+      */
 
       _modelSendPort.send({'command': 'prompt', 'prompt': formattedPrompt});
     });

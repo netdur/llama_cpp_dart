@@ -1,4 +1,4 @@
-class SequenceFilter {
+abstract class SequenceFilter {
   final List<String> sequences;
   StringBuffer buffer = StringBuffer();
 
@@ -23,9 +23,8 @@ class SequenceFilter {
     } while (sequenceFound);
 
     // Return and clear the buffer if it's safe
-    bool endsWithPartOfAnySequence = sequences.any(
-      (seq) => buffer.toString().endsWith(seq.substring(0, 1))
-    );
+    bool endsWithPartOfAnySequence =
+        sequences.any((seq) => buffer.toString().endsWith(seq.substring(0, 1)));
     if (!endsWithPartOfAnySequence && buffer.isNotEmpty) {
       String result = buffer.toString();
       buffer.clear();

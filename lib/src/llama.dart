@@ -7,6 +7,10 @@ import 'model_params.dart';
 import 'llama_cpp.dart';
 import 'context_params.dart';
 
+/*
+Seed, top-k, top-p, min-p, temperature should be first as they're so common, then grammar, repeat/penalty, logits parameters, stats, rope (even if you've done some), speculative decoding, cache, lora last.
+*/
+
 /// The `Llama` class provides an interface to interact with the Llama model.
 ///
 /// It includes methods for loading and managing the model and context,
