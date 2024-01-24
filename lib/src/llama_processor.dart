@@ -151,22 +151,22 @@ class LlamaProcessor {
   /// The generated text will be sent back to the main thread and emitted through the stream.
   void prompt(String prompt) {
     _uninitialized.future.then((_) {
+      var formattedPrompt = prompt;
+      
       switch (modelParams.format) {
         case PromptFormat.raw:
-          _modelSendPort.send({'command': 'prompt', 'prompt': prompt});
           break;
         case PromptFormat.alpaca:
-          final formattedPrompt = '### Instruction:\n\n$prompt\n\n### Response:\n\n';
-          _modelSendPort.send({'command': 'prompt', 'prompt': formattedPrompt});
+          formattedPrompt = '### Instruction:\n\n$prompt\n\n### Response:\n\n';
           break;
         case PromptFormat.chatml:
-          final formattedPrompt = '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
-          _modelSendPort.send({'command': 'prompt', 'prompt': formattedPrompt});
+          formattedPrompt = '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
           break;
         default:
-          _modelSendPort.send({'command': 'prompt', 'prompt': prompt});
           break;
       }
+
+      _modelSendPort.send({'command': 'prompt', 'prompt': formattedPrompt});
     });
   }
 
