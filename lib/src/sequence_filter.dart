@@ -9,9 +9,9 @@ class SequenceFilter {
 
   String? processChunk(String chunk) {
     for (var i = 0; i < chunk.length; i++) {
-      var sub;
+      String sub;
       if (buffer.isEmpty) {
-        sub = chunk.substring(i, chunk.length);
+        sub = chunk.substring(i);
       } else {
         final budget = min(sequence.length - buffer.length, chunk.length);
         sub = buffer.toString() + chunk.substring(0, budget);

@@ -148,12 +148,10 @@ class LlamaProcessor {
 
   String? _processFilters(List<SequenceFilter> filters, String response) {
     List<String?> chunks = [];
-    var index = 0;
 
     // Iteratively process the response through each filter
     for (var filter in filters) {
-      chunks[index] = filter.processChunk(response);
-      index++;
+      chunks.add(filter.processChunk(response));
     }
 
     // If any of the filters return null, the response is incomplete
