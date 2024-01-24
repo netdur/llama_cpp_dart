@@ -3,7 +3,6 @@ import 'dart:math';
 class SequenceFilter {
   final String sequence;
   StringBuffer buffer = StringBuffer();
-  bool firstChunk = true;
 
   SequenceFilter(this.sequence);
 
