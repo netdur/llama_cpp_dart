@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 
 import 'model_params.dart';
-
+import 'sequence_filter.dart';
 import 'context_params.dart';
 import 'llama.dart';
 
@@ -18,6 +18,12 @@ class LlamaProcessor {
 
   /// model parameters
   final ModelParams modelParams;
+
+  /// The sequence filter for the Alpaca format.
+  final SequenceFilter _alpacaFilter = SequenceFilter(['### Input:', '### Response:']);
+
+  /// The sequence filter for the ChatML format.
+  final SequenceFilter _chatmlFilter = SequenceFilter(['<|im_start|>user', '<|im_start|>assistant', '<|im_end|>']);
 
   /// The isolate where the Llama model is loaded and run.
   late Isolate _modelIsolate;
@@ -67,7 +73,7 @@ class LlamaProcessor {
         });
         _uninitialized.complete();
       } else if (message is String) {
-        _controller.add(message);
+        _parseResponse(message);
       }
     });
   }
@@ -120,12 +126,46 @@ class LlamaProcessor {
     });
   }
 
+  void _parseResponse(String response) {
+    switch (modelParams.format) {
+      case PromptFormat.raw:
+        _controller.add(response);
+        break;
+      case PromptFormat.alpaca:
+        String? chunk = _alpacaFilter.processChunk(response);
+        if (chunk != null) _controller.add(chunk);
+        break;
+      case PromptFormat.chatml:
+        String? chunk = _chatmlFilter.processChunk(response);
+        if (chunk != null) _controller.add(chunk);
+        break;
+      default:
+        _controller.add(response);
+        break;
+    }
+  }
+
   /// Sends a prompt to the model isolate for text generation.
   ///
   /// The generated text will be sent back to the main thread and emitted through the stream.
   void prompt(String prompt) {
     _uninitialized.future.then((_) {
-      _modelSendPort.send({'command': 'prompt', 'prompt': prompt});
+      var formattedPrompt = prompt;
+      
+      switch (modelParams.format) {
+        case PromptFormat.raw:
+          break;
+        case PromptFormat.alpaca:
+          formattedPrompt = '### Input:\n\n$prompt\n\n### Response:\n\n';
+          break;
+        case PromptFormat.chatml:
+          formattedPrompt = '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
+          break;
+        default:
+          break;
+      }
+
+      _modelSendPort.send({'command': 'prompt', 'prompt': formattedPrompt});
     });
   }
 
