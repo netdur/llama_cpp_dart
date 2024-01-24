@@ -23,11 +23,14 @@ class SequenceFilter {
           buffer.clear();
         }
       } else {
+        String result = chunk.substring(i);
+
         if (buffer.isNotEmpty) {
-          final result = buffer.toString() + chunk.substring(i);
+          result += buffer.toString();
           buffer.clear();
-          return result;
         }
+
+        return result;
       }
     }
     return null;
