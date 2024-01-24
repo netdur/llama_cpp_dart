@@ -20,10 +20,10 @@ class LlamaProcessor {
   final ModelParams modelParams;
 
   /// The sequence filter for the Alpaca format.
-  final SequenceFilter _alpacaFilter = SequenceFilter(['### Input:', '### Response:']);
+  final List<SequenceFilter> _alpacaFilters = [SequenceFilter('### Input:'), SequenceFilter('### Response:')];
 
   /// The sequence filter for the ChatML format.
-  final SequenceFilter _chatmlFilter = SequenceFilter(['<|im_start|>user', '<|im_start|>assistant', '<|im_end|>']);
+  final List<SequenceFilter> _chatmlFilters = [SequenceFilter('<|im_start|>user'), SequenceFilter('<|im_end|>'), SequenceFilter('<|im_start|>assistant')];
 
   /// The isolate where the Llama model is loaded and run.
   late Isolate _modelIsolate;
@@ -133,17 +133,38 @@ class LlamaProcessor {
         _controller.add(response);
         break;
       case PromptFormat.alpaca:
-        String? chunk = _alpacaFilter.processChunk(response);
+        String? chunk = _processFilters(_alpacaFilters, response);
         if (chunk != null) _controller.add(chunk);
         break;
       case PromptFormat.chatml:
-        String? chunk = _chatmlFilter.processChunk(response);
+        String? chunk = _processFilters(_chatmlFilters, response);
         if (chunk != null) _controller.add(chunk);
         break;
       default:
         _controller.add(response);
         break;
     }
+  }
+
+  String? _processFilters(List<SequenceFilter> filters, String response) {
+    List<String?> chunks = [];
+    var index = 0;
+
+    // Iteratively process the response through each filter
+    for (var filter in filters) {
+      chunks[index] = filter.processChunk(response);
+      index++;
+    }
+
+    // If any of the filters return null, the response is incomplete
+    for (var chunk in chunks) {
+      if (chunk == null) {
+        return null;
+      }
+    }
+
+    // Return the longest chunk
+    return chunks.reduce((a, b) => a!.length > b!.length ? a : b);
   }
 
   /// Sends a prompt to the model isolate for text generation.
