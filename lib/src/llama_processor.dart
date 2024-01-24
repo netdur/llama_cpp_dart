@@ -20,7 +20,7 @@ class LlamaProcessor {
   final ModelParams modelParams;
 
   /// The sequence filter for the Alpaca format.
-  final SequenceFilter _alpacaFilter = SequenceFilter(['### Instruction:', '### Response:']);
+  final SequenceFilter _alpacaFilter = SequenceFilter(['### Input:', '### Response:']);
 
   /// The sequence filter for the ChatML format.
   final SequenceFilter _chatmlFilter = SequenceFilter(['<|im_start|>user', '<|im_start|>assistant', '<|im_end|>']);
@@ -157,7 +157,7 @@ class LlamaProcessor {
         case PromptFormat.raw:
           break;
         case PromptFormat.alpaca:
-          formattedPrompt = '### Instruction:\n\n$prompt\n\n### Response:\n\n';
+          formattedPrompt = '### Input:\n\n$prompt\n\n### Response:\n\n';
           break;
         case PromptFormat.chatml:
           formattedPrompt = '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
