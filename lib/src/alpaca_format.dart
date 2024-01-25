@@ -1,8 +1,10 @@
 import 'prompt_format.dart';
-import 'sequence_filter.dart';
 
 class AlpacaFormat extends PromptFormat {
   AlpacaFormat()
-      : super(PromptFormatType.alpaca,
-            [SequenceFilter('### Input:'), SequenceFilter('### Response:')]);
+    : super(PromptFormatType.alpaca,
+      inputSequence: '### Input:',
+      outputSequence: '### Response:',
+      systemSequence: '### Instruction:'
+    );
 }
