@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'alpaca_format.dart';
+import 'chatml_format.dart';
 import 'model_params.dart';
-import 'sequence_filter.dart';
+import 'prompt_format.dart';
 import 'context_params.dart';
 import 'llama.dart';
 
@@ -18,12 +20,6 @@ class LlamaProcessor {
 
   /// model parameters
   final ModelParams modelParams;
-
-  /// The sequence filter for the Alpaca format.
-  final SequenceFilter _alpacaFilter = SequenceFilter(['### Input:', '### Response:']);
-
-  /// The sequence filter for the ChatML format.
-  final SequenceFilter _chatmlFilter = SequenceFilter(['<|im_start|>user', '<|im_start|>assistant', '<|im_end|>']);
 
   /// The isolate where the Llama model is loaded and run.
   late Isolate _modelIsolate;
@@ -128,15 +124,15 @@ class LlamaProcessor {
 
   void _parseResponse(String response) {
     switch (modelParams.format) {
-      case PromptFormat.raw:
+      case PromptFormatType.raw:
         _controller.add(response);
         break;
-      case PromptFormat.alpaca:
-        String? chunk = _alpacaFilter.processChunk(response);
+      case PromptFormatType.alpaca:
+        String? chunk = AlpacaFormat().filterResponse(response);
         if (chunk != null) _controller.add(chunk);
         break;
-      case PromptFormat.chatml:
-        String? chunk = _chatmlFilter.processChunk(response);
+      case PromptFormatType.chatml:
+        String? chunk = ChatMLFormat().filterResponse(response);
         if (chunk != null) _controller.add(chunk);
         break;
       default:
@@ -151,15 +147,16 @@ class LlamaProcessor {
   void prompt(String prompt) {
     _uninitialized.future.then((_) {
       var formattedPrompt = prompt;
-      
+
       switch (modelParams.format) {
-        case PromptFormat.raw:
+        case PromptFormatType.raw:
           break;
-        case PromptFormat.alpaca:
+        case PromptFormatType.alpaca:
           formattedPrompt = '### Input:\n\n$prompt\n\n### Response:\n\n';
           break;
-        case PromptFormat.chatml:
-          formattedPrompt = '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
+        case PromptFormatType.chatml:
+          formattedPrompt =
+              '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
           break;
         default:
           break;
