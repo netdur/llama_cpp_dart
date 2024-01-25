@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'alpaca_format.dart';
+import 'chatml_format.dart';
 import 'model_params.dart';
 import 'prompt_format.dart';
 import 'sequence_filter.dart';
@@ -19,19 +21,6 @@ class LlamaProcessor {
 
   /// model parameters
   final ModelParams modelParams;
-
-  /// The sequence filter for the Alpaca format.
-  final List<SequenceFilter> _alpacaFilters = [
-    SequenceFilter('### Input:'),
-    SequenceFilter('### Response:')
-  ];
-
-  /// The sequence filter for the ChatML format.
-  final List<SequenceFilter> _chatmlFilters = [
-    SequenceFilter('<|im_start|>user'),
-    SequenceFilter('<|im_end|>'),
-    SequenceFilter('<|im_start|>assistant')
-  ];
 
   /// The isolate where the Llama model is loaded and run.
   late Isolate _modelIsolate;
@@ -140,36 +129,17 @@ class LlamaProcessor {
         _controller.add(response);
         break;
       case PromptFormatType.alpaca:
-        String? chunk = _processFilters(_alpacaFilters, response);
+        String? chunk = AlpacaFormat().filterResponse(response);
         if (chunk != null) _controller.add(chunk);
         break;
       case PromptFormatType.chatml:
-        String? chunk = _processFilters(_chatmlFilters, response);
+        String? chunk = ChatMLFormat().filterResponse(response);
         if (chunk != null) _controller.add(chunk);
         break;
       default:
         _controller.add(response);
         break;
     }
-  }
-
-  String? _processFilters(List<SequenceFilter> filters, String response) {
-    List<String?> chunks = [];
-
-    // Iteratively process the response through each filter
-    for (var filter in filters) {
-      chunks.add(filter.processChunk(response));
-    }
-
-    // If any of the filters return null, the response is incomplete
-    for (var chunk in chunks) {
-      if (chunk == null) {
-        return null;
-      }
-    }
-
-    // Return the longest chunk
-    return chunks.reduce((a, b) => a!.length > b!.length ? a : b);
   }
 
   /// Sends a prompt to the model isolate for text generation.
