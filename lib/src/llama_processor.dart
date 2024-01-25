@@ -161,7 +161,6 @@ class LlamaProcessor {
         default:
           break;
       }
-      */
 
       _modelSendPort.send({'command': 'prompt', 'prompt': formattedPrompt});
     });

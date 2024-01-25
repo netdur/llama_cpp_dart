@@ -5,7 +5,7 @@ import 'package:system_info2/system_info2.dart';
 
 void main() async {
   final cores = SysInfo.cores;
-  int memory = SysInfo.getTotalVirtualMemory() ~/ megaByte;
+  // int memory = SysInfo.getTotalVirtualMemory() ~/ megaByte;
 
   Llama.libraryPath = "libllama.so";
 

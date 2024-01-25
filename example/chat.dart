@@ -2,13 +2,12 @@ import 'dart:io';
 
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:llama_cpp_dart/src/chat.dart';
-import 'package:llama_cpp_dart/src/chat_ml_filter.dart';
-import 'package:llama_cpp_dart/src/prompt_format.dart';
+import 'package:llama_cpp_dart/src/chatml_format.dart';
 import 'package:system_info2/system_info2.dart';
 
 void main() async {
   final cores = SysInfo.cores;
-  int memory = SysInfo.getTotalVirtualMemory() ~/ megaByte;
+  // int memory = SysInfo.getTotalVirtualMemory() ~/ megaByte;
 
   Llama.libraryPath = "/Users/adel/Workspace/llama.cpp/build/libllama.dylib";
 
@@ -23,21 +22,30 @@ void main() async {
       modelParams,
       contextParams);
 
-  String system = PromptFormatter.formatPrompt(
-      PromptFormat.chatml,
+  ChatMLFormat chatMLFormat = ChatMLFormat();
+
+  String system = chatMLFormat.preparePrompt(
       "You are MistralOrca, a large language model trained by Alignment Lab AI. Write out your reasoning step-by-step to be sure you get the right answers!",
       Role.system.value,
       false);
-  String prompt =
-      PromptFormatter.formatPrompt(PromptFormat.chatml, "How are you?");
 
-  ChatMLFilter chatmlFilter = ChatMLFilter();
+  String prompt = chatMLFormat.preparePrompt("How are you?");
+
   llama.setPrompt(system + prompt);
   while (true) {
     var (token, done) = llama.getNext();
-    String? chunk = chatmlFilter.processChunk(token);
+    String? chunk = chatMLFormat.filterResponse(token);
     if (chunk != null) stdout.write(token);
     if (done) break;
+  }
+  stdout.write("\n");
+
+  // llama.clear();
+
+  prompt = chatMLFormat.preparePrompt("Can you divide by zero?");
+  await for (String token in llama.prompt(prompt)) {
+    String? chunk = chatMLFormat.filterResponse(token);
+    if (chunk != null) stdout.write(token);
   }
   stdout.write("\n");
 

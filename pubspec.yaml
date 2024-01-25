@@ -31,6 +31,6 @@ ffigen:
   headers:
     entry-points:
       - 'llama.cpp/llama.h'
-      - 'llama.cpp/common/common.h'
+      # - 'llama.cpp/common/common.h'
   compiler-opts:
     - '-I/usr/lib/clang/17/include'
