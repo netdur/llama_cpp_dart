@@ -5,7 +5,6 @@ import 'alpaca_format.dart';
 import 'chatml_format.dart';
 import 'model_params.dart';
 import 'prompt_format.dart';
-import 'sequence_filter.dart';
 import 'context_params.dart';
 import 'llama.dart';
 
