@@ -1,32 +1,28 @@
+import 'package:llama_cpp_dart/src/sequence_filter.dart';
+
 /// An enumeration representing different types of LLM Prompt Formats.
-enum PromptFormat { raw, chatml, alpaca }
+enum PromptFormatType { raw, chatml, alpaca }
 
-extension PromptFormatExtension on PromptFormat {
-  static const values = {
-    PromptFormat.raw: -1,
-    PromptFormat.chatml: 0,
-    PromptFormat.alpaca: 1,
-  };
+/// A class representing a LLM Prompt Format.
+abstract class PromptFormat {
+  final PromptFormatType type;
+  final List<SequenceFilter> filters;
 
-  int get value => values[this]!;
-}
+  PromptFormat(this.type, this.filters);
 
-class PromptFormatter {
-  static String formatPrompt(PromptFormat format, String prompt,
-      [String role = "user", bool assistant = true]) {
-    switch (format) {
-      case PromptFormat.raw:
-        return prompt;
-      case PromptFormat.alpaca:
-        return '### Input:\n\n$prompt\n\n### Response:\n\n';
-      case PromptFormat.chatml:
-        String formatted = '<|im_start|>$role\n$prompt\n<|im_end|>\n';
-        if (assistant) {
-          formatted += '<|im_start|>assistant\n';
-        }
-        return formatted;
-      default:
-        return prompt;
+  String? filterResponse(String response) {
+    // Iteratively process the response through each filter
+    List<String?> chunks = [];
+    for (var filter in filters) {
+      chunks.add(filter.processChunk(response));
     }
+
+    // If any of the filters return null, the response is incomplete
+    for (var chunk in chunks) {
+      if (chunk == null) return null;
+    }
+
+    // Return the longest chunk
+    return chunks.reduce((a, b) => a!.length > b!.length ? a : b);
   }
 }

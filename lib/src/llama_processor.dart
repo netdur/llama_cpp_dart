@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:isolate';
 
-import 'package:llama_cpp_dart/src/chat_ml_filter.dart';
-import 'package:llama_cpp_dart/src/prompt_format.dart';
-
-import 'alpaca_filter.dart';
+import 'alpaca_format.dart';
+import 'chatml_format.dart';
 import 'model_params.dart';
-import 'sequence_filter.dart';
+import 'prompt_format.dart';
 import 'context_params.dart';
 import 'llama.dart';
 
@@ -22,15 +20,6 @@ class LlamaProcessor {
 
   /// model parameters
   final ModelParams modelParams;
-
-  /// The sequence filter for the Alpaca format.
-  final SequenceFilter _alpacaFilter = AlpacaFilter();
-
-  /// The sequence filter for the ChatML format.
-  final SequenceFilter _chatmlFilter = ChatMLFilter();
-
-  /// Prompt format. Defaults to `PromptFormat.raw`.
-  PromptFormat format = PromptFormat.raw;
 
   /// The isolate where the Llama model is loaded and run.
   late Isolate _modelIsolate;
@@ -134,16 +123,16 @@ class LlamaProcessor {
   }
 
   void _parseResponse(String response) {
-    switch (format) {
-      case PromptFormat.raw:
+    switch (modelParams.format) {
+      case PromptFormatType.raw:
         _controller.add(response);
         break;
-      case PromptFormat.alpaca:
-        String? chunk = _alpacaFilter.processChunk(response);
+      case PromptFormatType.alpaca:
+        String? chunk = AlpacaFormat().filterResponse(response);
         if (chunk != null) _controller.add(chunk);
         break;
-      case PromptFormat.chatml:
-        String? chunk = _chatmlFilter.processChunk(response);
+      case PromptFormatType.chatml:
+        String? chunk = ChatMLFormat().filterResponse(response);
         if (chunk != null) _controller.add(chunk);
         break;
       default:
@@ -157,16 +146,15 @@ class LlamaProcessor {
   /// The generated text will be sent back to the main thread and emitted through the stream.
   void prompt(String prompt) {
     _uninitialized.future.then((_) {
-      var formattedPrompt = PromptFormatter.formatPrompt(format, prompt);
+      var formattedPrompt = prompt;
 
-      /*
       switch (modelParams.format) {
-        case PromptFormat.raw:
+        case PromptFormatType.raw:
           break;
-        case PromptFormat.alpaca:
+        case PromptFormatType.alpaca:
           formattedPrompt = '### Input:\n\n$prompt\n\n### Response:\n\n';
           break;
-        case PromptFormat.chatml:
+        case PromptFormatType.chatml:
           formattedPrompt =
               '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
           break;

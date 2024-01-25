@@ -1,35 +1,37 @@
-abstract class SequenceFilter {
-  final List<String> sequences;
+import 'dart:math';
+
+class SequenceFilter {
+  final String sequence;
   StringBuffer buffer = StringBuffer();
 
-  SequenceFilter(this.sequences);
+  SequenceFilter(this.sequence);
 
   String? processChunk(String chunk) {
-    buffer.write(chunk); // Add new chunk to the buffer
-
-    // Check if the buffer contains any of the sequences
-    bool sequenceFound;
-    do {
-      sequenceFound = false;
-      for (String sequence in sequences) {
-        int index = buffer.toString().indexOf(sequence);
-        if (index != -1) {
-          // Remove the sequence from the buffer
-          buffer = StringBuffer(buffer.toString().replaceFirst(sequence, ''));
-          sequenceFound = true;
-          break; // Exit the loop and start checking again
-        }
+    for (var i = 0; i < chunk.length; i++) {
+      String sub;
+      if (buffer.isEmpty) {
+        sub = chunk.substring(i);
+      } else {
+        final budget = min(sequence.length - buffer.length, chunk.length);
+        sub = buffer.toString() + chunk.substring(0, budget);
       }
-    } while (sequenceFound);
 
-    // Return and clear the buffer if it's safe
-    bool endsWithPartOfAnySequence =
-        sequences.any((seq) => buffer.toString().endsWith(seq.substring(0, 1)));
-    if (!endsWithPartOfAnySequence && buffer.isNotEmpty) {
-      String result = buffer.toString();
-      buffer.clear();
-      return result;
+      if (sequence.contains(sub)) {
+        buffer.write(sub);
+        if (buffer.length == sequence.length) {
+          buffer.clear();
+        }
+      } else {
+        String result = chunk.substring(i);
+
+        if (buffer.isNotEmpty) {
+          result += buffer.toString();
+          buffer.clear();
+        }
+
+        return result;
+      }
     }
-    return null; // Return null if buffer is not safe to return
+    return null;
   }
 }
