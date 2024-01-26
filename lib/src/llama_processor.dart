@@ -37,6 +37,9 @@ class LlamaProcessor {
   final StreamController<String> _controller =
       StreamController<String>.broadcast();
 
+  /// Conversation messages.
+  List<Map<String, dynamic>> messages = [];
+
   /// Constructor for LlamaProcessor.
   ///
   /// Initializes the processor and starts the model isolate.
@@ -152,14 +155,30 @@ class LlamaProcessor {
         case PromptFormatType.raw:
           break;
         case PromptFormatType.alpaca:
-          formattedPrompt = '### Input:\n\n$prompt\n\n### Response:\n\n';
+          formattedPrompt = AlpacaFormat().formatPrompt(prompt);
           break;
         case PromptFormatType.chatml:
-          formattedPrompt =
-              '<|im_start|>user\n$prompt\n<|im_end|>\n<|im_start|>assistant\n';
+          formattedPrompt = ChatMLFormat().formatPrompt(prompt);
           break;
         default:
           break;
+      }
+
+      if (messages.isNotEmpty) {
+        switch (modelParams.format) {
+          case PromptFormatType.raw:
+            break;
+          case PromptFormatType.alpaca:
+            final formattedMessages = AlpacaFormat().formatMessages(messages);
+            formattedPrompt = '$formattedMessages$formattedPrompt';
+            break;
+          case PromptFormatType.chatml:
+            final formattedMessages = ChatMLFormat().formatMessages(messages);
+            formattedPrompt = '$formattedMessages$formattedPrompt';
+            break;
+          default:
+            break;
+        }
       }
 
       _modelSendPort.send({'command': 'prompt', 'prompt': formattedPrompt});
