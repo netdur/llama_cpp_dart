@@ -7,4 +7,13 @@ class ChatMLFormat extends PromptFormat {
             outputSequence: '<|im_start|>assistant',
             systemSequence: '<|im_start|>system',
             stopSequence: '<|im_end|>');
+
+  String preparePrompt(String prompt,
+      [String role = "user", bool assistant = true]) {
+    prompt = '<|im_start|>$role\n$prompt\n<|im_end|>\n';
+    if (assistant) {
+      prompt += '<|im_start|>assistant\n';
+    }
+    return prompt;
+  }
 }

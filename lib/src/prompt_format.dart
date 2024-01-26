@@ -12,23 +12,22 @@ abstract class PromptFormat {
   final String systemSequence;
   final String? stopSequence;
 
-  PromptFormat(this.type, {
-    required this.inputSequence,
-    required this.outputSequence,
-    required this.systemSequence,
-    this.stopSequence
-  }) {
-    var temp_filters = [
+  PromptFormat(this.type,
+      {required this.inputSequence,
+      required this.outputSequence,
+      required this.systemSequence,
+      this.stopSequence}) {
+    var tempFilters = [
       SequenceFilter(inputSequence),
       SequenceFilter(outputSequence),
       SequenceFilter(systemSequence)
     ];
 
     if (stopSequence != null) {
-      temp_filters.add(SequenceFilter(stopSequence!));
+      tempFilters.add(SequenceFilter(stopSequence!));
     }
 
-    _filters = temp_filters;
+    _filters = tempFilters;
   }
 
   String? filterResponse(String response) {
