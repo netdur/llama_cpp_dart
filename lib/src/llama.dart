@@ -2,14 +2,11 @@ import 'dart:convert';
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
+import 'package:llama_cpp_dart/src/sampling_params.dart';
 import 'model_params.dart';
 
 import 'llama_cpp.dart';
 import 'context_params.dart';
-
-/*
-Seed, top-k, top-p, min-p, temperature should be first as they're so common, then grammar, repeat/penalty, logits parameters, stats, rope (even if you've done some), speculative decoding, cache, lora last.
-*/
 
 /// The `Llama` class provides an interface to interact with the Llama model.
 ///
@@ -31,7 +28,8 @@ class Llama {
   List<int> tokensList = [];
 
   /// Temporary storage for invalid C characters.
-  List<Char> temporaryInvalidCChars = [];
+  // List<Char> temporaryInvalidCChars = [];
+  List<int> lastTokens = [];
 
   /// Length of the ouput. Default is -1.
   int length = -1;
@@ -142,7 +140,7 @@ class Llama {
   /// The function also initializes the batch for token processing.
   setPrompt(String prompt) {
     tokensList = tokenize(prompt, true);
-    temporaryInvalidCChars = [];
+    // temporaryInvalidCChars = [];
 
     if (length != -1) {
       int nCtx = lib.llama_n_ctx(context);
@@ -173,13 +171,15 @@ class Llama {
   /// This function handles the selection and decoding of the next token.
   /// Returns a tuple with the generated text and a boolean indicating if the end-of-sequence token is reached.
   /// An exception is thrown if llama_decode fails during processing.
-  (String, bool) getNext() {
+  (String, bool) getNext([SamplingParams? samplingParams]) {
+    samplingParams ??= SamplingParams();
+
     int newTokenId = 0;
     final nVocab = lib.llama_n_vocab(model);
     final logits = lib.llama_get_logits_ith(context, batch.n_tokens - 1);
 
     final Pointer<llama_token_data> candidates =
-        malloc.allocate<llama_token_data>(sizeOf<llama_token_data>() * nVocab);
+        calloc.allocate<llama_token_data>(sizeOf<llama_token_data>() * nVocab);
     for (int i = 0; i < nVocab; i++) {
       candidates.elementAt(i).ref
         ..id = i
@@ -188,16 +188,34 @@ class Llama {
     }
 
     final Pointer<llama_token_data_array> candidatesP =
-        malloc<llama_token_data_array>();
+        calloc<llama_token_data_array>();
     candidatesP.ref
       ..data = candidates
       ..size = nVocab
       ..sorted = true;
 
-    newTokenId = lib.llama_sample_token_greedy(context, candidatesP);
+    final Pointer<llama_token> _lastTokens =
+        malloc.allocate<llama_token>(sizeOf<llama_token>() * lastTokens.length);
+    for (int i = 0; i < lastTokens.length; i++) {
+      _lastTokens.elementAt(i).value = i;
+    }
 
-    malloc.free(candidates);
-    malloc.free(candidatesP);
+    Pointer<llama_sampling_params> sp = samplingParams.get();
+    lib.llama_sample_repetition_penalties(
+        context,
+        candidatesP,
+        _lastTokens,
+        sp.ref.penalty_last_n,
+        sp.ref.penalty_repeat,
+        sp.ref.penalty_freq,
+        sp.ref.penalty_present);
+
+    newTokenId = lib.llama_sample_token_greedy(context, candidatesP);
+    lastTokens.add(newTokenId);
+
+    calloc.free(_lastTokens);
+    calloc.free(candidates);
+    calloc.free(candidatesP);
 
     if (newTokenId == lib.llama_token_eos(model)) {
       final newTokenStr = tokenToPiece(newTokenId);
@@ -213,7 +231,8 @@ class Llama {
     cursor++;
 
     if (lib.llama_decode(context, batch) != 0) {
-      throw Exception("failed to evaluate llama!");
+      throw Exception(
+          "failed to evaluate llama! (${lastTokens.length} + ${tokensList.length})");
     }
 
     return (newTokenStr, newTokenId == lib.llama_token_eos(model));
@@ -241,7 +260,8 @@ class Llama {
   /// This method should be used to reset the state before starting a new text generation session.
   void clear() {
     tokensList.clear();
-    temporaryInvalidCChars.clear();
+    // temporaryInvalidCChars.clear();
+    lastTokens.clear();
     lib.llama_kv_cache_clear(context);
   }
 
