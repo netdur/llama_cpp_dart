@@ -57,6 +57,8 @@ class Llama {
     return _lib!;
   }
 
+  llama_cpp get l => _lib!;
+
   ContextParams contextParams;
   ModelParams modelParams;
 
@@ -194,17 +196,17 @@ class Llama {
       ..size = nVocab
       ..sorted = true;
 
-    final Pointer<llama_token> _lastTokens =
+    final Pointer<llama_token> nativeLastTokens =
         malloc.allocate<llama_token>(sizeOf<llama_token>() * lastTokens.length);
     for (int i = 0; i < lastTokens.length; i++) {
-      _lastTokens.elementAt(i).value = i;
+      nativeLastTokens.elementAt(i).value = i;
     }
 
     Pointer<llama_sampling_params> sp = samplingParams.get();
     lib.llama_sample_repetition_penalties(
         context,
         candidatesP,
-        _lastTokens,
+        nativeLastTokens,
         sp.ref.penalty_last_n,
         sp.ref.penalty_repeat,
         sp.ref.penalty_freq,
@@ -213,7 +215,7 @@ class Llama {
     newTokenId = lib.llama_sample_token_greedy(context, candidatesP);
     lastTokens.add(newTokenId);
 
-    calloc.free(_lastTokens);
+    calloc.free(nativeLastTokens);
     calloc.free(candidates);
     calloc.free(candidatesP);
 
