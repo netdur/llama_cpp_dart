@@ -14,7 +14,7 @@ final class llama_sampling_context extends Struct {
 
 class SamplingContext {
   List<Pointer<llama_token>> _prev = [];
-  List<Pointer<llama_token_data>> _cur = [];
+  final List<Pointer<llama_token_data>> _cur = [];
 
   final SamplingParams samplingParams;
   final Llama llama;
@@ -99,20 +99,20 @@ class SamplingContext {
     }
   }
 
-  int impl(int idx, bool is_resampling, Pointer<llama_context>? ctx_cfg) {
-    int n_vocab = llama.l.llama_n_vocab(llama.model);
+  int impl(int idx, bool isResampling, Pointer<llama_context>? ctxCfg) {
+    int nVocab = llama.l.llama_n_vocab(llama.model);
 
     var temp = samplingParams.temp;
-    var penalty_last_n = samplingParams.penaltyLastN < 0
+    var penaltyLastN = samplingParams.penaltyLastN < 0
         ? samplingParams.nPrev
         : samplingParams.penaltyLastN;
-    var penalty_repeat = samplingParams.penaltyRepeat;
-    var penalty_freq = samplingParams.penaltyFreq;
-    var penalty_present = samplingParams.penaltyPresent;
+    var penaltyRepeat = samplingParams.penaltyRepeat;
+    var penaltyFreq = samplingParams.penaltyFreq;
+    var penaltyPresent = samplingParams.penaltyPresent;
     var mirostat = samplingParams.mirostat;
-    var mirostat_tau = samplingParams.mirostatTau;
-    var mirostat_eta = samplingParams.mirostatEta;
-    var penalize_nl = samplingParams.penalizeNl;
+    var mirostatTau = samplingParams.mirostatTau;
+    var mirostatEta = samplingParams.mirostatEta;
+    var penalizeNl = samplingParams.penalizeNl;
 
     var prev = _prev;
     var cur = _cur;
@@ -121,18 +121,15 @@ class SamplingContext {
 
     var logits = llama.l.llama_get_logits_ith(llama.context, idx);
 
-    List<double> original_logits = [];
+    List<double> originalLogits = [];
 
-    if (!is_resampling) {
-      // Get the number of elements from the C++ function
-      int n_vocab = llama.l.llama_n_vocab(llama.model);
+    if (!isResampling) {
+      int nVocab = llama.l.llama_n_vocab(llama.model);
 
-      // Allocating memory for the Dart list
-      original_logits = List<double>.filled(n_vocab, 0.0);
+      originalLogits = List<double>.filled(nVocab, 0.0);
 
-      // Copying data from the Pointer<Float> to the Dart list
-      for (int i = 0; i < n_vocab; i++) {
-        original_logits[i] = logits.elementAt(i).value;
+      for (int i = 0; i < nVocab; i++) {
+        originalLogits[i] = logits.elementAt(i).value;
       }
     }
 
@@ -140,24 +137,23 @@ class SamplingContext {
       logits[entry.key] += entry.value;
     }
 
-    if (ctx_cfg != null) {
-      Pointer<Float> logits_guidance =
-          llama.l.llama_get_logits_ith(ctx_cfg, idx);
+    if (ctxCfg != null) {
+      Pointer<Float> logitsGuidance = llama.l.llama_get_logits_ith(ctxCfg, idx);
       llama.l.llama_sample_apply_guidance(
-          llama.context, logits, logits_guidance, samplingParams.cfgScale);
+          llama.context, logits, logitsGuidance, samplingParams.cfgScale);
     }
 
     cur.clear();
 
-    for (int token_id = 0; token_id < n_vocab; token_id++) {
+    for (int tokenId = 0; tokenId < nVocab; tokenId++) {
       var data = calloc.allocate<llama_token_data>(sizeOf<llama_token_data>());
-      data.ref.id = token_id;
-      data.ref.logit = logits[token_id];
+      data.ref.id = tokenId;
+      data.ref.logit = logits[tokenId];
       data.ref.p = 0.0;
       cur.add(data);
     }
 
-    var cur_p = calloc<llama_token_data_array>();
+    var curP = calloc<llama_token_data_array>();
 
     List<Pointer<llama_token>> list = [];
     for (int i = 0; i < samplingParams.penaltyPromptTokens.length; i++) {
@@ -166,37 +162,31 @@ class SamplingContext {
       val.value = samplingParams.penaltyPromptTokens[i];
     }
 
-    List<Pointer<llama_token>> penalty_tokens =
+    List<Pointer<llama_token>> penaltyTokens =
         samplingParams.usePenaltyPromptTokens ? list : prev;
 
-    int penalty_tokens_used_size = min(penalty_tokens.length, penalty_last_n);
+    int penaltyTokensUsedSize = min(penaltyTokens.length, penaltyLastN);
 
-    if (penalty_tokens_used_size != 0) {
-      var nl_logit = logits[llama.l.llama_token_nl(llama.model)];
+    if (penaltyTokensUsedSize != 0) {
+      var nlLogit = logits[llama.l.llama_token_nl(llama.model)];
 
       Pointer<llama_token> sublistPtr =
-          calloc.allocate<llama_token>(penalty_tokens_used_size);
-      for (int i = 0; i < penalty_tokens_used_size; i++) {
+          calloc.allocate<llama_token>(penaltyTokensUsedSize);
+      for (int i = 0; i < penaltyTokensUsedSize; i++) {
         sublistPtr[i] =
-            penalty_tokens[penalty_tokens.length - penalty_tokens_used_size + i]
+            penaltyTokens[penaltyTokens.length - penaltyTokensUsedSize + i]
                 .value;
       }
 
-      llama.l.llama_sample_repetition_penalties(
-          llama.context,
-          cur_p,
-          sublistPtr,
-          penalty_tokens_used_size,
-          penalty_repeat,
-          penalty_freq,
-          penalty_present);
+      llama.l.llama_sample_repetition_penalties(llama.context, curP, sublistPtr,
+          penaltyTokensUsedSize, penaltyRepeat, penaltyFreq, penaltyPresent);
 
       calloc.free(sublistPtr);
 
-      if (!penalize_nl) {
-        for (int idx = 0; idx < cur_p.ref.size; idx++) {
-          if (cur_p.ref.data[idx].id == llama.l.llama_token_nl(llama.model)) {
-            cur_p.ref.data[idx].logit = nl_logit;
+      if (!penalizeNl) {
+        for (int idx = 0; idx < curP.ref.size; idx++) {
+          if (curP.ref.data[idx].id == llama.l.llama_token_nl(llama.model)) {
+            curP.ref.data[idx].logit = nlLogit;
             break;
           }
         }
@@ -205,34 +195,34 @@ class SamplingContext {
 
     if (temp < 0.0) {
       // greedy sampling, with probs
-      llama.l.llama_sample_softmax(llama.context, cur_p);
-      id = cur_p.ref.data[0].id;
+      llama.l.llama_sample_softmax(llama.context, curP);
+      id = curP.ref.data[0].id;
     } else if (temp == 0.0) {
       // greedy sampling, no probs
-      id = llama.l.llama_sample_token_greedy(llama.context, cur_p);
+      id = llama.l.llama_sample_token_greedy(llama.context, curP);
     } else {
-      Pointer<Float> mirostat_mu = calloc.allocate<Float>(sizeOf<Float>());
+      Pointer<Float> mirostatMu = calloc.allocate<Float>(sizeOf<Float>());
       if (mirostat == 1) {
-        const int mirostat_m = 100;
-        llama.l.llama_sample_temp(llama.context, cur_p, temp);
-        id = llama.l.llama_sample_token_mirostat(llama.context, cur_p,
-            mirostat_tau, mirostat_eta, mirostat_m, mirostat_mu);
+        const int mirostatM = 100;
+        llama.l.llama_sample_temp(llama.context, curP, temp);
+        id = llama.l.llama_sample_token_mirostat(llama.context, curP,
+            mirostatTau, mirostatEta, mirostatM, mirostatMu);
       } else if (mirostat == 2) {
-        llama.l.llama_sample_temp(llama.context, cur_p, temp);
+        llama.l.llama_sample_temp(llama.context, curP, temp);
         id = llama.l.llama_sample_token_mirostat_v2(
-            llama.context, cur_p, mirostat_tau, mirostat_eta, mirostat_mu);
+            llama.context, curP, mirostatTau, mirostatEta, mirostatMu);
       } else {
-        int min_keep = max(1, samplingParams.nProbs);
-        queue(cur_p, min_keep);
-        id = llama.l.llama_sample_token(llama.context, cur_p);
+        int minKeep = max(1, samplingParams.nProbs);
+        queue(curP, minKeep);
+        id = llama.l.llama_sample_token(llama.context, curP);
       }
     }
 
     return id;
   }
 
-  int sample(int idx, Pointer<llama_context>? ctx_cfg) {
-    return impl(idx, false, ctx_cfg);
+  int sample(int idx, Pointer<llama_context>? ctxCfg) {
+    return impl(idx, false, ctxCfg);
   }
 
   accept(int id) {
