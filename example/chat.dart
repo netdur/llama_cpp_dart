@@ -1,5 +1,6 @@
 import 'dart:io';
 
+// import 'package:flutter/foundation.dart';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:llama_cpp_dart/src/chat.dart';
 import 'package:llama_cpp_dart/src/chatml_format.dart';
@@ -17,6 +18,7 @@ void main() async {
     ContextParams contextParams = ContextParams();
     contextParams.threads = cores.length;
     contextParams.threadsBatch = cores.length;
+    contextParams.context = 512 * 4;
 
     Llama llama = Llama(
         "/Users/adel/Workspace/llama.cpp/models/mistral-7b-openorca.Q5_K_M.gguf",
@@ -30,7 +32,7 @@ void main() async {
         Role.system.value,
         false);
 
-    String prompt = chatMLFormat.preparePrompt("print hello handred times");
+    String prompt = chatMLFormat.preparePrompt("how are you?");
 
     llama.setPrompt(system + prompt);
     while (true) {

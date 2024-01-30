@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
+import 'package:llama_cpp_dart/src/sampling_context.dart';
 import 'package:llama_cpp_dart/src/sampling_params.dart';
 import 'model_params.dart';
 
@@ -65,6 +66,8 @@ class Llama {
   String loraBase;
   List<(String, double)> loraAdapters;
 
+  late SamplingContext sampling;
+
   /// Constructor for Llama.
   ///
   /// Loads the model and context based on provided model and context parameters.
@@ -114,6 +117,8 @@ class Llama {
       }
     }
     malloc.free(cLoraBase);
+
+    sampling = SamplingContext(this);
   }
 
   /// Releases all resources associated with the Llama instance.
@@ -176,7 +181,7 @@ class Llama {
   (String, bool) getNext([SamplingParams? samplingParams]) {
     samplingParams ??= SamplingParams();
 
-    int newTokenId = 0;
+    Pointer<Int32> newTokenId = calloc.allocate<Int32>(sizeOf<Int32>());
     final nVocab = lib.llama_n_vocab(model);
     final logits = lib.llama_get_logits_ith(context, batch.n_tokens - 1);
 
@@ -196,6 +201,7 @@ class Llama {
       ..size = nVocab
       ..sorted = true;
 
+    /*
     final Pointer<llama_token> nativeLastTokens =
         malloc.allocate<llama_token>(sizeOf<llama_token>() * lastTokens.length);
     for (int i = 0; i < lastTokens.length; i++) {
@@ -211,33 +217,43 @@ class Llama {
         sp.ref.penalty_repeat,
         sp.ref.penalty_freq,
         sp.ref.penalty_present);
+        */
 
-    newTokenId = lib.llama_sample_token_greedy(context, candidatesP);
-    lastTokens.add(newTokenId);
+    sampling.params = samplingParams;
 
-    calloc.free(nativeLastTokens);
+    // int minKeep = max(1, samplingParams.nProbs);
+    // sampling.tfsZ(candidatesP, minKeep, nVocab);
+    newTokenId.value = candidatesP.ref.data.elementAt(0).ref.id;
+    newTokenId.value = sampling.sample(newTokenId, null);
+    // sampling.reset();
+
+    // newTokenId.value = candidatesP.ref.data.elementAt(0).ref.id;
+
+    // newTokenId.value = lib.llama_sample_token_greedy(context, candidatesP);
+    // lastTokens.add(newTokenId);
+
+    // calloc.free(nativeLastTokens);
     calloc.free(candidates);
     calloc.free(candidatesP);
 
-    if (newTokenId == lib.llama_token_eos(model)) {
-      final newTokenStr = tokenToPiece(newTokenId);
-      return (newTokenStr, newTokenId == lib.llama_token_eos(model));
+    if (newTokenId.value == lib.llama_token_eos(model)) {
+      final newTokenStr = tokenToPiece(newTokenId.value);
+      return (newTokenStr, newTokenId.value == lib.llama_token_eos(model));
     }
 
-    final newTokenStr = tokenToPiece(newTokenId);
+    final newTokenStr = tokenToPiece(newTokenId.value);
 
     batch.n_tokens = 0;
-    batchAdd(batch, newTokenId, cursor, [0], true);
+    batchAdd(batch, newTokenId.value, cursor, [0], true);
 
     decode++;
     cursor++;
 
     if (lib.llama_decode(context, batch) != 0) {
-      throw Exception(
-          "failed to evaluate llama! (${lastTokens.length} + ${tokensList.length})");
+      throw Exception("failed to evaluate llama!");
     }
 
-    return (newTokenStr, newTokenId == lib.llama_token_eos(model));
+    return (newTokenStr, newTokenId.value == lib.llama_token_eos(model));
   }
 
   /// Asynchronously generates text based on a given prompt.
@@ -265,6 +281,7 @@ class Llama {
     // temporaryInvalidCChars.clear();
     lastTokens.clear();
     lib.llama_kv_cache_clear(context);
+    sampling.reset();
   }
 
   // Utility methods

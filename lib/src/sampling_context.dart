@@ -16,13 +16,13 @@ class SamplingContext {
   List<Pointer<llama_token>> _prev = [];
   final List<Pointer<llama_token_data>> _cur = [];
 
-  final SamplingParams samplingParams;
+  SamplingParams? params;
   final Llama llama;
 
-  SamplingContext(this.llama, this.samplingParams) {
+  SamplingContext(this.llama) {
     // result->grammar = nullptr;
-    _prev = List.generate(samplingParams.nPrev,
-        (index) => calloc.allocate<llama_token>(sizeOf<llama_token>()));
+    // _prev = List.generate(samplingParams.nPrev,
+    //    (index) => calloc.allocate<llama_token>(sizeOf<llama_token>()));
   }
 
   void dispose() {
@@ -30,8 +30,10 @@ class SamplingContext {
   }
 
   void reset() {
-    _prev = List.generate(samplingParams.nPrev,
-        (index) => calloc.allocate<llama_token>(sizeOf<llama_token>()));
+    if (params != null) {
+      _prev = List.generate(params!.nPrev,
+          (index) => calloc.allocate<llama_token>(sizeOf<llama_token>()));
+    }
     _cur.clear();
   }
 
@@ -49,7 +51,65 @@ class SamplingContext {
     return result;
   }
 
+  void tfsZ(Pointer<llama_token_data_array> curP, int minKeep, int nVocab) {
+    if (params == null) {
+      throw Exception("sampling params is required");
+    }
+    var samplingParams = params!;
+
+    var temp = samplingParams.temp;
+    // double         dynatemp_range    = params.dynatemp_range;
+    // const float         dynatemp_exponent = params.dynatemp_exponent;
+    var topK = samplingParams.topK <= 0 ? nVocab : samplingParams.topK;
+    var topP = samplingParams.topP;
+    var minP = samplingParams.minP;
+    var tfsZ = samplingParams.tfsZ;
+    var typicalP = samplingParams.typicalP;
+    var samplersSequence = samplingParams.samplersSequence;
+
+    // for (auto s : samplersSequence) {
+    for (var i = 0; i < samplersSequence.length; i++) {
+      var s = samplersSequence[i];
+      switch (s) {
+        case 'k':
+          llama.l.llama_sample_top_k(llama.context, curP, topK, minKeep);
+          break;
+        case 'f':
+          llama.l.llama_sample_tail_free(llama.context, curP, tfsZ, minKeep);
+          break;
+        case 'y':
+          llama.l.llama_sample_typical(llama.context, curP, typicalP, minKeep);
+          break;
+        case 'p':
+          llama.l.llama_sample_top_p(llama.context, curP, topP, minKeep);
+          break;
+        case 'm':
+          llama.l.llama_sample_min_p(llama.context, curP, minP, minKeep);
+          break;
+        case 't':
+          /*
+                if (dynatemp_range > 0) {
+                    float dynatemp_min = std::max(0.0f, temp - dynatemp_range);
+                    float dynatemp_max = std::max(0.0f, temp + dynatemp_range);
+                    llama.l.llama_sample_entropy(llama.context, curP, dynatemp_min, dynatemp_max, dynatemp_exponent);
+                } else {
+                    llama.l.llama_sample_temp(llama.context, curP, temp);
+                }
+                */
+          llama.l.llama_sample_temp(llama.context, curP, temp);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
   void queue(Pointer<llama_token_data_array> curP, int minKeep) {
+    if (params == null) {
+      throw Exception("sampling params is required");
+    }
+    var samplingParams = params!;
+
     int nVocab = llama.l.llama_n_vocab(llama.model);
 
     var temp = samplingParams.temp;
@@ -99,7 +159,13 @@ class SamplingContext {
     }
   }
 
-  int impl(int idx, bool isResampling, Pointer<llama_context>? ctxCfg) {
+  int impl(
+      Pointer<Int32> idx, bool isResampling, Pointer<llama_context>? ctxCfg) {
+    if (params == null) {
+      throw Exception("sampling params is required");
+    }
+    var samplingParams = params!;
+
     int nVocab = llama.l.llama_n_vocab(llama.model);
 
     var temp = samplingParams.temp;
@@ -115,11 +181,11 @@ class SamplingContext {
     var penalizeNl = samplingParams.penalizeNl;
 
     var prev = _prev;
-    var cur = _cur;
+    List<Pointer<llama_token_data>> cur = _cur;
 
     int id = 0;
 
-    var logits = llama.l.llama_get_logits_ith(llama.context, idx);
+    var logits = llama.l.llama_get_logits_ith(llama.context, idx.value);
 
     List<double> originalLogits = [];
 
@@ -138,7 +204,8 @@ class SamplingContext {
     }
 
     if (ctxCfg != null) {
-      Pointer<Float> logitsGuidance = llama.l.llama_get_logits_ith(ctxCfg, idx);
+      Pointer<Float> logitsGuidance =
+          llama.l.llama_get_logits_ith(ctxCfg, idx.value);
       llama.l.llama_sample_apply_guidance(
           llama.context, logits, logitsGuidance, samplingParams.cfgScale);
     }
@@ -153,7 +220,19 @@ class SamplingContext {
       cur.add(data);
     }
 
-    var curP = calloc<llama_token_data_array>();
+    final Pointer<llama_token_data> dataArray =
+        calloc<llama_token_data>(cur.length);
+    for (int i = 0; i < cur.length; i++) {
+      dataArray.elementAt(i).ref.id = cur[i].ref.id;
+      dataArray.elementAt(i).ref.logit = cur[i].ref.logit;
+      dataArray.elementAt(i).ref.p = cur[i].ref.p;
+    }
+
+    final Pointer<llama_token_data_array> curP =
+        calloc<llama_token_data_array>();
+    curP.ref.data = dataArray;
+    curP.ref.size = cur.length;
+    curP.ref.sorted = false;
 
     List<Pointer<llama_token>> list = [];
     for (int i = 0; i < samplingParams.penaltyPromptTokens.length; i++) {
@@ -193,6 +272,7 @@ class SamplingContext {
       }
     }
 
+    //*
     if (temp < 0.0) {
       // greedy sampling, with probs
       llama.l.llama_sample_softmax(llama.context, curP);
@@ -217,11 +297,12 @@ class SamplingContext {
         id = llama.l.llama_sample_token(llama.context, curP);
       }
     }
+    //*/
 
     return id;
   }
 
-  int sample(int idx, Pointer<llama_context>? ctxCfg) {
+  int sample(Pointer<Int32> idx, Pointer<llama_context>? ctxCfg) {
     return impl(idx, false, ctxCfg);
   }
 
