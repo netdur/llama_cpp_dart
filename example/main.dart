@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+import 'package:llama_cpp_dart/src/sampling_params.dart';
 import 'package:path_provider/path_provider.dart';
 
 void main() async {
@@ -119,10 +120,11 @@ class _LandingPageState extends State<LandingPage> {
                   onPressed: () {
                     ModelParams modelParams = ModelParams();
                     ContextParams contextParams = ContextParams();
+                    SamplingParams samplingParams = SamplingParams();
                     contextParams.batch = 512;
                     contextParams.context = 512;
                     llamaProcessor = LlamaProcessor(
-                        _modelPathController.text, modelParams, contextParams);
+                        _modelPathController.text, modelParams, contextParams, samplingParams);
                     setState(() {
                       isModelLoaded = true;
                     });

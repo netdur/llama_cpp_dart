@@ -61,6 +61,7 @@ class Llama {
 
   ContextParams contextParams;
   ModelParams modelParams;
+  SamplingParams? samplingParams;
 
   String loraBase;
   List<(String, double)> loraAdapters;
@@ -71,6 +72,7 @@ class Llama {
   Llama(String modelPath,
       [ModelParams? modelParams,
       ContextParams? contextParams,
+      this.samplingParams,
       this.loraBase = "",
       this.loraAdapters = const []])
       : modelParams = modelParams ?? ModelParams(),
@@ -173,7 +175,7 @@ class Llama {
   /// This function handles the selection and decoding of the next token.
   /// Returns a tuple with the generated text and a boolean indicating if the end-of-sequence token is reached.
   /// An exception is thrown if llama_decode fails during processing.
-  (String, bool) getNext([SamplingParams? samplingParams]) {
+  (String, bool) getNext() {
     samplingParams ??= SamplingParams();
 
     int newTokenId = 0;
@@ -202,7 +204,7 @@ class Llama {
       nativeLastTokens.elementAt(i).value = i;
     }
 
-    Pointer<llama_sampling_params> sp = samplingParams.get();
+    Pointer<llama_sampling_params> sp = samplingParams!.get();
     lib.llama_sample_repetition_penalties(
         context,
         candidatesP,
