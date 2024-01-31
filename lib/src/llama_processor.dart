@@ -3,9 +3,10 @@ import 'dart:isolate';
 
 import 'alpaca_format.dart';
 import 'chatml_format.dart';
-import 'model_params.dart';
 import 'prompt_format.dart';
+import 'model_params.dart';
 import 'context_params.dart';
+import 'sampling_params.dart';
 import 'llama.dart';
 
 /// The `LlamaProcessor` class handles the asynchronous operation of a Llama model in a separate isolate.
@@ -20,6 +21,9 @@ class LlamaProcessor {
 
   /// model parameters
   final ModelParams modelParams;
+
+  /// sampling parameters
+  final SamplingParams samplingParams;
 
   /// The isolate where the Llama model is loaded and run.
   late Isolate _modelIsolate;
@@ -43,7 +47,7 @@ class LlamaProcessor {
   /// Constructor for LlamaProcessor.
   ///
   /// Initializes the processor and starts the model isolate.
-  LlamaProcessor(this.path, this.modelParams, this.contextParams) {
+  LlamaProcessor(this.path, this.modelParams, this.contextParams, this.samplingParams) {
     _loadModelIsolate();
   }
 
@@ -68,7 +72,8 @@ class LlamaProcessor {
           'command': 'load',
           'path': path,
           'modelParams': modelParams.toJson(),
-          'contextParams': contextParams.toJson()
+          'contextParams': contextParams.toJson(),
+          'samplingParams': samplingParams.toJson(),
         });
         _uninitialized.complete();
       } else if (message is String) {
@@ -98,7 +103,9 @@ class LlamaProcessor {
                 ContextParams.fromJson(message['contextParams']);
             ModelParams modelParams =
                 ModelParams.fromJson(message['modelParams']);
-            llama = Llama(message['path'], modelParams, contextParams);
+            SamplingParams samplingParams =
+                SamplingParams.fromJson(message['samplingParams']);
+            llama = Llama(message['path'], modelParams, contextParams, samplingParams);
             break;
           case 'prompt':
             llama?.setPrompt(message['prompt']);
