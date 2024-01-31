@@ -31,7 +31,7 @@ ffigen:
   # ignore-source-errors: true
   headers:
     entry-points:
-      - 'llama.cpp/llama.h'
+      - 'src/llama.cpp/llama.h'
       # - 'llama.cpp/common/common.h'
   compiler-opts:
     - '-I/usr/lib/clang/17/include'
