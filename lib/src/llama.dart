@@ -29,7 +29,6 @@ class Llama {
   List<int> tokensList = [];
 
   /// Temporary storage for invalid C characters.
-  // List<Char> temporaryInvalidCChars = [];
   List<int> lastTokens = [];
 
   /// Length of the ouput. Default is -1.
@@ -66,7 +65,7 @@ class Llama {
   String loraBase;
   List<(String, double)> loraAdapters;
 
-  late SamplingContext sampling;
+  // late SamplingContext sampling;
 
   /// Constructor for Llama.
   ///
@@ -118,7 +117,7 @@ class Llama {
     }
     malloc.free(cLoraBase);
 
-    sampling = SamplingContext(this);
+    // sampling = SamplingContext(this);
   }
 
   /// Releases all resources associated with the Llama instance.
@@ -219,13 +218,13 @@ class Llama {
         sp.ref.penalty_present);
         */
 
+    SamplingContext sampling = SamplingContext(this);
     sampling.params = samplingParams;
 
     // int minKeep = max(1, samplingParams.nProbs);
     // sampling.tfsZ(candidatesP, minKeep, nVocab);
     newTokenId.value = candidatesP.ref.data.elementAt(0).ref.id;
     newTokenId.value = sampling.sample(newTokenId, null);
-    // sampling.reset();
 
     // newTokenId.value = candidatesP.ref.data.elementAt(0).ref.id;
 
@@ -236,9 +235,13 @@ class Llama {
     calloc.free(candidates);
     calloc.free(candidatesP);
 
+    sampling.dispose();
+
     if (newTokenId.value == lib.llama_token_eos(model)) {
+      int token = newTokenId.value;
+      calloc.free(newTokenId);
       final newTokenStr = tokenToPiece(newTokenId.value);
-      return (newTokenStr, newTokenId.value == lib.llama_token_eos(model));
+      return (newTokenStr, token == lib.llama_token_eos(model));
     }
 
     final newTokenStr = tokenToPiece(newTokenId.value);
@@ -253,7 +256,9 @@ class Llama {
       throw Exception("failed to evaluate llama!");
     }
 
-    return (newTokenStr, newTokenId.value == lib.llama_token_eos(model));
+    int token = newTokenId.value;
+    calloc.free(newTokenId);
+    return (newTokenStr, token == lib.llama_token_eos(model));
   }
 
   /// Asynchronously generates text based on a given prompt.
@@ -278,10 +283,14 @@ class Llama {
   /// This method should be used to reset the state before starting a new text generation session.
   void clear() {
     tokensList.clear();
-    // temporaryInvalidCChars.clear();
     lastTokens.clear();
     lib.llama_kv_cache_clear(context);
-    sampling.reset();
+    batch.n_tokens = 0;
+    tokensList.clear();
+    lastTokens.clear();
+    cursor = 0;
+    decode = 0;
+    // lib.llama
   }
 
   // Utility methods
