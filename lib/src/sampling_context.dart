@@ -6,7 +6,6 @@ import 'package:ffi/ffi.dart';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 import 'llama_cpp.dart';
-import 'sampling_params.dart';
 
 class SamplingContext {
   final List<Pointer<llama_token>> _prev = [];
@@ -257,6 +256,7 @@ class SamplingContext {
 
   accept(int id) {
     if (_prev.isNotEmpty) {
+      calloc.free(_prev[0]);
       _prev.removeAt(0);
     }
     Pointer<llama_token> idx =

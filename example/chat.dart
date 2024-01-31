@@ -26,9 +26,10 @@ void main() async {
     contextParams.context = 512 * 4;
 
     Llama llama = Llama(
-        "/Users/adel/Workspace/llama.cpp/models/pivot-10.7b-mistral-v0.2-rp.Q5_K_S.gguf",
+        "/Users/adel/Workspace/llama.cpp/models/openhermes-2.5-neural-chat-v3-3-slerp.Q5_K_M.gguf",
         modelParams,
-        contextParams);
+        contextParams,
+        samplingParams);
 
     ChatMLFormat chatMLFormat = ChatMLFormat();
     // AlpacaFormat alpacaFormat = AlpacaFormat();
@@ -43,7 +44,7 @@ Context: Teplizumab traces its roots to a New Jersey drug company called Ortho P
 
     llama.setPrompt(system + prompt);
     while (true) {
-      var (token, done) = llama.getNext(samplingParams);
+      var (token, done) = llama.getNext();
       String? chunk = chatMLFormat.filterResponse(token);
       if (chunk != null) stdout.write(token);
       if (done) break;
@@ -53,7 +54,6 @@ Context: Teplizumab traces its roots to a New Jersey drug company called Ortho P
     llama.clear();
     stdout.write("\n");
 
-    //*
     prompt = chatMLFormat.preparePrompt("What was the company called?");
     llama.setPrompt(system + prompt);
     while (true) {

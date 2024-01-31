@@ -66,19 +66,19 @@ class Llama {
   String loraBase;
   List<(String, double)> loraAdapters;
 
-  // late SamplingContext sampling;
-
   /// Constructor for Llama.
   ///
   /// Loads the model and context based on provided model and context parameters.
   Llama(String modelPath,
       [ModelParams? modelParams,
       ContextParams? contextParams,
-      this.samplingParams,
+      SamplingParams? samplingParams,
+      // this.samplingParams,
       this.loraBase = "",
       this.loraAdapters = const []])
       : modelParams = modelParams ?? ModelParams(),
-        contextParams = contextParams ?? ContextParams() {
+        contextParams = contextParams ?? ContextParams(),
+        samplingParams = samplingParams ?? SamplingParams() {
     lib.llama_backend_init(false);
     llama_model_params modelParams = this.modelParams.get();
 
@@ -118,8 +118,6 @@ class Llama {
       }
     }
     malloc.free(cLoraBase);
-
-    // sampling = SamplingContext(this);
   }
 
   /// Releases all resources associated with the Llama instance.
@@ -147,8 +145,8 @@ class Llama {
   /// An exception is thrown if the required KV cache size exceeds the context's limit.
   /// The function also initializes the batch for token processing.
   setPrompt(String prompt) {
+    // context = lib.llama_new_context_with_model(model, contextParams.get());
     tokensList = tokenize(prompt, true);
-    // temporaryInvalidCChars = [];
 
     if (length != -1) {
       int nCtx = lib.llama_n_ctx(context);
@@ -180,8 +178,6 @@ class Llama {
   /// Returns a tuple with the generated text and a boolean indicating if the end-of-sequence token is reached.
   /// An exception is thrown if llama_decode fails during processing.
   (String, bool) getNext() {
-    samplingParams ??= SamplingParams();
-
     Pointer<Int32> newTokenId = calloc.allocate<Int32>(sizeOf<Int32>());
     final nVocab = lib.llama_n_vocab(model);
     final logits = lib.llama_get_logits_ith(context, batch.n_tokens - 1);
@@ -202,33 +198,12 @@ class Llama {
       ..size = nVocab
       ..sorted = true;
 
-    /*
-    final Pointer<llama_token> nativeLastTokens =
-        malloc.allocate<llama_token>(sizeOf<llama_token>() * lastTokens.length);
-    for (int i = 0; i < lastTokens.length; i++) {
-      nativeLastTokens.elementAt(i).value = i;
-    }
-
-    Pointer<llama_sampling_params> sp = samplingParams!.get();
-    lib.llama_sample_repetition_penalties(
-        context,
-        candidatesP,
-        nativeLastTokens,
-        sp.ref.penalty_last_n,
-        sp.ref.penalty_repeat,
-        sp.ref.penalty_freq,
-        sp.ref.penalty_present);
-        */
-
     SamplingContext sampling = SamplingContext(this);
     sampling.params = samplingParams;
 
-    // int minKeep = max(1, samplingParams.nProbs);
-    // sampling.tfsZ(candidatesP, minKeep, nVocab);
     newTokenId.value = candidatesP.ref.data.elementAt(0).ref.id;
     newTokenId.value = sampling.sample(newTokenId, null);
-
-    // newTokenId.value = candidatesP.ref.data.elementAt(0).ref.id;
+    sampling.accept(newTokenId.value);
 
     // newTokenId.value = lib.llama_sample_token_greedy(context, candidatesP);
     // lastTokens.add(newTokenId);
@@ -238,13 +213,6 @@ class Llama {
     calloc.free(candidatesP);
 
     sampling.dispose();
-
-    if (newTokenId.value == lib.llama_token_eos(model)) {
-      int token = newTokenId.value;
-      calloc.free(newTokenId);
-      final newTokenStr = tokenToPiece(newTokenId.value);
-      return (newTokenStr, token == lib.llama_token_eos(model));
-    }
 
     final newTokenStr = tokenToPiece(newTokenId.value);
 
@@ -288,11 +256,8 @@ class Llama {
     lastTokens.clear();
     lib.llama_kv_cache_clear(context);
     batch.n_tokens = 0;
-    tokensList.clear();
-    lastTokens.clear();
     cursor = 0;
     decode = 0;
-    // lib.llama
   }
 
   // Utility methods
