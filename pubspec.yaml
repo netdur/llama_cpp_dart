@@ -3,19 +3,6 @@ description: "Dart binding for llama.cpp --- high level wrappers for both Dart a
 version: 0.0.6
 homepage: https://github.com/netdur/llama_cpp_dart
 
-plugin:
-  platforms:
-    linux:
-      pluginClass: LlamaCppDartPlugin
-      ffiPlugin: true
-    windows:
-      pluginClass: LlamaCppDartPlugin
-      ffiPlugin: true
-    android:
-      package: com.netdur.llama_cpp_dart
-      pluginClass: LlamaCppDartPlugin
-      ffiPlugin: true
-
 environment:
   sdk: '>=3.2.0 <4.0.0'
   flutter: ">=1.17.0"
@@ -48,3 +35,17 @@ ffigen:
       # - 'src/llama.cpp/common/common.h'
   compiler-opts:
     - '-I/usr/lib/clang/17/include'
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true
+      android:
+        ffiPlugin: true
+      linux:
+        ffiPlugin: true
+      windows:
+        ffiPlugin: true

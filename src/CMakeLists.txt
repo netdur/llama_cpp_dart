@@ -1,17 +1,14 @@
-# The Flutter tooling requires that developers have CMake 3.10 or later
-# installed. You should not increase this version, as doing so will cause
-# the plugin to fail to compile for some customers of the plugin.
 cmake_minimum_required(VERSION 3.10)
 
-project(llama_cpp_dart_library VERSION 0.0.1 LANGUAGES C)
+set(BUILD_SHARED_LIBS ON)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-add_library(llama_cpp_dart SHARED
-  "llama_cpp_dart.c"
-)
+if(ANDROID)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DANDROID_ARM_NEON=TRUE -DANDROID_TOOLCHAIN=clang -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-23")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DANDROID_ARM_NEON=TRUE -DANDROID_TOOLCHAIN=clang -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-23")
+endif()
 
-set_target_properties(llama_cpp_dart PROPERTIES
-  PUBLIC_HEADER llama_cpp_dart.h
-  OUTPUT_NAME "llama_cpp_dart"
-)
+#set(LLAMA_STATIC ON CACHE BOOL "llama: enable static link libraries" FORCE)
+set(LLAMA_NATIVE OFF CACHE BOOL "llama: disable -march=native flag" FORCE)
 
-target_compile_definitions(llama_cpp_dart PUBLIC DART_SHARED_LIB)
+add_subdirectory(./llama.cpp)

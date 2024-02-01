@@ -7,16 +7,6 @@ cmake_minimum_required(VERSION 3.10)
 set(PROJECT_NAME "llama_cpp_dart")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
-# Invoke the build for native code shared with the other target platforms.
-# This can be changed to accommodate different builds.
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../src" "${CMAKE_CURRENT_BINARY_DIR}/shared")
-
-# List of absolute paths to libraries that should be bundled with the plugin.
-# This list could contain prebuilt libraries, or libraries created by an
-# external build triggered from this build file.
-set(llama_cpp_dart_bundled_libraries
-  # Defined in ../src/CMakeLists.txt.
-  # This can be changed to accommodate different builds.
-  $<TARGET_FILE:llama_cpp_dart>
-  PARENT_SCOPE
-)
+include(GNUInstallDirs)
+set(CMAKE_INSTALL_LIBDIR lib)
+add_subdirectory(../src src)
