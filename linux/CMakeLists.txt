@@ -9,4 +9,4 @@ project(${PROJECT_NAME} LANGUAGES CXX)
 
 include(GNUInstallDirs)
 set(CMAKE_INSTALL_LIBDIR lib)
-add_subdirectory(../src src)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../src" src)
