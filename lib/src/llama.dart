@@ -179,24 +179,20 @@ class Llama {
   /// An exception is thrown if llama_decode fails during processing.
   (String, bool) getNext() {
     Pointer<Int32> newTokenId = calloc.allocate<Int32>(sizeOf<Int32>());
-    final nVocab = lib.llama_n_vocab(model);
+    final int nVocab = lib.llama_n_vocab(model);
     final logits = lib.llama_get_logits_ith(context, batch.n_tokens - 1);
 
-    final Pointer<llama_token_data> candidates =
-        calloc.allocate<llama_token_data>(sizeOf<llama_token_data>() * nVocab);
-    for (int i = 0; i < nVocab; i++) {
-      candidates.elementAt(i).ref
-        ..id = i
-        ..logit = logits.elementAt(i).value
-        ..p = 0.0;
+    final Pointer<llama_token_data> candidates = calloc<llama_token_data>(nVocab);
+    for (int tokenId = 0; tokenId < nVocab; tokenId++) {
+      candidates[tokenId].id = tokenId;
+      candidates[tokenId].logit = logits[tokenId];
+      candidates[tokenId].p = 0.0;
     }
 
-    final Pointer<llama_token_data_array> candidatesP =
-        calloc<llama_token_data_array>();
-    candidatesP.ref
-      ..data = candidates
-      ..size = nVocab
-      ..sorted = true;
+    final Pointer<llama_token_data_array> candidatesP = calloc<llama_token_data_array>();
+    candidatesP.ref.data = candidates;
+    candidatesP.ref.size = nVocab;
+    candidatesP.ref.sorted = false;
 
     SamplingContext sampling = SamplingContext(this);
     sampling.params = samplingParams;
