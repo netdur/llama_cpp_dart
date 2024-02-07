@@ -6,8 +6,4 @@ class AlpacaFormat extends PromptFormat {
             inputSequence: '### Input:',
             outputSequence: '### Response:',
             systemSequence: '### Instruction:');
-
-  String preparePrompt(String prompt) {
-    return '### Input:\n\n$prompt\n\n### Response:\n\n';
-  }
 }
