@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:math';
 
 import 'package:ffi/ffi.dart';
 import 'package:llama_cpp_dart/src/sampling_context.dart';
@@ -203,11 +204,14 @@ class Llama {
 
     // Apply sampling strategies (e.g., top-k, top-p, temperature) based on SamplingParams.
     if (samplingParams != null) {
-      final last_tokens = calloc<Int32>(samplingParams!.nPrev);
+      int minSize = min(samplingParams!.nPrev, lastTokens.length);
+      Pointer<Int32> lastTokensP = calloc<Int32>(samplingParams!.nPrev);
+      List<int> safeLastTokens = lastTokens.take(minSize).toList();
+      lastTokensP.asTypedList(minSize).setAll(0, safeLastTokens);
       lib.llama_sample_repetition_penalties(
         context, 
         candidatesP,
-        last_tokens,
+        lastTokensP,
         samplingParams!.penaltyLastN, 
         samplingParams!.penaltyRepeat, 
         samplingParams!.penaltyFreq, 
@@ -230,6 +234,9 @@ class Llama {
     // Update the batch and context for the next token generation.
     batch.n_tokens = 0;
     batchAdd(batch, newTokenId.value, cursor, [0], true);
+
+    // Update the last tokens list.
+    lastTokens.add(newTokenId.value);
 
     // Increment the counters.
     decode++;
