@@ -38,9 +38,6 @@ class Llama {
   /// Cursor position in the token list. Default is 0.
   int cursor = 0;
 
-  /// Counter for decoding operations. Default is 0.
-  int decode = 0;
-
   /// set llama.cpp library path
   static String? libraryPath;
 
@@ -186,7 +183,7 @@ class Llama {
     final int nVocab = lib.llama_n_vocab(model);
 
     // Get the logits for the last token generated.
-    final logits = lib.llama_get_logits_ith(context, batch.n_tokens - 1);
+    final logits = lib.llama_get_logits(context);
 
     // Prepare candidates array to hold token data for all vocabulary items.
     final Pointer<llama_token_data> candidates = calloc<llama_token_data>(nVocab);
@@ -239,7 +236,6 @@ class Llama {
     lastTokens.add(newTokenId.value);
 
     // Increment the counters.
-    decode++;
     cursor++;
 
     // Process the next token.
@@ -282,7 +278,6 @@ class Llama {
     lib.llama_kv_cache_clear(context);
     batch.n_tokens = 0;
     cursor = 0;
-    decode = 0;
   }
 
   // Utility methods
