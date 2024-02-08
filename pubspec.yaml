@@ -32,6 +32,20 @@ ffigen:
   headers:
     entry-points:
       - 'src/llama.cpp/llama.h'
-      # - 'llama.cpp/common/common.h'
+      # - 'src/llama.cpp/common/common.h'
   compiler-opts:
     - '-I/usr/lib/clang/17/include'
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true
+      android:
+        ffiPlugin: true
+      linux:
+        ffiPlugin: true
+      windows:
+        ffiPlugin: true

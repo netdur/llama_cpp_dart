@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:math';
 
 import 'package:ffi/ffi.dart';
 import 'package:llama_cpp_dart/src/sampling_context.dart';
@@ -36,9 +37,6 @@ class Llama {
 
   /// Cursor position in the token list. Default is 0.
   int cursor = 0;
-
-  /// Counter for decoding operations. Default is 0.
-  int decode = 0;
 
   /// set llama.cpp library path
   static String? libraryPath;
@@ -178,57 +176,80 @@ class Llama {
   /// Returns a tuple with the generated text and a boolean indicating if the end-of-sequence token is reached.
   /// An exception is thrown if llama_decode fails during processing.
   (String, bool) getNext() {
-    Pointer<Int32> newTokenId = calloc.allocate<Int32>(sizeOf<Int32>());
-    final nVocab = lib.llama_n_vocab(model);
-    final logits = lib.llama_get_logits_ith(context, batch.n_tokens - 1);
+    // Allocate memory for the new token ID.
+    Pointer<Int32> newTokenId = calloc<Int32>();
 
-    final Pointer<llama_token_data> candidates =
-        calloc.allocate<llama_token_data>(sizeOf<llama_token_data>() * nVocab);
-    for (int i = 0; i < nVocab; i++) {
-      candidates.elementAt(i).ref
-        ..id = i
-        ..logit = logits.elementAt(i).value
-        ..p = 0.0;
+    // Get the number of vocabulary items.
+    final int nVocab = lib.llama_n_vocab(model);
+
+    // Get the logits for the last token generated.
+    final logits = lib.llama_get_logits(context);
+
+    // Prepare candidates array to hold token data for all vocabulary items.
+    final Pointer<llama_token_data> candidates = calloc<llama_token_data>(nVocab);
+    for (int tokenId = 0; tokenId < nVocab; tokenId++) {
+      candidates[tokenId].id = tokenId;
+      candidates[tokenId].logit = logits[tokenId];
+      candidates[tokenId].p = 0.0; // Initialize probabilities to 0.0.
     }
 
-    final Pointer<llama_token_data_array> candidatesP =
-        calloc<llama_token_data_array>();
-    candidatesP.ref
-      ..data = candidates
-      ..size = nVocab
-      ..sorted = true;
+    // Create a structure to hold the candidates array.
+    final Pointer<llama_token_data_array> candidatesP = calloc<llama_token_data_array>();
+    candidatesP.ref.data = candidates;
+    candidatesP.ref.size = nVocab;
+    candidatesP.ref.sorted = false;
 
-    SamplingContext sampling = SamplingContext(this);
-    sampling.params = samplingParams;
+    // Apply sampling strategies (e.g., top-k, top-p, temperature) based on SamplingParams.
+    if (samplingParams != null) {
+      int minSize = min(samplingParams!.nPrev, lastTokens.length);
+      Pointer<Int32> lastTokensP = calloc<Int32>(samplingParams!.nPrev);
+      List<int> safeLastTokens = lastTokens.take(minSize).toList();
+      lastTokensP.asTypedList(minSize).setAll(0, safeLastTokens);
+      lib.llama_sample_repetition_penalties(
+        context, 
+        candidatesP,
+        lastTokensP,
+        samplingParams!.penaltyLastN, 
+        samplingParams!.penaltyRepeat, 
+        samplingParams!.penaltyFreq, 
+        samplingParams!.penaltyPresent
+      );
+      lib.llama_sample_top_k(context, candidatesP, samplingParams!.topK, 1);
+      lib.llama_sample_top_p(context, candidatesP, samplingParams!.topP, 1);
+      lib.llama_sample_temperature(context, candidatesP, samplingParams!.temp);
+    }
 
-    newTokenId.value = candidatesP.ref.data.elementAt(0).ref.id;
-    newTokenId.value = sampling.sample(newTokenId, null);
-    sampling.accept(newTokenId.value);
+    // Sample a token from the adjusted logits/probabilities.
+    newTokenId.value = lib.llama_sample_token(context, candidatesP);
 
-    // newTokenId.value = lib.llama_sample_token_greedy(context, candidatesP);
-    // lastTokens.add(newTokenId);
+    // Check if the sampled token is an EOS token.
+    bool isEOSToken = newTokenId.value == lib.llama_token_eos(model);
 
-    // calloc.free(nativeLastTokens);
-    calloc.free(candidates);
-    calloc.free(candidatesP);
-
-    sampling.dispose();
-
+    // Convert the token ID to its string representation.
     final newTokenStr = tokenToPiece(newTokenId.value);
 
+    // Update the batch and context for the next token generation.
     batch.n_tokens = 0;
     batchAdd(batch, newTokenId.value, cursor, [0], true);
 
-    decode++;
+    // Update the last tokens list.
+    lastTokens.add(newTokenId.value);
+
+    // Increment the counters.
     cursor++;
 
+    // Process the next token.
     if (lib.llama_decode(context, batch) != 0) {
-      throw Exception("failed to evaluate llama!");
+      throw Exception("Failed to evaluate Llama!");
     }
 
-    int token = newTokenId.value;
+    // Free allocated memory.
     calloc.free(newTokenId);
-    return (newTokenStr, token == lib.llama_token_eos(model));
+    calloc.free(candidates);
+    calloc.free(candidatesP);
+
+    // Return the generated text and whether the EOS token was reached.
+    return (newTokenStr, isEOSToken);
   }
 
   /// Asynchronously generates text based on a given prompt.
@@ -257,7 +278,6 @@ class Llama {
     lib.llama_kv_cache_clear(context);
     batch.n_tokens = 0;
     cursor = 0;
-    decode = 0;
   }
 
   // Utility methods
