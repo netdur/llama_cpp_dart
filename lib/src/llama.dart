@@ -3,7 +3,6 @@ import 'dart:ffi';
 import 'dart:math';
 
 import 'package:ffi/ffi.dart';
-import 'package:llama_cpp_dart/src/sampling_context.dart';
 import 'package:llama_cpp_dart/src/sampling_params.dart';
 import 'model_params.dart';
 
@@ -342,7 +341,7 @@ class Llama {
       if (nTokens < 0 || nTokens > 8) {
         return '';
       }
-      return String.fromCharCodes(result.asTypedList(nTokens));
+      return utf8.decode(result.asTypedList(nTokens));
     } finally {
       malloc.free(result);
     }
