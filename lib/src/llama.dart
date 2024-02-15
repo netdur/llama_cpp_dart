@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:llama_cpp_dart/src/sampling_params.dart';
@@ -334,14 +335,13 @@ class Llama {
   /// It handles the conversion and memory management involved in this process.
   /// This is typically used in decoding the output of the model.
   String tokenToPiece(int token) {
-    Pointer<Uint8> result = malloc.allocate<Uint8>(8);
+    Pointer<Char> result = malloc.allocate<Char>(32);
     try {
-      int nTokens =
-          lib.llama_token_to_piece(model, token, result.cast<Char>(), 8);
-      if (nTokens < 0 || nTokens > 8) {
-        return '';
-      }
-      return utf8.decode(result.asTypedList(nTokens));
+      int nTokens = lib.llama_token_to_piece(model, token, result, 32);
+
+      final ByteBuffer byteBuffer = result.cast<Uint8>().asTypedList(nTokens).buffer;
+      
+      return utf8.decode(byteBuffer.asUint8List(), allowMalformed: false);
     } finally {
       malloc.free(result);
     }
