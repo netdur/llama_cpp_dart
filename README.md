@@ -1,33 +1,39 @@
-# llama.cpp Text Generation
+# LLAMA.CPP DART
 
 ## Overview
-A Dart-based library designed for efficient text generation using the llama.cpp library. This library supports both Dart console applications and Flutter mobile applications, providing an easy-to-use interface for advanced text generation tasks.
+
+This Dart library, powered by llama.cpp, enables advanced text generation for both Dart console and Flutter mobile apps. It offers a simple interface for high-performance text generation, making it ideal for a wide range of applications seeking dynamic content.
 
 ## Features
-- Asynchronous text generation with Dart isolates for high performance.
-- Customizable model and context parameters for flexible configuration.
-- Stream-based output for real-time text generation in Flutter apps.
+
+- Enables high-performance, asynchronous text generation using Dart isolates.
+- Offers flexible configuration through customizable model and context parameters.
+- Supports real-time text generation in Flutter apps with stream-based output.
 
 ## Getting Started
-To get started with the llama.cpp Dart Library, there are a few prerequisites and steps you need to follow. Please note that this is a pure Dart package and not a Flutter plugin.
+
+To begin using the llama.cpp Dart Library, ensure you meet the necessary prerequisites and follow the outlined steps. This package is designed for Dart, not as a Flutter plugin.
 
 ### Building `llama.cpp` Library
-1. **Download the Source**: First, download or clone the `llama.cpp` library from its source repository.
-2. **Compile for Your Platform**: Using your system's C++ compiler, build the `llama.cpp` library as a shared library (.dll, .so, or .dylib file depending on your OS).
 
-3. **Place the Compiled Library**: Once compiled, place the shared library file in an appropriate directory where your Dart application can access it.
+1. **Obtain the Library**: Download or clone the `llama.cpp` library from its [GitHub repository](https://github.com/ggerganov/llama.cpp).
+2. **Platform-Specific Build**: Compile `llama.cpp` into a shared library using your system's C++ compiler. The output will be a .dll, .so, or .dylib file, depending on your operating system.
+3. **Integrate with Your Dart Application**: Move the compiled shared library to a directory accessible by your Dart application.
 
 ### Prerequisites
+
 - Dart SDK (for console application)
 - Flutter SDK (for Flutter application)
 - Additional dependencies as per your project requirements
 
 ### Installation
 
+See sample code
 
-## Usage
+## Usage (Sample Code)
 
 ### Dart Console Application
+
 ```dart
 import 'dart:io';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
@@ -42,11 +48,11 @@ void main() {
   contextParams.ropeFreqScale = 0.75 / 4;
 
   Llama llama = Llama(
-      "mistral-7b-openorca.Q5_K_M.gguf",
+      "mistral-7b-openorca.Q5_K_M.gguf", // Change this to the path of your model
       ModelParams(),
       contextParams);
 
-  llama.setPrompt("Your prompt here");
+  llama.setPrompt("Your prompt here"); // Change this to your prompt
 
   // Asynchronous generation
   await for (String token in llama.prompt(prompt)) {
@@ -62,11 +68,12 @@ void main() {
     }
   }
 
-  llama.dispose();
+  llama.dispose(); // Clean up
 }
 ```
 
 ### Flutter Application
+
 ```dart
 import 'dart:async';
 
@@ -122,7 +129,6 @@ class _LandingPageState extends State<LandingPage> {
     // _extractModel();
   }
 
-  // ignore: unused_element
   /*static */ _extractModel() async {
     String model = "phi-2-dpo.Q5_K_S.gguf";
 
@@ -220,7 +226,7 @@ class _LandingPageState extends State<LandingPage> {
                           llamaProcessor?.prompt(_promptController.text);
                         }
                       : null,
-                  child: const Text('Run Prompt'),
+                  child: const Text('Generate Answer'),
                 ),
                 ElevatedButton(
                   onPressed: isModelLoaded
@@ -228,7 +234,7 @@ class _LandingPageState extends State<LandingPage> {
                           llamaProcessor?.stop();
                         }
                       : null,
-                  child: const Text('Stop Prompt'),
+                  child: const Text('Stop Generation'),
                 ),
               ],
             ),
@@ -251,6 +257,7 @@ class _LandingPageState extends State<LandingPage> {
 ```
 
 ## Documentation
+
 For more detailed information about the classes and their functionalities, please refer to the following documentation:
 
 - [ContextParams](doc/context_params.md) - Configuration settings for the Llama model.
@@ -260,4 +267,5 @@ For more detailed information about the classes and their functionalities, pleas
 - [ModelParams](doc/model_params.md) - Configuration settings for how the model is split and operated across multiple GPUs.
 
 ## License
+
 This project is licensed under the MIT License - see the `LICENSE.md` file for details.
