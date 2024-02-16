@@ -224,8 +224,14 @@ class Llama {
     // Check if the sampled token is an EOS token.
     bool isEOSToken = newTokenId.value == lib.llama_token_eos(model);
 
-    // Convert the token ID to its string representation.
-    final newTokenStr = tokenToPiece(newTokenId.value);
+    // Prepare the string representation of the sampled token.
+    String newTokenStr = "";
+
+    // Check that the sampled token is not the BOS token.
+    if (newTokenId.value != lib.llama_token_bos(model)) {
+      // Convert the token ID to its string representation.
+      newTokenStr = tokenToPiece(newTokenId.value);
+    }
 
     // Update the batch and context for the next token generation.
     batch.n_tokens = 0;
