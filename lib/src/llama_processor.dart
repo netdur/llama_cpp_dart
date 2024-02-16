@@ -93,7 +93,7 @@ class LlamaProcessor {
     Llama.libraryPath = args['libraryPath'] as String?;
 
     Llama? llama;
-    bool flagForStop = false;
+    Completer stopCompleter = Completer();
 
     isolateReceivePort.listen((message) async {
       if (message is Map) {
@@ -110,22 +110,17 @@ class LlamaProcessor {
           case 'prompt':
             llama?.setPrompt(message['prompt']);
             while (true) {
-              if (flagForStop) {
-                flagForStop = false;
-                break;
-              }
+              if (stopCompleter.isCompleted) break;
+
               var (text, done) = llama!.getNext();
-              if (done) break;
               mainSendPort.send(text);
-              await Future.delayed(Duration.zero);
+
+              if (done) stopCompleter.complete();
             }
             break;
           case 'stop':
-            flagForStop = true;
+            stopCompleter.complete();
             llama?.clear();
-            break;
-          case 'clear':
-            // llama?.unloadModel();
             break;
         }
       }
