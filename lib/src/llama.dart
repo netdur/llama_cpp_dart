@@ -335,13 +335,16 @@ class Llama {
   /// It handles the conversion and memory management involved in this process.
   /// This is typically used in decoding the output of the model.
   String tokenToPiece(int token) {
-    Pointer<Char> result = malloc.allocate<Char>(32);
+    int bufferSize = 64;
+    Pointer<Char> result = malloc.allocate<Char>(bufferSize);
     try {
-      int nTokens = lib.llama_token_to_piece(model, token, result, 32);
+      int bytesWritten = lib.llama_token_to_piece(model, token, result, bufferSize);
 
-      final ByteBuffer byteBuffer = result.cast<Uint8>().asTypedList(nTokens).buffer;
-      
-      return utf8.decode(byteBuffer.asUint8List(), allowMalformed: false);
+      bytesWritten = min(bytesWritten, bufferSize - 1);
+
+      final byteBuffer = result.cast<Uint8>().asTypedList(bytesWritten);
+
+      return utf8.decode(byteBuffer, allowMalformed: true);
     } finally {
       malloc.free(result);
     }
