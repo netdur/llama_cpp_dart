@@ -119,7 +119,7 @@ class LlamaProcessor {
             }
             break;
           case 'stop':
-            stopCompleter.complete();
+            if (!stopCompleter.isCompleted) stopCompleter.complete();
             llama?.clear();
             break;
         }
