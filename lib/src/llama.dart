@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:llama_cpp_dart/src/sampling_params.dart';
@@ -225,8 +224,14 @@ class Llama {
     // Check if the sampled token is an EOS token.
     bool isEOSToken = newTokenId.value == lib.llama_token_eos(model);
 
-    // Convert the token ID to its string representation.
-    final newTokenStr = tokenToPiece(newTokenId.value);
+    // Prepare the string representation of the sampled token.
+    String newTokenStr = "";
+
+    // Check that the sampled token is not the BOS token.
+    if (newTokenId.value != lib.llama_token_bos(model)) {
+      // Convert the token ID to its string representation.
+      newTokenStr = tokenToPiece(newTokenId.value);
+    }
 
     // Update the batch and context for the next token generation.
     batch.n_tokens = 0;
@@ -335,13 +340,16 @@ class Llama {
   /// It handles the conversion and memory management involved in this process.
   /// This is typically used in decoding the output of the model.
   String tokenToPiece(int token) {
-    Pointer<Char> result = malloc.allocate<Char>(32);
+    int bufferSize = 64;
+    Pointer<Char> result = malloc.allocate<Char>(bufferSize);
     try {
-      int nTokens = lib.llama_token_to_piece(model, token, result, 32);
+      int bytesWritten = lib.llama_token_to_piece(model, token, result, bufferSize);
 
-      final ByteBuffer byteBuffer = result.cast<Uint8>().asTypedList(nTokens).buffer;
-      
-      return utf8.decode(byteBuffer.asUint8List(), allowMalformed: false);
+      bytesWritten = min(bytesWritten, bufferSize - 1);
+
+      final byteBuffer = result.cast<Uint8>().asTypedList(bytesWritten);
+
+      return utf8.decode(byteBuffer, allowMalformed: true);
     } finally {
       malloc.free(result);
     }
