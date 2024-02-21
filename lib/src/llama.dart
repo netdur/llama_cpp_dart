@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:ffi/ffi.dart';
@@ -38,7 +39,7 @@ class Llama {
   int cursor = 0;
 
   /// set llama.cpp library path
-  static String? libraryPath;
+  static String? libraryPath = Platform.isAndroid ? "libllama.so" : null;
 
   /// Getter for the Llama library.
   ///
@@ -76,7 +77,7 @@ class Llama {
       : modelParams = modelParams ?? ModelParams(),
         contextParams = contextParams ?? ContextParams(),
         samplingParams = samplingParams ?? SamplingParams() {
-    lib.llama_backend_init(false);
+    lib.llama_backend_init();
     llama_model_params modelParams = this.modelParams.get();
 
     Pointer<Char> char = modelPath.toNativeUtf8().cast<Char>();
