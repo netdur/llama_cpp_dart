@@ -25,6 +25,9 @@ class LlamaProcessor {
   /// sampling parameters
   final SamplingParams samplingParams;
 
+  /// done callback
+  final void Function()? onDone;
+
   /// The isolate where the Llama model is loaded and run.
   late Isolate _modelIsolate;
 
@@ -47,7 +50,13 @@ class LlamaProcessor {
   /// Constructor for LlamaProcessor.
   ///
   /// Initializes the processor and starts the model isolate.
-  LlamaProcessor(this.path, this.modelParams, this.contextParams, this.samplingParams) {
+  LlamaProcessor({
+    required this.path,
+    required this.modelParams,
+    required this.contextParams,
+    required this.samplingParams,
+    this.onDone,
+  }) {
     _loadModelIsolate();
   }
 
@@ -76,8 +85,13 @@ class LlamaProcessor {
           'samplingParams': samplingParams.toJson(),
         });
         _uninitialized.complete();
-      } else if (message is String) {
-        _parseResponse(message);
+      } else if (message is (String, bool)) {
+        final (text, done) = message;
+        _parseResponse(text);
+
+        if (done && onDone != null) {
+          onDone!();
+        }
       }
     });
   }
@@ -105,7 +119,8 @@ class LlamaProcessor {
                 ModelParams.fromJson(message['modelParams']);
             SamplingParams samplingParams =
                 SamplingParams.fromJson(message['samplingParams']);
-            llama = Llama(message['path'], modelParams, contextParams, samplingParams);
+            llama = Llama(
+                message['path'], modelParams, contextParams, samplingParams);
             break;
           case 'prompt':
             llama?.setPrompt(message['prompt']);
@@ -113,7 +128,7 @@ class LlamaProcessor {
               if (stopCompleter.isCompleted) break;
 
               var (text, done) = llama!.getNext();
-              mainSendPort.send(text);
+              mainSendPort.send((text, done));
 
               if (done) stopCompleter.complete();
             }
