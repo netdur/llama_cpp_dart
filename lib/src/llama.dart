@@ -71,7 +71,6 @@ class Llama {
       [ModelParams? modelParams,
       ContextParams? contextParams,
       SamplingParams? samplingParams,
-      // this.samplingParams,
       this.loraBase = "",
       this.loraAdapters = const []])
       : modelParams = modelParams ?? ModelParams(),

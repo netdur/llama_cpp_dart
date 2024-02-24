@@ -11210,7 +11210,7 @@ class llama_cpp {
 
   /// Apply chat template. Inspired by hf apply_chat_template() on python.
   /// Both "model" and "custom_template" are optional, but at least one is required. "custom_template" has higher precedence than "model"
-  /// NOTE: This function only support some known jinja templates. It is not a jinja parser.
+  /// NOTE: This function does not use a jinja parser. It only support a pre-defined list of template. See more: https://github.com/ggerganov/llama.cpp/wiki/Templates-supported-by-llama_chat_apply_template
   /// @param tmpl A Jinja template to use for this chat. If this is nullptr, the model’s default chat template will be used instead.
   /// @param chat Pointer to a list of multiple llama_chat_message
   /// @param n_msg Number of llama_chat_message in this chat
@@ -12001,10 +12001,11 @@ abstract class ggml_type {
   static const int GGML_TYPE_IQ2_XS = 17;
   static const int GGML_TYPE_IQ3_XXS = 18;
   static const int GGML_TYPE_IQ1_S = 19;
-  static const int GGML_TYPE_I8 = 20;
-  static const int GGML_TYPE_I16 = 21;
-  static const int GGML_TYPE_I32 = 22;
-  static const int GGML_TYPE_COUNT = 23;
+  static const int GGML_TYPE_IQ4_NL = 20;
+  static const int GGML_TYPE_I8 = 21;
+  static const int GGML_TYPE_I16 = 22;
+  static const int GGML_TYPE_I32 = 23;
+  static const int GGML_TYPE_COUNT = 24;
 }
 
 abstract class ggml_prec {
@@ -12037,6 +12038,7 @@ abstract class ggml_ftype {
   static const int GGML_FTYPE_MOSTLY_IQ2_XS = 16;
   static const int GGML_FTYPE_MOSTLY_IQ3_XXS = 17;
   static const int GGML_FTYPE_MOSTLY_IQ1_S = 18;
+  static const int GGML_FTYPE_MOSTLY_IQ4_NL = 19;
 }
 
 abstract class ggml_op {
@@ -12955,6 +12957,7 @@ abstract class llama_ftype {
   static const int LLAMA_FTYPE_MOSTLY_Q3_K_XS = 22;
   static const int LLAMA_FTYPE_MOSTLY_IQ3_XXS = 23;
   static const int LLAMA_FTYPE_MOSTLY_IQ1_S = 24;
+  static const int LLAMA_FTYPE_MOSTLY_IQ4_NL = 25;
   static const int LLAMA_FTYPE_GUESSED = 1024;
 }
 
