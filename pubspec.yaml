@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.0.6
+version: 0.0.7
 homepage: https://github.com/netdur/llama_cpp_dart
 
 environment:
@@ -10,12 +10,12 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  ffi: ^2.1.0
+  ffi: ^2.1.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
+  flutter_lints: ^2.0.3
   ffigen: ^10.0.0
   path_provider: ^2.1.2
   system_info2: ^4.0.0
@@ -31,8 +31,7 @@ ffigen:
   # ignore-source-errors: true
   headers:
     entry-points:
-      - 'src/llama.cpp/llama.h'
-      # - 'src/llama.cpp/common/common.h'
+      - 'llama.cpp/llama.h'
   compiler-opts:
     - '-I/usr/lib/clang/17/include'
 

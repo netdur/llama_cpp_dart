@@ -137,7 +137,7 @@ class SamplingContext {
       originalLogits = List<double>.filled(nVocab, 0.0);
 
       for (int i = 0; i < nVocab; i++) {
-        originalLogits[i] = logits.elementAt(i).value;
+        originalLogits[i] = logits[i];
       }
     }
 
@@ -169,9 +169,12 @@ class SamplingContext {
     final Pointer<llama_token_data> dataArray =
         calloc<llama_token_data>(_cur.length);
     for (int i = 0; i < _cur.length; i++) {
-      dataArray.elementAt(i).ref.id = _cur[i].ref.id;
-      dataArray.elementAt(i).ref.logit = _cur[i].ref.logit;
-      dataArray.elementAt(i).ref.p = _cur[i].ref.p;
+      // dataArray.elementAt(i).ref.id = _cur[i].ref.id;
+      // dataArray.elementAt(i).ref.logit = _cur[i].ref.logit;
+      // dataArray.elementAt(i).ref.p = _cur[i].ref.p;
+      dataArray[i].id = _cur[i].ref.id;
+      dataArray[i].logit = _cur[i].ref.logit;
+      dataArray[i].p = _cur[i].ref.p;
     }
 
     final Pointer<llama_token_data_array> curP =

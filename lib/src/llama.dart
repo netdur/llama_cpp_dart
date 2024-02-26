@@ -76,7 +76,7 @@ class Llama {
       : modelParams = modelParams ?? ModelParams(),
         contextParams = contextParams ?? ContextParams(),
         samplingParams = samplingParams ?? SamplingParams() {
-    lib.llama_backend_init();
+    lib.llama_backend_init(false);
     llama_model_params modelParams = this.modelParams.get();
 
     Pointer<Char> char = modelPath.toNativeUtf8().cast<Char>();
@@ -185,7 +185,8 @@ class Llama {
     final logits = lib.llama_get_logits(context);
 
     // Prepare candidates array to hold token data for all vocabulary items.
-    final Pointer<llama_token_data> candidates = calloc<llama_token_data>(nVocab);
+    final Pointer<llama_token_data> candidates =
+        calloc<llama_token_data>(nVocab);
     for (int tokenId = 0; tokenId < nVocab; tokenId++) {
       candidates[tokenId].id = tokenId;
       candidates[tokenId].logit = logits[tokenId];
@@ -193,7 +194,8 @@ class Llama {
     }
 
     // Create a structure to hold the candidates array.
-    final Pointer<llama_token_data_array> candidatesP = calloc<llama_token_data_array>();
+    final Pointer<llama_token_data_array> candidatesP =
+        calloc<llama_token_data_array>();
     candidatesP.ref.data = candidates;
     candidatesP.ref.size = nVocab;
     candidatesP.ref.sorted = false;
@@ -205,14 +207,13 @@ class Llama {
       List<int> safeLastTokens = lastTokens.take(minSize).toList();
       lastTokensP.asTypedList(minSize).setAll(0, safeLastTokens);
       lib.llama_sample_repetition_penalties(
-        context, 
-        candidatesP,
-        lastTokensP,
-        samplingParams!.penaltyLastN, 
-        samplingParams!.penaltyRepeat, 
-        samplingParams!.penaltyFreq, 
-        samplingParams!.penaltyPresent
-      );
+          context,
+          candidatesP,
+          lastTokensP,
+          samplingParams!.penaltyLastN,
+          samplingParams!.penaltyRepeat,
+          samplingParams!.penaltyFreq,
+          samplingParams!.penaltyPresent);
       lib.llama_sample_top_k(context, candidatesP, samplingParams!.topK, 1);
       lib.llama_sample_top_p(context, candidatesP, samplingParams!.topP, 1);
       lib.llama_sample_temperature(context, candidatesP, samplingParams!.temp);
@@ -324,7 +325,7 @@ class Llama {
 
       List<int> tokensList = [];
       for (int i = 0; i < tokenCount; i++) {
-        tokensList.add(tokens.elementAt(i).value);
+        tokensList.add(tokens[i]);
       }
 
       return tokensList;
@@ -343,7 +344,8 @@ class Llama {
     int bufferSize = 64;
     Pointer<Char> result = malloc.allocate<Char>(bufferSize);
     try {
-      int bytesWritten = lib.llama_token_to_piece(model, token, result, bufferSize);
+      int bytesWritten =
+          lib.llama_token_to_piece(model, token, result, bufferSize);
 
       bytesWritten = min(bytesWritten, bufferSize - 1);
 
