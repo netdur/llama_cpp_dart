@@ -1,3 +1,7 @@
+## 0.0.7
+* updated binding
+* performance imporvement and bugs fix
+
 ## 0.0.6
 
 * added initial support to load lora

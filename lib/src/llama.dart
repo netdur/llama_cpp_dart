@@ -76,7 +76,7 @@ class Llama {
       : modelParams = modelParams ?? ModelParams(),
         contextParams = contextParams ?? ContextParams(),
         samplingParams = samplingParams ?? SamplingParams() {
-    lib.llama_backend_init(false);
+    lib.llama_backend_init();
     llama_model_params modelParams = this.modelParams.get();
 
     Pointer<Char> char = modelPath.toNativeUtf8().cast<Char>();
@@ -216,7 +216,8 @@ class Llama {
           samplingParams!.penaltyPresent);
       lib.llama_sample_top_k(context, candidatesP, samplingParams!.topK, 1);
       lib.llama_sample_top_p(context, candidatesP, samplingParams!.topP, 1);
-      lib.llama_sample_temperature(context, candidatesP, samplingParams!.temp);
+      // lib.llama_sample_temperature(context, candidatesP, samplingParams!.temp);
+      lib.llama_sample_temp(context, candidatesP, samplingParams!.temp);
     }
 
     // Sample a token from the adjusted logits/probabilities.

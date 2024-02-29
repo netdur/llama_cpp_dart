@@ -5,7 +5,7 @@ homepage: https://github.com/netdur/llama_cpp_dart
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
-  flutter: ">=1.17.0"
+  flutter: ">=1.20.0"
 
 dependencies:
   flutter:

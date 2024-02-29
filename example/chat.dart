@@ -27,7 +27,7 @@ void main() async {
     // /Users/adel/Workspace/llama.cpp/models/tinyllama-2-1b-miniguanaco.Q3_K_L.gguf
     // /Users/adel/Workspace/llama.cpp/models/openhermes-2.5-neural-chat-v3-3-slerp.Q5_K_M.gguf
     Llama llama = Llama(
-        "/Users/adel/Workspace/llama.cpp/models/tinyllama-2-1b-miniguanaco.Q3_K_L.gguf",
+        "/Users/adel/Workspace/llama.cpp/models/mistral-7b-openorca.Q5_K_M.gguf",
         modelParams,
         contextParams,
         samplingParams);
