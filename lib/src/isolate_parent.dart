@@ -11,6 +11,14 @@ import 'prompt_format.dart';
 import "isolate_child.dart";
 import "isolate_types.dart";
 
+extension on PromptFormatType {
+  PromptFormat? get formatter => switch (this) {
+    PromptFormatType.raw => null,
+    PromptFormatType.alpaca => AlpacaFormat(),
+    PromptFormatType.chatml => ChatMLFormat(),
+  };
+}
+
 class LlamaParent extends IsolateParent<LlamaCommand, LlamaResponse> {
   final _controller = StreamController<String>.broadcast();
 
@@ -18,10 +26,11 @@ class LlamaParent extends IsolateParent<LlamaCommand, LlamaResponse> {
   List<Map<String, dynamic>> messages = [];
 
   final LlamaLoad loadCommand;
-  LlamaParent(this.loadCommand);
+  final PromptFormat? formatter;
+  LlamaParent(this.loadCommand) :
+    formatter = loadCommand.modelParams.format.formatter;
 
   Stream<String> get stream => _controller.stream;
-
 
   @override
   void onData(LlamaResponse data, Object id) {
@@ -30,11 +39,7 @@ class LlamaParent extends IsolateParent<LlamaCommand, LlamaResponse> {
   }
 
   void _parseResponse(String response) {
-    final processed = switch (loadCommand.modelParams.format) {
-      PromptFormatType.raw => response,
-      PromptFormatType.alpaca => AlpacaFormat().filterResponse(response),
-      PromptFormatType.chatml => ChatMLFormat().filterResponse(response),
-    };
+    final processed = formatter == null ? response : formatter!.filterResponse(response);
     if (processed != null) _controller.add(processed);
   }
 
@@ -48,15 +53,8 @@ class LlamaParent extends IsolateParent<LlamaCommand, LlamaResponse> {
 
   void sendPrompt(String prompt) async {
     final formattedPrompt = messages.isEmpty
-      ? switch (loadCommand.modelParams.format) {
-        PromptFormatType.raw => prompt,
-        PromptFormatType.alpaca => AlpacaFormat().formatPrompt(prompt),
-        PromptFormatType.chatml => ChatMLFormat().formatPrompt(prompt),
-      } : switch (loadCommand.modelParams.format) {
-        PromptFormatType.raw => prompt,
-        PromptFormatType.alpaca => AlpacaFormat().formatMessages(messages),
-        PromptFormatType.chatml => ChatMLFormat().formatMessages(messages),
-      };
+      ? formatter?.formatPrompt(prompt) ?? prompt
+      : formatter?.formatMessages(messages) ?? prompt;
     send(id: 1, data: LlamaPrompt(formattedPrompt));
   }
 
