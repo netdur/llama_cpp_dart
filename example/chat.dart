@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'dart:io';
 
 // import 'package:flutter/foundation.dart';
@@ -23,7 +25,6 @@ void main() async {
     contextParams.threads = cores.length;
     contextParams.threadsBatch = cores.length;
     contextParams.context = 512 * 4;
-
     // /Users/adel/Workspace/llama.cpp/models/tinyllama-2-1b-miniguanaco.Q3_K_L.gguf
     // /Users/adel/Workspace/llama.cpp/models/openhermes-2.5-neural-chat-v3-3-slerp.Q5_K_M.gguf
     Llama llama = Llama(
@@ -68,7 +69,7 @@ Context: Teplizumab traces its roots to a New Jersey drug company called Ortho P
 
     llama.dispose();
   } catch (e) {
-    // print("Error: ${e.toString()}");
+    print("Error: ${e.toString()}");
   }
 }
 
