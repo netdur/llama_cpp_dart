@@ -14,16 +14,14 @@ import "isolate_types.dart";
 class LlamaParent extends IsolateParent<LlamaCommand, LlamaResponse> {
   final _controller = StreamController<String>.broadcast();
 
+  // TODO: What type is this supposed to be?
   List<Map<String, dynamic>> messages = [];
 
   final LlamaLoad loadCommand;
-  LlamaParent({
-    required this.loadCommand,
-  });
+  LlamaParent(this.loadCommand);
 
   Stream<String> get stream => _controller.stream;
 
-  Isolate? _modelIsolate;
 
   @override
   void onData(LlamaResponse data, Object id) {
@@ -43,7 +41,7 @@ class LlamaParent extends IsolateParent<LlamaCommand, LlamaResponse> {
   @override
   void init() async {
     super.init();
-    _modelIsolate = await spawn(LlamaChild());
+    await spawn(LlamaChild());
     send(data: LlamaInit(Llama.libraryPath), id: 1);
     send(data: loadCommand, id: 1);
   }
@@ -69,7 +67,6 @@ class LlamaParent extends IsolateParent<LlamaCommand, LlamaResponse> {
   @override
   Future<void> dispose([int priority = Isolate.beforeNextEvent]) async {
     send(id: 1, data: LlamaClear());
-    _modelIsolate?.kill(priority: Isolate.immediate);
     _controller.close();
     super.dispose(priority);
   }
