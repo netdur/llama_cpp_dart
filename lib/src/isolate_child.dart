@@ -30,11 +30,8 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     while (true) {
       if (shouldStop) break;
       final (text, isDone) = llama!.getNext();
-      send(LlamaResponse(text: text, isDone: isDone));
+      sendToParent(LlamaResponse(text: text, isDone: isDone));
       if (isDone) shouldStop = true;
     }
   }
-
-  @override
-  void run() async { }
 }
