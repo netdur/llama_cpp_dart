@@ -1,152 +1,136 @@
 import 'dart:convert';
-// import 'dart:ffi';
-// import 'package:ffi/ffi.dart';
-
-import 'llama.dart';
+import 'dart:ffi';
+import 'package:ffi/ffi.dart';
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+// import 'llama.dart';
 import 'llama_cpp.dart';
-import 'prompt_format.dart';
-// import 'llama_split_mode.dart';
 
-/// ModelParams configures how the model is split and operated across multiple GPUs.
-///
-/// It includes settings for tensor splitting, metadata overrides, GPU layer storage,
-/// and memory management options.
+/// Enum representing how to split the model across multiple GPUs
+enum LlamaSplitMode {
+  none, // single GPU
+  layer, // split layers and KV across GPUs
+  row, // split layers and KV across GPUs, use tensor parallelism if supported
+}
+
 class ModelParams {
-  // how to split the model across multiple GPUs
-  // LlamaSplitMode splitsMode = LlamaSplitMode.layer;
+  /// Number of layers to store in VRAM
+  int nGpuLayers = 99;
 
-  /// Proportion of the model (layers or rows) to offload to each GPU.
-  /// Size is defined by LLAMA_MAX_DEVICES.
-  // List<int> tensorSplit = [];
+  /// How to split the model across multiple GPUs
+  LlamaSplitMode splitMode = LlamaSplitMode.none;
 
-  /// Override key-value pairs of the model metadata.
-  // Map<String, dynamic> metadataOverride = {};
-
-  /// Prompt format. Defaults to `PromptFormat.raw`.
-  PromptFormatType format = PromptFormatType.raw;
-
-  /// Number of layers to store in VRAM. Default is 99.
-  int gpuLayerLayer = 99;
-
-  /// Interpretation of main_gpu depends on split_mode:
-  /// LLAMA_SPLIT_NONE: the GPU used for the entire model.
-  /// LLAMA_SPLIT_ROW: the GPU used for small tensors and intermediate results.
-  /// LLAMA_SPLIT_LAYER: ignored.
+  /// The GPU that is used for the entire model when split_mode is LLAMA_SPLIT_MODE_NONE
   int mainGpu = 0;
 
-  /// If true, only load the vocabulary without weights.
+  /// Proportion of the model (layers or rows) to offload to each GPU
+  List<double> tensorSplit = [];
+
+  /// Comma separated list of RPC servers to use for offloading
+  String rpcServers = '';
+
+  /// Override key-value pairs of the model metadata
+  Map<String, dynamic> kvOverrides = {};
+
+  /// Only load the vocabulary, no weights
   bool vocabOnly = false;
 
-  /// If true, use memory mapping if possible.
+  /// Use mmap if possible
   bool useMemorymap = true;
 
-  /// If true, force the system to keep the model in RAM.
+  /// Force system to keep model in RAM
   bool useMemoryLock = false;
 
-  // late Pointer<Float> _tensorSplitPointer;
+  /// Validate model tensor data
+  bool checkTensors = false;
 
-  ModelParams() {
-    // _tensorSplitPointer = calloc<Float>(tensorSplit.length);
-    // _finalizer.attach(this, _tensorSplitPointer, detach: this);
-  }
+  // Pointers that need to be freed
+  Pointer<Float>? _tensorSplitPtr;
+  Pointer<Char>? _rpcServersPtr;
 
-  /*
-  static final _finalizer = Finalizer<Pointer<Float>>((pointer) {
-    if (pointer.address != 0) {
-      calloc.free(pointer);
-    }
-  });
-  */
+  ModelParams();
 
-  /// Releases allocated resources.
-  void dispose() {
-    // _finalizer.detach(this);
-    // calloc.free(_tensorSplitPointer);
-  }
-
-  /// Constructs and returns a `llama_model_params` object with current settings.
+  /// Constructs and returns a `llama_model_params` object with current settings
   llama_model_params get() {
-    llama_model_params modelParams = Llama.lib.llama_model_default_params();
-    /*
-    _tensorSplitPointer = calloc<Float>(tensorSplit.length);
-    for (int i = 0; i < tensorSplit.length; i++) {
-      _tensorSplitPointer[i] = tensorSplit[i].toDouble();
-    }
-    modelParams.tensor_split = _tensorSplitPointer;
-    */
+    final modelParams = NewLlama.lib.llama_model_default_params();
 
-    /*
-    final kvOverridesPointer =
-        calloc<llama_model_kv_override>(metadataOverride.length);
-
-    int i = 0;
-    metadataOverride.forEach((key, value) {
-      llama_model_kv_override override = kvOverridesPointer[i];
-
-      Pointer<Char> overrideKey = key.toNativeUtf8().cast<Char>();
-      override.key[overrideKey.value] = 0;
-
-      if (value is int) {
-        override.tag = 0;
-        override.unnamed.int_value = value;
-      } else if (value is double) {
-        override.tag = 1;
-        override.unnamed.float_value = value;
-      } else if (value is bool) {
-        override.tag = 2;
-        override.unnamed.bool_value = value;
-      }
-
-      malloc.free(overrideKey);
-      i++;
-    });
-    modelParams.kv_overrides = kvOverridesPointer;
-    */
-
+    // Basic parameters
+    modelParams.n_gpu_layers = nGpuLayers;
+    // modelParams.split_mode = splitMode.index; // @TODO split_mode setter
     modelParams.main_gpu = mainGpu;
-    modelParams.n_gpu_layers = gpuLayerLayer;
     modelParams.vocab_only = vocabOnly;
     modelParams.use_mmap = useMemorymap;
     modelParams.use_mlock = useMemoryLock;
+    modelParams.check_tensors = checkTensors;
+
+    // Handle tensor_split
+    if (tensorSplit.isNotEmpty) {
+      _tensorSplitPtr = malloc<Float>(tensorSplit.length);
+      for (var i = 0; i < tensorSplit.length; i++) {
+        _tensorSplitPtr![i] = tensorSplit[i];
+      }
+      modelParams.tensor_split = _tensorSplitPtr!;
+    }
+
+    // Handle rpc_servers
+    if (rpcServers.isNotEmpty) {
+      _rpcServersPtr = rpcServers.toNativeUtf8().cast<Char>();
+      modelParams.rpc_servers = _rpcServersPtr!;
+    }
+
+    // Complex pointers set to null
+    modelParams.progress_callback = nullptr;
+    modelParams.progress_callback_user_data = nullptr;
+    modelParams.kv_overrides = nullptr;
+
     return modelParams;
   }
 
-  /// Constructs a `ModelParams` instance from a JSON map.
-  ///
-  /// The JSON map should contain key-value pairs corresponding to the
-  /// properties of this class.
+  /// Free allocated memory
+  void dispose() {
+    if (_tensorSplitPtr != null) {
+      malloc.free(_tensorSplitPtr!);
+      _tensorSplitPtr = null;
+    }
+    if (_rpcServersPtr != null) {
+      malloc.free(_rpcServersPtr!);
+      _rpcServersPtr = null;
+    }
+  }
+
+  /// Constructs a ModelParams instance from a JSON map
   ModelParams.fromJson(Map<String, dynamic> json) {
-    // splitsMode = LlamaSplitMode.values[json['splitsMode'] ?? 0];
-    // tensorSplit = List<int>.from(json['tensorSplit'] ?? []);
-    // metadataOverride = Map<String, dynamic>.from(json['metadataOverride'] ?? {});
-    gpuLayerLayer = json['gpuLayerLayer'] ?? 0;
+    nGpuLayers = json['nGpuLayers'] ?? 99;
+    splitMode = LlamaSplitMode.values[json['splitMode'] ?? 0];
     mainGpu = json['mainGpu'] ?? 0;
+    tensorSplit = ((json['tensorSplit'] as List<dynamic>?)
+            ?.map((e) => e.toDouble())
+            .toList() as List<double>?) ??
+        [];
+    rpcServers = json['rpcServers'] ?? '';
+    kvOverrides = Map<String, dynamic>.from(json['kvOverrides'] ?? {});
     vocabOnly = json['vocabOnly'] ?? false;
     useMemorymap = json['useMemorymap'] ?? true;
     useMemoryLock = json['useMemoryLock'] ?? false;
+    checkTensors = json['checkTensors'] ?? false;
   }
 
-  /// Converts the `ModelParams` instance to a JSON map.
-  ///
-  /// Useful for serialization and debugging.
+  /// Converts the ModelParams instance to a JSON map
   Map<String, dynamic> toJson() {
     return {
-      // 'splitsMode': splitsMode.index,
-      // 'tensorSplit': tensorSplit,
-      // 'metadataOverride': metadataOverride,
-      'gpuLayerLayer': gpuLayerLayer,
+      'nGpuLayers': nGpuLayers,
+      'splitMode': splitMode.index,
       'mainGpu': mainGpu,
+      'tensorSplit': tensorSplit,
+      'rpcServers': rpcServers,
+      'kvOverrides': kvOverrides,
       'vocabOnly': vocabOnly,
       'useMemorymap': useMemorymap,
-      'useMemoryLock': useMemoryLock
+      'useMemoryLock': useMemoryLock,
+      'checkTensors': checkTensors,
     };
   }
 
-  /// Returns a string representation of the `ModelParams` instance.
-  ///
-  /// Useful for debugging and logging.
+  /// Returns a string representation of the ModelParams instance
   @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
+  String toString() => jsonEncode(toJson());
 }
