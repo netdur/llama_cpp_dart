@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   ffi: ^2.1.3
+  typed_isolate: ^6.0.0
 
 dev_dependencies:
   flutter_test:

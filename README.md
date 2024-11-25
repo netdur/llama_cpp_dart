@@ -1,5 +1,13 @@
 # LLAMA.CPP DART
 
+## NOTICE
+
+This project, a Dart binding for llama.cpp, is currently on hold as we await the porting of llama.cpp helpers code to C. This transition is expected to simplify the process of generating bindings. Once this porting is complete, development will resume with enhanced efficiency and ease.
+
+This project primarily targets Dart, which aligns perfectly with Flutter's goals and objectives. We are excited about the potential this binding will unlock for the Flutter community and are eager to continue development once the necessary updates are made.
+
+Stay tuned for future updates, and thank you for your support and understanding!
+
 ## Overview
 
 This Dart library, powered by llama.cpp, enables advanced text generation for both Dart console and Flutter mobile apps. It offers a simple interface for high-performance text generation, making it ideal for a wide range of applications seeking dynamic content.

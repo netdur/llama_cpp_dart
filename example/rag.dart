@@ -1,27 +1,27 @@
 import 'dart:io';
 
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
-import 'package:system_info2/system_info2.dart';
+// import 'package:system_info2/system_info2.dart';
 
 void main() async {
-  final cores = SysInfo.cores;
+  // final cores = SysInfo.cores;
 
-  Llama.libraryPath = "./libllama.dylib";
+  NewLlama.libraryPath = "./libllama.dylib";
 
-  SamplingParams samplingParams = SamplingParams()
-    ..penaltyRepeat = 1.1
-    ..temp = 0.7;
+  // SamplingParams samplingParams = SamplingParams()
+  //   ..penaltyRepeat = 1.1
+  //   ..temp = 0.7;
 
-  ModelParams modelParams = ModelParams();
+  // ModelParams modelParams = ModelParams();
 
-  ContextParams contextParams = ContextParams()
-    ..threads = cores.length
-    ..threadsBatch = cores.length
-    ..context = 512 * 4
-    ..batch = 512 * 4;
+  // ContextParams contextParams = ContextParams()
+    // ..threads = cores.length
+    // ..threadsBatch = cores.length
+    // ..context = 512 * 4
+    // ..batch = 512 * 4;
 
-  Llama llama = Llama("/Users/adel/Downloads/gemma-7b-it-Q4_K_M.gguf",
-      modelParams, contextParams, samplingParams);
+  NewLlama llama = NewLlama("/Users/adel/Downloads/gemma-7b-it-Q4_K_M.gguf");
+      // modelParams, contextParams, samplingParams);
 
   int tokensLimit = 500;
 
@@ -34,12 +34,13 @@ void main() async {
   String processedText = '';
 
   for (var word in words) {
-    List<int> tokens = llama.tokenize(word, false);
-    if (allTokens.length + tokens.length > tokensLimit) {
-      break;
-    }
-    allTokens.addAll(tokens);
-    processedText += '$word ';
+    // TODO: Not sure how to address this
+    // List<int> tokens = llama.tokenize(word, false);
+    // if (allTokens.length + tokens.length > tokensLimit) {
+    //   break;
+    // }
+    // allTokens.addAll(tokens);
+    // processedText += '$word ';
   }
 
   String prompt = """### Task:
@@ -56,7 +57,7 @@ Your primary goal is to ensure a smooth and logical flow of content across chunk
 
 JSON format {
   "chunk": "",
-  "next_chunk_starting_point": "" 
+  "next_chunk_starting_point": ""
 }
 
 ### Content: $processedText\n
