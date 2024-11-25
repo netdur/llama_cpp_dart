@@ -16,9 +16,8 @@ class LlamaParent {
 
   final LlamaLoad loadCommand;
   final PromptFormat? formatter;
-  LlamaParent(this.loadCommand) :
-    // TODO: ModelParms.format got removed, had to re-add it to LlamaLoad
-    formatter = loadCommand.format;
+  LlamaParent(this.loadCommand, [PromptFormat? formatter])
+      : formatter = formatter ?? loadCommand.format;
 
   Stream<String> get stream => _controller.stream;
 
@@ -28,7 +27,8 @@ class LlamaParent {
   }
 
   void _parseResponse(String response) {
-    final processed = formatter == null ? response : formatter!.filterResponse(response);
+    final processed =
+        formatter == null ? response : formatter!.filterResponse(response);
     if (processed != null) _controller.add(processed);
   }
 
@@ -36,14 +36,14 @@ class LlamaParent {
     _parent.init();
     _subscription = _parent.stream.listen(_onData);
     await _parent.spawn(LlamaChild());
-    _parent.sendToChild(data: LlamaInit(NewLlama.libraryPath), id: 1);
+    _parent.sendToChild(data: LlamaInit(Llama.libraryPath), id: 1);
     _parent.sendToChild(data: loadCommand, id: 1);
   }
 
   void sendPrompt(String prompt) async {
     final formattedPrompt = messages.isEmpty
-      ? formatter?.formatPrompt(prompt) ?? prompt
-      : formatter?.formatMessages(messages) ?? prompt;
+        ? formatter?.formatPrompt(prompt) ?? prompt
+        : formatter?.formatMessages(messages) ?? prompt;
     _parent.sendToChild(id: 1, data: LlamaPrompt(formattedPrompt));
   }
 

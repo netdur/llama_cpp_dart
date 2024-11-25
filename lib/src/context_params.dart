@@ -109,7 +109,7 @@ class ContextParams {
 
   /// Constructs and returns a `llama_context_params` object
   llama_context_params get() {
-    final contextParams = NewLlama.lib.llama_context_default_params();
+    final contextParams = Llama.lib.llama_context_default_params();
 
     contextParams.n_ctx = nCtx;
     contextParams.n_batch = nBatch;

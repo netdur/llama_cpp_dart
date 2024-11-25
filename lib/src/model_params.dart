@@ -13,6 +13,8 @@ enum LlamaSplitMode {
 }
 
 class ModelParams {
+  PromptFormat? formatter;
+
   /// Number of layers to store in VRAM
   int nGpuLayers = 99;
 
@@ -51,7 +53,7 @@ class ModelParams {
 
   /// Constructs and returns a `llama_model_params` object with current settings
   llama_model_params get() {
-    final modelParams = NewLlama.lib.llama_model_default_params();
+    final modelParams = Llama.lib.llama_model_default_params();
 
     // Basic parameters
     modelParams.n_gpu_layers = nGpuLayers;
