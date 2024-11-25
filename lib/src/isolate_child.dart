@@ -6,7 +6,6 @@ import "isolate_types.dart";
 class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   LlamaChild() : super(id: 1);
 
-  // TODO: What's this used for?
   bool shouldStop = false;
   NewLlama? llama;
 

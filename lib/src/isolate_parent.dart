@@ -17,6 +17,7 @@ class LlamaParent {
   final LlamaLoad loadCommand;
   final PromptFormat? formatter;
   LlamaParent(this.loadCommand) :
+    // TODO: ModelParms.format got removed, had to re-add it to LlamaLoad
     formatter = loadCommand.format;
 
   Stream<String> get stream => _controller.stream;
