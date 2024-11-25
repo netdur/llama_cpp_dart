@@ -1,7 +1,5 @@
 
-import "model_params.dart";
-import "context_params.dart";
-import "sampling_params.dart";
+import "package:llama_cpp_dart/llama_cpp_dart.dart";
 
 sealed class LlamaCommand { }
 class LlamaStop extends LlamaCommand { }
@@ -29,11 +27,13 @@ class LlamaLoad extends LlamaCommand {
   final String path;
   final ModelParams modelParams;
   final ContextParams contextParams;
-  final SamplingParams samplingParams;
+  final SamplerParams samplingParams;
+  final PromptFormat format;
   LlamaLoad({
     required this.path,
     required this.modelParams,
     required this.contextParams,
     required this.samplingParams,
+    required this.format,
   });
 }

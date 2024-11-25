@@ -1,22 +1,10 @@
 import 'dart:async';
 
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:typed_isolate/typed_isolate.dart';
-
-import "llama.dart";
-import 'alpaca_format.dart';
-import 'chatml_format.dart';
-import 'prompt_format.dart';
 
 import "isolate_child.dart";
 import "isolate_types.dart";
-
-extension on PromptFormatType {
-  PromptFormat? get formatter => switch (this) {
-    PromptFormatType.raw => null,
-    PromptFormatType.alpaca => AlpacaFormat(),
-    PromptFormatType.chatml => ChatMLFormat(),
-  };
-}
 
 class LlamaParent {
   final _controller = StreamController<String>.broadcast();
@@ -29,7 +17,7 @@ class LlamaParent {
   final LlamaLoad loadCommand;
   final PromptFormat? formatter;
   LlamaParent(this.loadCommand) :
-    formatter = loadCommand.modelParams.format.formatter;
+    formatter = loadCommand.format;
 
   Stream<String> get stream => _controller.stream;
 
@@ -47,7 +35,7 @@ class LlamaParent {
     _parent.init();
     _subscription = _parent.stream.listen(_onData);
     await _parent.spawn(LlamaChild());
-    _parent.sendToChild(data: LlamaInit(Llama.libraryPath), id: 1);
+    _parent.sendToChild(data: LlamaInit(NewLlama.libraryPath), id: 1);
     _parent.sendToChild(data: loadCommand, id: 1);
   }
 
