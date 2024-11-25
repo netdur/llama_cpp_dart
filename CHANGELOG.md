@@ -4,6 +4,7 @@
 * disabled sampler top_k
 * disabled sampler top_p
 * disabled sampler temp
+
 ## 0.0.7
 * updated binding
 * performance imporvement and bugs fix
