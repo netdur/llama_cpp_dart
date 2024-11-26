@@ -8,64 +8,86 @@ import 'package:llama_cpp_dart/src/chatml_format.dart';
 
 void main() async {
   try {
-    // final cores = SysInfo.cores;
-    // int memory = SysInfo.getTotalVirtualMemory() ~/ megaByte;
+    final chatMLFormat = ChatMLFormat();
+    final chatHistory = ChatHistory();
 
-    Llama.libraryPath = "./libllama.dylib";
+    print('Initializing chat...\n');
 
-    SamplerParams samplerParams = SamplerParams();
-    // samplingParams.penaltyRepeat = 1.1;
-    // samplingParams.temp = 0.7;
+    // Initialize system prompt
+    chatHistory.addMessage(
+      role: Role.system,
+      content: """
+Answer the question based on the context below. Keep the answer short and concise. Respond "Unsure about answer" if not sure about the answer.
 
-    ModelParams modelParams = ModelParams();
-
-    ContextParams contextParams = ContextParams();
-    // contextParams.threads = cores.length;
-    // contextParams.threadsBatch = cores.length;
-    // contextParams.context = 512 * 4;
-
-    Llama llama = Llama(
-        "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP.Q8_0.gguf",
-        modelParams,
-        contextParams,
-        samplerParams);
-
-    ChatMLFormat chatMLFormat = ChatMLFormat();
-    // AlpacaFormat alpacaFormat = AlpacaFormat();
-
-    String system = chatMLFormat.preparePrompt(
-        """Answer the question based on the context below. Keep the answer short and concise. Respond "Unsure about answer" if not sure about the answer.
 Context: Teplizumab traces its roots to a New Jersey drug company called Ortho Pharmaceutical. There, scientists generated an early version of the antibody, dubbed OKT3. Originally sourced from mice, the molecule was able to bind to the surface of T cells and limit their cell-killing potential. In 1986, it was approved to help prevent organ rejection after kidney transplants, making it the first therapeutic antibody allowed for human use.
-""", Role.system.value, false);
+""",
+    );
 
-    String prompt =
-        chatMLFormat.preparePrompt("What was OKT3 originally sourced from?");
+    print('Loading model...');
+    Llama.libraryPath = "./libllama.dylib";
+    final llama = Llama(
+      "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP.Q8_0.gguf",
+      ModelParams(),
+      ContextParams(),
+      SamplerParams(),
+    );
+    print('Model loaded successfully\n');
 
-    llama.setPrompt(system + prompt);
-    while (true) {
-      var (token, done) = llama.getNext();
-      String? chunk = chatMLFormat.filterResponse(token);
-      if (chunk != null) stdout.write(token);
-      if (done) break;
+    const questions = [
+      "What was OKT3 originally sourced from?",
+      "What was the company called?",
+    ];
+
+    for (var i = 0; i < questions.length; i++) {
+      print('Q${i + 1}: ${questions[i]}');
+      print('A${i + 1}: ', terminator: '');
+      await processQuestion(
+        llama: llama,
+        chatHistory: chatHistory,
+        chatMLFormat: chatMLFormat,
+        question: questions[i],
+      );
     }
-    stdout.write("\n");
-    stdout.write("\n");
-
-    prompt = chatMLFormat.preparePrompt("What was the company called?");
-    llama.setPrompt(system + prompt);
-    while (true) {
-      var (token, done) = llama.getNext();
-      String? chunk = chatMLFormat.filterResponse(token);
-      if (chunk != null) stdout.write(token);
-      if (done) break;
-    }
-    stdout.write("\n");
-    //*/
 
     llama.dispose();
+    print('Chat session ended.');
   } catch (e) {
-    print("Error: ${e.toString()}");
+    print("\nError occurred: $e");
   }
+}
+
+Future<void> processQuestion({
+  required Llama llama,
+  required ChatHistory chatHistory,
+  required ChatMLFormat chatMLFormat,
+  required String question,
+}) async {
+  chatHistory.addMessage(role: Role.user, content: question);
+  llama.setPrompt(chatHistory.exportFormat(ChatFormat.chatml));
+
+  final responseBuffer = StringBuffer();
+
+  while (true) {
+    final (token, done) = llama.getNext();
+    final chunk = chatMLFormat.filterResponse(token);
+
+    if (chunk != null) {
+      stdout.write(token);
+      responseBuffer.write(token);
+    }
+    if (done) break;
+  }
+
+  chatHistory.addMessage(
+    role: Role.assistant,
+    content: responseBuffer.toString().trim(),
+  );
+  stdout.writeln('\n');
+}
+
+// Helper function for print with optional terminator
+void print(String message, {String terminator = '\n'}) {
+  stdout.write(message + terminator);
 }
 
 const int megaByte = 1024 * 1024;

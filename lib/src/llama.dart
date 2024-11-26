@@ -107,9 +107,6 @@ class Llama {
     }
 
     contextParamsDart ??= ContextParams();
-    // contextParamsDart.nCtx = 512;
-    // contextParamsDart.nBatch = 512;
-    // contextParamsDart.noPerfTimings = false;
     var contextParams = contextParamsDart.get();
 
     context = lib.llama_new_context_with_model(model, contextParams);
@@ -224,7 +221,7 @@ class Llama {
       calloc.free(seqBreakersPointer);
     }
 
-    lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_infill(model));
+    // lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_infill(model));
 
     _tokenPtr = malloc<llama_token>();
   }
