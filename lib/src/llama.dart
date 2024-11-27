@@ -35,7 +35,7 @@ class Llama {
   Pointer<llama_token> _tokens = nullptr;
   Pointer<llama_token> _tokenPtr = nullptr;
   int _nPrompt = 0;
-  int nPredict = 32;
+  int _nPredict = 32;
   int _nPos = 0;
 
   // bool _isInitialized = false;
@@ -83,7 +83,7 @@ class Llama {
 
   /// Validates the configuration parameters
   void _validateConfiguration() {
-    if (nPredict <= 0) {
+    if (_nPredict <= 0) {
       throw ArgumentError('nPredict must be positive');
     }
   }
@@ -107,6 +107,7 @@ class Llama {
     }
 
     contextParamsDart ??= ContextParams();
+    _nPredict = contextParamsDart.nPredit;
     var contextParams = contextParamsDart.get();
 
     context = lib.llama_new_context_with_model(model, contextParams);
@@ -283,7 +284,7 @@ class Llama {
     }
 
     try {
-      if (_nPos + batch.n_tokens >= _nPrompt + nPredict) {
+      if (_nPos + batch.n_tokens >= _nPrompt + _nPredict) {
         return ("", true);
       }
 

@@ -39,6 +39,9 @@ enum LlamaAttentionType {
 
 /// ContextParams holds configuration settings for the Llama model context
 class ContextParams {
+  ///
+  int nPredit = 32;
+
   /// Text context size. 0 = from model
   int nCtx = 512;
 

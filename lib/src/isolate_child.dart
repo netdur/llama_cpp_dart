@@ -14,12 +14,14 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     switch (data) {
       case LlamaStop() || LlamaClear():
         shouldStop = true;
-      // TODO: .clear() was removed?
-      // llama?.clear();
-      case LlamaLoad(:final path):
-        llama = Llama(path);
-      // TODO: All these params were removed?
-      // llama = NewLlama(path, modelParams, contextParams, samplingParams);
+        llama?.clear();
+      case LlamaLoad(
+          :final path,
+          :final modelParams,
+          :final contextParams,
+          :final samplingParams
+        ):
+        llama = Llama(path, modelParams, contextParams, samplingParams);
       case LlamaPrompt(:final prompt):
         _sendPrompt(prompt);
       case LlamaInit(:final libraryPath):

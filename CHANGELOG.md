@@ -1,6 +1,5 @@
 ## 0.0.8
 * disabled llava
-* disabled lora
 
 ## 0.0.7
 * updated binding
