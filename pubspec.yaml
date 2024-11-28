@@ -32,8 +32,7 @@ ffigen: # dart run ffigen
   # ignore-source-errors: true
   headers:
     entry-points:
-      - 'llama.cpp/llama.h'
-      # - 'llama.cpp/llava.h'
+      - 'include/llama.h'
   compiler-opts:
     - '-I/usr/lib/clang/17/include'
 

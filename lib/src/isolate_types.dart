@@ -1,9 +1,11 @@
-
 import "package:llama_cpp_dart/llama_cpp_dart.dart";
 
-sealed class LlamaCommand { }
-class LlamaStop extends LlamaCommand { }
-class LlamaClear extends LlamaCommand { }
+sealed class LlamaCommand {}
+
+class LlamaStop extends LlamaCommand {}
+
+class LlamaClear extends LlamaCommand {}
+
 class LlamaInit extends LlamaCommand {
   final String? libraryPath;
   LlamaInit(this.libraryPath);

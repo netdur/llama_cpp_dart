@@ -74,6 +74,9 @@ class Llama {
           modelPath, modelParamsDart, contextParamsDart, samplerParams);
       // _isInitialized = true;
       _status = LlamaStatus.ready;
+
+      // ggml_log_callback logCallback = nullptr;
+      // lib.llama_log_set(logCallback, nullptr);
     } catch (e) {
       _status = LlamaStatus.error;
       dispose();

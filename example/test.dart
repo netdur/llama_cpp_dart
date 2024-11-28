@@ -13,10 +13,8 @@ void main() async {
 
     // SamplingParams samplingParams = SamplingParams();
 
-    Llama.libraryPath = "./libllama.dylib";
-    String modelPath =
-        "/Users/adel/Downloads/tinyllama-2-1b-miniguanaco.Q3_K_L.gguf";
-    // Llama llama = Llama("/Users/adel/Downloads/gemma-7b-it-Q4_K_M.gguf");
+    Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
+    String modelPath = "/Users/adel/Downloads/gemma-7b-it-Q4_K_M.gguf";
     Llama llama = Llama(modelPath);
 
     llama.setPrompt("2 * 2 = ?");
