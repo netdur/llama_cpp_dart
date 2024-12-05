@@ -32,11 +32,18 @@ class LlamaParent {
     if (processed != null) _controller.add(processed);
   }
 
-  void init() async {
+  Future<void> init() async {
     _parent.init();
     _subscription = _parent.stream.listen(_onData);
     await _parent.spawn(LlamaChild());
-    _parent.sendToChild(data: LlamaInit(Llama.libraryPath), id: 1);
+    _parent.sendToChild(
+        data: LlamaInit(
+            Llama.libraryPath,
+            loadCommand.modelParams,
+            loadCommand.contextParams,
+            loadCommand.samplingParams,
+            loadCommand.format),
+        id: 1);
     _parent.sendToChild(data: loadCommand, id: 1);
   }
 

@@ -8,7 +8,12 @@ class LlamaClear extends LlamaCommand {}
 
 class LlamaInit extends LlamaCommand {
   final String? libraryPath;
-  LlamaInit(this.libraryPath);
+  final ModelParams modelParams;
+  final ContextParams contextParams;
+  final SamplerParams samplingParams;
+  final PromptFormat format;
+  LlamaInit(this.libraryPath, this.modelParams, this.contextParams,
+      this.samplingParams, this.format);
 }
 
 class LlamaPrompt extends LlamaCommand {

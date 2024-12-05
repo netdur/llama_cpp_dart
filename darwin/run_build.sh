@@ -19,12 +19,7 @@ build_for_platform() {
     local output_dir="${output_base_dir}/bin/${platform}"
     local shared_libs="ON"
     local lib_extension="dylib"
-    
-    # For iOS platforms, build static libraries
-    if [[ "$platform" == "OS64" || "$platform" == "SIMULATORARM64" ]]; then
-        shared_libs="OFF"
-        lib_extension="a"
-    fi
+
 
     local postfix=""
     if [[ "$platform" == "SIMULATORARM64" ]]; then
@@ -54,6 +49,7 @@ build_for_platform() {
           -DENABLE_ARC=0 \
           -DENABLE_VISIBILITY=1 \
           -DENABLE_STRICT_TRY_COMPILE=1 \
+          -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM="${dev_team}" \
           ..
 
     cmake --build . --config Release

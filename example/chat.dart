@@ -24,7 +24,7 @@ Context: Teplizumab traces its roots to a New Jersey drug company called Ortho P
     );
 
     print('Loading model...');
-    Llama.libraryPath = "./libllama.dylib";
+    Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     final llama = Llama(
       "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP.Q8_0.gguf",
       ModelParams(),
