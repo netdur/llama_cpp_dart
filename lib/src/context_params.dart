@@ -1,92 +1,128 @@
-import 'dart:math';
 import 'dart:convert';
-
+import '../llama_cpp_dart.dart';
 import 'llama_cpp.dart';
-import 'llama.dart';
 
-/// An enumeration representing different types of Llama Rope Scaling.
-enum LlamaRopeScalingType { unspecified, none, linear, yarn, maxValue }
+/// RoPE scaling types
+enum LlamaRopeScalingType {
+  unspecified(-1),
+  none(0),
+  linear(1),
+  yarn(2),
+  maxValue(2);
 
-/// ContextParams holds configuration settings for the Llama model.
-///
-/// This class allows for specifying various parameters that affect
-/// the operation of the Llama model such as random number generation,
-/// batch sizes, thread usage, and specific algorithmic settings.
+  final int value;
+  const LlamaRopeScalingType(this.value);
+}
+
+/// Pooling types for embeddings
+enum LlamaPoolingType {
+  unspecified(-1),
+  none(0),
+  mean(1),
+  cls(2),
+  last(3),
+  rank(4);
+
+  final int value;
+  const LlamaPoolingType(this.value);
+}
+
+/// Attention types for embeddings
+enum LlamaAttentionType {
+  unspecified(-1),
+  causal(0),
+  nonCausal(1);
+
+  final int value;
+  const LlamaAttentionType(this.value);
+}
+
+/// ContextParams holds configuration settings for the Llama model context
 class ContextParams {
-  /// Seed for random number generation. Defaults to a random integer.
-  /// A value of -1 indicates a random seed should be used.
-  int seed = Random().nextInt(1000000);
+  ///
+  int nPredit = 32;
 
-  /// Text context size. Defaults to 512.
-  /// A value of 0 will use the model's default setting.
-  int context = 512;
+  /// Text context size. 0 = from model
+  int nCtx = 512;
 
-  /// Maximum batch size for prompt processing. Defaults to 512.
-  int batch = 512;
+  /// Logical maximum batch size that can be submitted to llama_decode
+  int nBatch = 512;
 
-  /// Number of threads to use for generation. Defaults to 8.
-  int threads = 8;
+  /// Physical maximum batch size
+  int nUbatch = 512;
 
-  /// Number of threads to use for batch processing. Defaults to 8.
-  int threadsBatch = 8;
+  /// Max number of sequences (i.e. distinct states for recurrent models)
+  int nSeqMax = 1;
 
-  /// Type of RoPE (Rotary Positional Embedding) scaling to use.
-  /// Defaults to `LlamaRopeScalingType.unspecified`.
+  /// Number of threads to use for generation
+  int nThreads = 8;
+
+  /// Number of threads to use for batch processing
+  int nThreadsBatch = 8;
+
+  /// RoPE scaling type
   LlamaRopeScalingType ropeScalingType = LlamaRopeScalingType.unspecified;
 
-  /// Base frequency for RoPE (Rotary Positional Embedding).
-  /// Defaults to 0.0, which means the model's default is used.
+  /// Pooling type for embeddings
+  LlamaPoolingType poolingType = LlamaPoolingType.unspecified;
+
+  /// Attention type to use for embeddings
+  LlamaAttentionType attentionType = LlamaAttentionType.unspecified;
+
+  /// RoPE base frequency, 0 = from model
   double ropeFreqBase = 0.0;
 
-  /// Frequency scaling factor for RoPE.
-  /// A value of 0.0 indicates the model's default scaling is used.
+  /// RoPE frequency scaling factor, 0 = from model
   double ropeFreqScale = 0.0;
 
-  /// YaRN (Yet another Representation Network) extrapolation mix factor.
-  /// Negative values indicate the model's default setting is used.
-  /// Defaults to -1.0.
+  /// YaRN extrapolation mix factor, negative = from model
   double yarnExtFactor = -1.0;
 
-  /// YaRN attention magnitude scaling factor. Defaults to 1.0.
+  /// YaRN magnitude scaling factor
   double yarnAttnFactor = 1.0;
 
-  /// YaRN low correction dimension. Defaults to 32.0.
+  /// YaRN low correction dim
   double yarnBetaFast = 32.0;
 
-  /// YaRN high correction dimension. Defaults to 1.0.
+  /// YaRN high correction dim
   double yarnBetaSlow = 1.0;
 
-  /// Original context size for YaRN. Defaults to 0.
+  /// YaRN original context size
   int yarnOrigCtx = 0;
 
-  /// Flag to use experimental 'mul_mat_q' kernels.
-  /// Deprecated and always true.
-  bool mulMatQ = true;
+  /// Defragment the KV cache if holes/size > thold, < 0 disabled
+  double defragThold = -1.0;
 
-  /// If true, `llama_eval()` computes all logits, not just the last one.
-  /// Deprecated - set `llama_batch.logits` instead.
+  /// The llama_decode() call computes all logits, not just the last one
   bool logitsAll = false;
 
-  /// If true, operates in embedding mode only.
-  bool embedding = false;
+  /// If true, extract embeddings (together with logits)
+  bool embeddings = false;
 
-  /// Determines whether to offload the KQV operations to GPU.
-  /// Defaults to true.
+  /// Whether to offload the KQV ops (including the KV cache) to GPU
   bool offloadKqv = true;
+
+  /// Whether to use flash attention [EXPERIMENTAL]
+  bool flashAttn = false;
+
+  /// Whether to measure performance timings
+  bool noPerfTimings = false;
 
   ContextParams();
 
   /// Constructs and returns a `llama_context_params` object
-  /// with current settings of this `ContextParams` instance.
   llama_context_params get() {
-    llama_context_params contextParams =
-        Llama.lib.llama_context_default_params();
-    contextParams.seed = seed;
-    contextParams.n_ctx = context;
-    contextParams.n_batch = batch;
-    contextParams.n_threads = threads;
-    contextParams.n_threads_batch = threadsBatch;
-    contextParams.rope_scaling_type = ropeScalingType.index;
+    final contextParams = Llama.lib.llama_context_default_params();
+
+    contextParams.n_ctx = nCtx;
+    contextParams.n_batch = nBatch;
+    contextParams.n_ubatch = nUbatch;
+    contextParams.n_seq_max = nSeqMax;
+    contextParams.n_threads = nThreads;
+    contextParams.n_threads_batch = nThreadsBatch;
+    // contextParams.rope_scaling_type = ropeScalingType.value;
+    // contextParams.pooling_type = poolingType.value;
+    // contextParams.attention_type = attentionType.value;
     contextParams.rope_freq_base = ropeFreqBase;
     contextParams.rope_freq_scale = ropeFreqScale;
     contextParams.yarn_ext_factor = yarnExtFactor;
@@ -94,45 +130,57 @@ class ContextParams {
     contextParams.yarn_beta_fast = yarnBetaFast;
     contextParams.yarn_beta_slow = yarnBetaSlow;
     contextParams.yarn_orig_ctx = yarnOrigCtx;
-    contextParams.mul_mat_q = mulMatQ;
+    contextParams.defrag_thold = defragThold;
     contextParams.logits_all = logitsAll;
-    contextParams.embedding = embedding;
+    contextParams.embeddings = embeddings;
     contextParams.offload_kqv = offloadKqv;
+    contextParams.flash_attn = flashAttn;
+    contextParams.no_perf = noPerfTimings;
+
     return contextParams;
   }
 
-  /// Factory constructor to create a `ContextParams` instance from JSON.
+  /// Creates a ContextParams instance from JSON
   factory ContextParams.fromJson(Map<String, dynamic> json) {
-    ContextParams contextParams = ContextParams();
-    contextParams.seed = json['seed'] ?? -1;
-    contextParams.context = json['context'] ?? 512;
-    contextParams.batch = json['batch'] ?? 512;
-    contextParams.threads = json['threads'] ?? -1;
-    contextParams.threadsBatch = json['threadsBatch'] ?? -1;
-    contextParams.ropeScalingType =
-        LlamaRopeScalingType.values[json['ropeScalingType'] ?? 0];
-    contextParams.ropeFreqBase = json['ropeFreqBase']?.toDouble() ?? 0.0;
-    contextParams.ropeFreqScale = json['ropeFreqScale']?.toDouble() ?? 0.0;
-    contextParams.yarnExtFactor = json['yarnExtFactor']?.toDouble() ?? -1.0;
-    contextParams.yarnAttnFactor = json['yarnAttnFactor']?.toDouble() ?? 1.0;
-    contextParams.yarnBetaFast = json['yarnBetaFast']?.toDouble() ?? 32.0;
-    contextParams.yarnBetaSlow = json['yarnBetaSlow']?.toDouble() ?? 1.0;
-    contextParams.yarnOrigCtx = json['yarnOrigCtx'] ?? 0;
-    contextParams.mulMatQ = json['mulMatQ'] ?? true;
-    contextParams.logitsAll = json['logitsAll'] ?? false;
-    contextParams.embedding = json['embedding'] ?? false;
-    contextParams.offloadKqv = json['offloadKqv'] ?? true;
-    return contextParams;
+    return ContextParams()
+      ..nCtx = json['nCtx'] ?? 512
+      ..nBatch = json['nBatch'] ?? 512
+      ..nUbatch = json['nUbatch'] ?? 512
+      ..nSeqMax = json['nSeqMax'] ?? 1
+      ..nThreads = json['nThreads'] ?? 8
+      ..nThreadsBatch = json['nThreadsBatch'] ?? 8
+      ..ropeScalingType = LlamaRopeScalingType.values[
+          json['ropeScalingType'] ?? LlamaRopeScalingType.unspecified.value + 1]
+      ..poolingType = LlamaPoolingType
+          .values[json['poolingType'] ?? LlamaPoolingType.unspecified.value + 1]
+      ..attentionType = LlamaAttentionType.values[
+          json['attentionType'] ?? LlamaAttentionType.unspecified.value + 1]
+      ..ropeFreqBase = json['ropeFreqBase']?.toDouble() ?? 0.0
+      ..ropeFreqScale = json['ropeFreqScale']?.toDouble() ?? 0.0
+      ..yarnExtFactor = json['yarnExtFactor']?.toDouble() ?? -1.0
+      ..yarnAttnFactor = json['yarnAttnFactor']?.toDouble() ?? 1.0
+      ..yarnBetaFast = json['yarnBetaFast']?.toDouble() ?? 32.0
+      ..yarnBetaSlow = json['yarnBetaSlow']?.toDouble() ?? 1.0
+      ..yarnOrigCtx = json['yarnOrigCtx'] ?? 0
+      ..defragThold = json['defragThold']?.toDouble() ?? -1.0
+      ..logitsAll = json['logitsAll'] ?? false
+      ..embeddings = json['embeddings'] ?? false
+      ..offloadKqv = json['offloadKqv'] ?? true
+      ..flashAttn = json['flashAttn'] ?? false
+      ..noPerfTimings = json['noPerfTimings'] ?? false;
   }
 
-  /// Converts the `ContextParams` instance to a JSON map.
+  /// Converts to JSON
   Map<String, dynamic> toJson() => {
-        'seed': seed,
-        'context': context,
-        'batch': batch,
-        'threads': threads,
-        'threadsBatch': threadsBatch,
-        'ropeScalingType': ropeScalingType.index,
+        'nCtx': nCtx,
+        'nBatch': nBatch,
+        'nUbatch': nUbatch,
+        'nSeqMax': nSeqMax,
+        'nThreads': nThreads,
+        'nThreadsBatch': nThreadsBatch,
+        'ropeScalingType': ropeScalingType.value + 1,
+        'poolingType': poolingType.value + 1,
+        'attentionType': attentionType.value + 1,
         'ropeFreqBase': ropeFreqBase,
         'ropeFreqScale': ropeFreqScale,
         'yarnExtFactor': yarnExtFactor,
@@ -140,17 +188,14 @@ class ContextParams {
         'yarnBetaFast': yarnBetaFast,
         'yarnBetaSlow': yarnBetaSlow,
         'yarnOrigCtx': yarnOrigCtx,
-        'mulMatQ': mulMatQ,
+        'defragThold': defragThold,
         'logitsAll': logitsAll,
-        'embedding': embedding,
+        'embeddings': embeddings,
         'offloadKqv': offloadKqv,
+        'flashAttn': flashAttn,
+        'noPerfTimings': noPerfTimings,
       };
 
-  /// Returns a string representation of the `ContextParams` instance.
-  ///
-  /// Useful for debugging and logging.
   @override
-  String toString() {
-    return jsonEncode(toJson());
-  }
+  String toString() => jsonEncode(toJson());
 }

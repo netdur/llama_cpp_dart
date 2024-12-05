@@ -1,3 +1,6 @@
+## 0.0.8
+* disabled llava
+
 ## 0.0.7
 * updated binding
 * performance imporvement and bugs fix
