@@ -1,5 +1,8 @@
 ## 0.0.8
 * disabled llava
+* compatible with llama.cpp 42ae10bb
+* add typed_isolate
+* removed llama processor
 
 ## 0.0.7
 * updated binding

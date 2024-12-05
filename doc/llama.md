@@ -1,25 +1,125 @@
-This class acts as the primary interface for interacting with the llama.cpp library, offering a range of methods for model management, tokenization, and decoding. Here's a brief overview:
+# Llama Class Documentation
 
-1. **Class Description**: `Llama` is designed to interface with the llama.cpp library, handling operations like loading, managing the model and context, and providing utilities for tokenization and decoding.
+A Dart wrapper for llama.cpp that provides text generation capabilities using LLaMA models. This class handles model loading, context management, text generation, and resource cleanup.
 
-2. **Properties**:
-   - **model**: Pointer to the Llama model.
-   - **context**: Pointer to the Llama context.
-   - **batch**: Configuration for the Llama model batch processing.
-   - **tokensList**: List of tokens generated from the input prompt.
-   - **temporaryInvalidCChars**: Storage for invalid C characters during processing.
-   - **length**: Length of the output, default is -1.
-   - **cursor**: Position in the token list.
-   - **decode**: Counter for decoding operations.
+## Core Components
 
-3. **Methods**:
-   - **Llama constructor**: Loads the model and context based on provided parameters.
-   - **dispose()**: Releases all allocated resources.
-   - **modelInfo()**: Returns information about the model.
-   - **setPrompt(String prompt)**: Sets the prompt for the model and prepares it for processing.
-   - **getNext()**: Generates and returns the next token in the sequence.
-   - **prompt(String prompt)**: Provides a stream of generated text based on the given prompt.
-   - **clear()**: Clears the current token list and temporary data.
-   - **batchAdd()**: Utility method for adding tokens to the batch.
-   - **tokenize()**: Tokenizes a given text string.
-   - **tokenToPiece()**: Converts a token ID to its corresponding piece (text representation).
+### Status and State
+- `LlamaStatus`: Enum tracking instance state
+  - `uninitialized`: Initial state
+  - `ready`: Ready for generation
+  - `generating`: Currently generating text
+  - `error`: Error state
+  - `disposed`: Instance disposed
+
+### Initialization
+```dart
+Llama(String modelPath, [
+  ModelParams? modelParamsDart,
+  ContextParams? contextParamsDart,
+  SamplerParams? samplerParams
+])
+```
+Creates a new Llama instance with specified parameters.
+
+## Main Methods
+
+### Text Generation
+```dart
+void setPrompt(String prompt, {void Function(int current, int total)? onProgress})
+```
+Sets the input prompt for text generation.
+
+```dart
+(String, bool) getNext()
+```
+Generates the next token, returns (generated text, is complete).
+
+```dart
+Stream<String> generateText()
+```
+Provides a stream of generated text tokens.
+
+### Text Processing
+```dart
+List<int> tokenize(String text, bool addBos)
+```
+Converts text to token IDs.
+
+### State Management
+```dart
+void clear()
+```
+Resets the instance state for new generation.
+
+```dart
+void dispose()
+```
+Releases all resources.
+
+## Properties
+```dart
+LlamaStatus get status
+bool get isDisposed
+```
+
+## Error Handling
+
+### LlamaException
+Custom exception class for Llama-specific errors:
+```dart
+class LlamaException implements Exception {
+  final String message;
+  final dynamic originalError;
+}
+```
+
+## Example Usage
+
+```dart
+// Initialize Llama
+final llama = Llama(
+  'path/to/model.gguf',
+  ModelParams(),
+  ContextParams(),
+  SamplerParams()
+);
+
+// Generate text
+try {
+  llama.setPrompt("Once upon a time");
+  
+  // Stream approach
+  await for (final text in llama.generateText()) {
+    print(text);
+  }
+  
+  // Or step-by-step
+  while (true) {
+    final (text, isDone) = llama.getNext();
+    if (isDone) break;
+    print(text);
+  }
+} finally {
+  llama.dispose();
+}
+```
+
+## Memory Management
+- Uses FFI for native library interaction
+- Automatically manages native pointers
+- Requires explicit `dispose()` call
+- Includes safeguards against using disposed instances
+
+## Notes
+- Supports both Android (.so) and native platform libraries
+- Handles model loading, tokenization, and text generation
+- Provides comprehensive sampling parameter configuration
+- Includes built-in error handling and status tracking
+
+## Best Practices
+1. Always dispose of instances when done
+2. Use try-finally blocks for proper cleanup
+3. Check instance status before operations
+4. Handle LlamaException in generation code
+5. Clear instance between different generation tasks

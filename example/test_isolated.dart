@@ -4,11 +4,9 @@ import 'dart:io';
 
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:llama_cpp_dart/src/chatml_format.dart';
-import 'package:llama_cpp_dart/src/isolate_parent.dart';
-import 'package:llama_cpp_dart/src/isolate_types.dart';
 
 void main() async {
-  Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib"; // Add this line first
+  Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
 
   ContextParams contextParams = ContextParams();
   contextParams.nPredit = 100;

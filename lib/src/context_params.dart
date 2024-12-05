@@ -39,7 +39,7 @@ enum LlamaAttentionType {
 
 /// ContextParams holds configuration settings for the Llama model context
 class ContextParams {
-  ///
+  /// Maximum number of tokens to predict/generate in response
   int nPredit = 32;
 
   /// Text context size. 0 = from model

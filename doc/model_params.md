@@ -1,23 +1,74 @@
-This class is designed for configuring how a Llama model is split and operated across multiple GPUs. Here's a brief overview:
+# ModelParams
 
-1. **Class Description**: `ModelParams` configures the operational parameters for a Llama model, especially in multi-GPU environments. It includes settings for tensor splitting, metadata overrides, GPU layer storage, and memory management options.
+A class that manages parameters for loading and configuring LLaMA models. It provides functionality to control GPU utilization, memory management, and model splitting across multiple GPUs.
 
-2. **Properties**:
-   - **tensorSplit**: List indicating how the model (layers or rows) is distributed across GPUs.
-   - **metadataOverride**: Map for overriding key-value pairs of the model metadata.
-   - **gpuLayerLayer**: The number of layers to store in VRAM, defaulting to 99.
-   - **mainGpu**: Determines which GPU is used based on the split mode.
-   - **vocabOnly**: Boolean flag to load only the vocabulary without weights.
-   - **useMemorymap**: Boolean flag to use memory mapping if possible.
-   - **useMemoryLock**: Boolean flag to keep the model in RAM.
+## Properties
 
-3. **Constructor**: Initializes the `_tensorSplitPointer` and attaches it to the finalizer for memory management.
+### Basic Configuration
+- `formatter` (`PromptFormat?`): Format handler for model prompts
+- `nGpuLayers` (`int`): Number of layers to store in VRAM (default: 99)
+- `splitMode` (`LlamaSplitMode`): Determines how to split the model across multiple GPUs
+- `mainGpu` (`int`): The GPU used for the entire model when split mode is none (default: 0)
+- `tensorSplit` (`List<double>`): Proportion of model layers/rows to offload to each GPU
+- `rpcServers` (`String`): Comma-separated list of RPC servers for offloading
 
-4. **Methods**:
-   - **dispose()**: Releases allocated resources.
-   - **get()**: Constructs and returns a `llama_model_params` object based on current settings.
-   - **fromJson(Map<String, dynamic> json)**: Factory constructor to create an instance from a JSON map.
-   - **toJson()**: Converts the instance into a JSON map for serialization or debugging.
-   - **toString()**: Provides a string representation of the instance, useful for logging or debugging.
+### Memory Management
+- `useMemorymap` (`bool`): Enable memory mapping when possible (default: true)
+- `useMemoryLock` (`bool`): Force system to keep model in RAM (default: false)
+- `vocabOnly` (`bool`): Load only the vocabulary, excluding weights (default: false)
+- `checkTensors` (`bool`): Enable validation of model tensor data (default: false)
 
-5. **Memory Management**: The class uses the Dart FFI (Foreign Function Interface) to allocate and manage native memory for the tensor split pointers and metadata overrides.
+### Additional Settings
+- `kvOverrides` (`Map<String, dynamic>`): Override key-value pairs of model metadata
+
+## Methods
+
+### `ModelParams()`
+Default constructor that initializes a new instance with default values.
+
+### `ModelParams.fromJson(Map<String, dynamic> json)`
+Creates a ModelParams instance from a JSON map.
+
+### `Map<String, dynamic> toJson()`
+Converts the instance to a JSON map.
+
+### `llama_model_params get()`
+Constructs and returns a native `llama_model_params` object with current settings.
+
+### `void dispose()`
+Frees allocated memory for tensor split and RPC server pointers.
+
+### `String toString()`
+Returns a JSON string representation of the instance.
+
+## Related Types
+
+### LlamaSplitMode
+Enum defining model splitting strategies:
+- `none`: Single GPU usage
+- `layer`: Split layers and KV across GPUs
+- `row`: Split layers and KV across GPUs with tensor parallelism support
+
+## Example Usage
+
+```dart
+final params = ModelParams()
+  ..nGpuLayers = 50
+  ..splitMode = LlamaSplitMode.layer
+  ..mainGpu = 0
+  ..useMemorymap = true;
+
+// Convert to JSON
+final json = params.toJson();
+
+// Create from JSON
+final loadedParams = ModelParams.fromJson(json);
+
+// Don't forget to dispose when done
+params.dispose();
+```
+
+## Notes
+- Remember to call `dispose()` when done to prevent memory leaks
+- The class handles automatic memory management for native pointers
+- Custom GPU configurations can be set through tensorSplit and rpcServers properties

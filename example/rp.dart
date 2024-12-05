@@ -38,7 +38,7 @@ void main() async {
             "reaches for the iron lantern, coins jingling I'll take the iron one - seems more practical for the road ahead. pauses Say, you wouldn't happen to know of any safe places to rest for the night?");
 
     print('Loading model...');
-    Llama.libraryPath = "./libllama.dylib";
+    Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     final llama = Llama(
       "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP.Q8_0.gguf",
       ModelParams(),

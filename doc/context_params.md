@@ -1,31 +1,109 @@
-This class serves as a container for various configuration settings that influence the behavior of the Llama model. Here's a brief summary:
+# ContextParams Class Documentation
 
-1. **Class Description**: `ContextParams` is designed to manage configuration settings for the Llama model, including aspects like random number generation, batch sizes, threading, and algorithm-specific parameters.
+A class that manages configuration settings for the Llama model context, controlling various aspects of model execution including threading, batching, and performance optimizations.
 
-2. **Properties**:
-   - **seed**: Seed for random number generation, with a default random integer or an option for a random seed.
-   - **context**: Size of the text context, defaulting to 512.
-   - **batch**: Maximum batch size for prompt processing.
-   - **threads**: Number of threads for generation.
-   - **threadsBatch**: Number of threads for batch processing.
-   - **ropeScalingType**: Specifies the type of RoPE scaling.
-   - **ropeFreqBase**: Base frequency for RoPE.
-   - **ropeFreqScale**: Frequency scaling factor for RoPE.
-   - **yarnExtFactor**: YaRN extrapolation mix factor.
-   - **yarnAttnFactor**: YaRN attention magnitude scaling factor.
-   - **yarnBetaFast**: YaRN low correction dimension.
-   - **yarnBetaSlow**: YaRN high correction dimension.
-   - **yarnOrigCtx**: Original context size for YaRN.
-   - **mulMatQ**: Flag for using experimental 'mul_mat_q' kernels.
-   - **logitsAll**: Flag to compute all logits in `llama_eval()`.
-   - **embedding**: Flag to operate in embedding mode only.
-   - **offloadKqv**: Flag to offload KQV operations to GPU.
+## Core Configuration
 
-3. **Methods**:
-   - **get()**: Creates and returns a `llama_context_params` object with the current settings.
-   - **fromJson(Map<String, dynamic> json)**: Factory constructor to instantiate `ContextParams` from a JSON map.
-   - **toJson()**: Converts the instance to a JSON map for serialization or debugging purposes.
+### Context and Batch Settings
+- `nPredit` (`int`, default: 32): Maximum tokens to predict/generate
+- `nCtx` (`int`, default: 512): Text context size (0 = use model default)
+- `nBatch` (`int`, default: 512): Logical maximum batch size for llama_decode
+- `nUbatch` (`int`, default: 512): Physical maximum batch size
+- `nSeqMax` (`int`, default: 1): Maximum number of sequences
 
-4. **Usage**: This class is utilized to fine-tune the Llama model's operation, catering to specific requirements like performance tuning, thread management, and enabling advanced features like YaRN and RoPE.
+### Threading
+- `nThreads` (`int`, default: 8): Number of threads for generation
+- `nThreadsBatch` (`int`, default: 8): Number of threads for batch processing
 
-5. **Flexibility**: The class offers flexibility in configuring the model's operation, making it suitable for diverse applications, from simple setups to complex, multi-threaded environments.
+## RoPE (Rotary Position Embedding) Configuration
+
+### Basic RoPE Settings
+- `ropeScalingType` (`LlamaRopeScalingType`, default: unspecified): RoPE scaling type
+- `ropeFreqBase` (`double`, default: 0.0): Base frequency (0 = from model)
+- `ropeFreqScale` (`double`, default: 0.0): Frequency scaling factor (0 = from model)
+
+### YaRN Parameters
+- `yarnExtFactor` (`double`, default: -1.0): Extrapolation mix factor
+- `yarnAttnFactor` (`double`, default: 1.0): Magnitude scaling factor
+- `yarnBetaFast` (`double`, default: 32.0): Low correction dimension
+- `yarnBetaSlow` (`double`, default: 1.0): High correction dimension
+- `yarnOrigCtx` (`int`, default: 0): Original context size
+
+## Embedding Configuration
+- `poolingType` (`LlamaPoolingType`, default: unspecified): Pooling type for embeddings
+- `attentionType` (`LlamaAttentionType`, default: unspecified): Attention type for embeddings
+- `embeddings` (`bool`, default: false): Extract embeddings with logits
+
+## Performance Settings
+- `defragThold` (`double`, default: -1.0): KV cache defragmentation threshold
+- `logitsAll` (`bool`, default: false): Compute all logits in llama_decode
+- `offloadKqv` (`bool`, default: true): Offload KQV operations to GPU
+- `flashAttn` (`bool`, default: false): Use flash attention (experimental)
+- `noPerfTimings` (`bool`, default: false): Disable performance timing measurements
+
+## Enums
+
+### LlamaRopeScalingType
+```dart
+enum LlamaRopeScalingType {
+  unspecified(-1),
+  none(0),
+  linear(1),
+  yarn(2),
+  maxValue(2)
+}
+```
+
+### LlamaPoolingType
+```dart
+enum LlamaPoolingType {
+  unspecified(-1),
+  none(0),
+  mean(1),
+  cls(2),
+  last(3),
+  rank(4)
+}
+```
+
+### LlamaAttentionType
+```dart
+enum LlamaAttentionType {
+  unspecified(-1),
+  causal(0),
+  nonCausal(1)
+}
+```
+
+## Methods
+
+### `ContextParams()`
+Creates a new instance with default values.
+
+### `llama_context_params get()`
+Returns a native `llama_context_params` object with current settings.
+
+### `ContextParams.fromJson(Map<String, dynamic> json)`
+Creates an instance from a JSON map.
+
+### `Map<String, dynamic> toJson()`
+Converts the instance to a JSON map.
+
+### `String toString()`
+Returns a JSON string representation of the instance.
+
+## Example Usage
+
+```dart
+final params = ContextParams()
+  ..nCtx = 1024
+  ..nThreads = 4
+  ..ropeScalingType = LlamaRopeScalingType.linear
+  ..offloadKqv = true;
+
+// Convert to JSON
+final json = params.toJson();
+
+// Create from JSON
+final loadedParams = ContextParams.fromJson(json);
+```

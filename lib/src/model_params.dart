@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
-// import 'llama.dart';
 import 'llama_cpp.dart';
 
 /// Enum representing how to split the model across multiple GPUs

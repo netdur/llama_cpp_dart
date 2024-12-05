@@ -3,9 +3,6 @@ import 'dart:async';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:typed_isolate/typed_isolate.dart';
 
-import "isolate_child.dart";
-import "isolate_types.dart";
-
 class LlamaParent {
   final _controller = StreamController<String>.broadcast();
   final _parent = IsolateParent<LlamaCommand, LlamaResponse>();
