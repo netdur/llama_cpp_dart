@@ -351,8 +351,8 @@ class Llama {
     if (_tokens != nullptr) malloc.free(_tokens);
     if (_tokenPtr != nullptr) malloc.free(_tokenPtr);
     if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
-    if (context?.address != 0) lib.llama_free(context!);
-    if (model?.address != 0) lib.llama_free_model(model!);
+    if (context != null && context?.address != 0) lib.llama_free(context!);
+    if (model != null && model?.address != 0) lib.llama_free_model(model!);
 
     lib.llama_backend_free();
 
