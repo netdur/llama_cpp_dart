@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:ffi/ffi.dart';
 import 'sampler_params.dart';
@@ -310,7 +311,15 @@ class Llama {
           throw LlamaException("Failed to convert token to piece");
         }
 
-        String piece = String.fromCharCodes(buf.cast<Uint8>().asTypedList(n));
+        String piece = '';
+        final bytes = buf.cast<Uint8>().asTypedList(n);
+        try {
+          // USE UTF-8 resolve
+          piece = utf8.decode(bytes);
+        } catch (e) {
+          print('Error generating text when UTF-8 decode: $bytes');
+          return ("", true);
+        }
 
         _tokenPtr.value = newTokenId;
         batch = lib.llama_batch_get_one(_tokenPtr, 1);
