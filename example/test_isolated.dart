@@ -12,7 +12,7 @@ void main() async {
   contextParams.nPredit = 100;
 
   final loadCommand = LlamaLoad(
-    path: "/Users/adel/Downloads/gemma-7b-it-Q4_K_M.gguf",
+    path: "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP-Q4_K_M.gguf",
     modelParams: ModelParams(),
     contextParams: contextParams,
     samplingParams: SamplerParams(),

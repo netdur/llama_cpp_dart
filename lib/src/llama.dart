@@ -28,6 +28,7 @@ enum LlamaStatus { uninitialized, ready, generating, error, disposed }
 class Llama {
   static llama_cpp? _lib;
   late Pointer<llama_model> model;
+  late Pointer<llama_vocab> vocab;
   late Pointer<llama_context> context;
   late llama_batch batch;
 
@@ -108,6 +109,7 @@ class Llama {
     } finally {
       malloc.free(modelPathPtr);
     }
+    vocab = lib.llama_model_get_vocab(model);
 
     contextParamsDart ??= ContextParams();
     _nPredict = contextParamsDart.nPredit;
@@ -165,7 +167,7 @@ class Llama {
     lib.llama_sampler_chain_add(
         _smpl,
         lib.llama_sampler_init_mirostat(
-            lib.llama_n_vocab(model),
+            lib.llama_n_vocab(vocab),
             samplerParams.seed,
             samplerParams.mirostatTau,
             samplerParams.mirostatEta,
@@ -180,22 +182,31 @@ class Llama {
     final grammarRootPtr =
         samplerParams.grammarRoot.toNativeUtf8().cast<Char>();
     lib.llama_sampler_chain_add(_smpl,
-        lib.llama_sampler_init_grammar(model, grammarStrPtr, grammarRootPtr));
+        lib.llama_sampler_init_grammar(vocab, grammarStrPtr, grammarRootPtr));
     calloc.free(grammarStrPtr);
     calloc.free(grammarRootPtr);
 
-    lib.llama_sampler_chain_add(
+    /*lib.llama_sampler_chain_add(
         _smpl,
         lib.llama_sampler_init_penalties(
-            lib.llama_n_vocab(model),
-            lib.llama_token_eos(model),
-            lib.llama_token_nl(model),
-            samplerParams.penaltyLastTokens,
+            lib.llama_n_vocab(vocab),
+            lib.llama_token_eos(vocab).toDouble(),
+            lib.llama_token_nl(vocab).toDouble(),
+            samplerParams.penaltyLastTokens.toDouble(),
             samplerParams.penaltyRepeat,
             samplerParams.penaltyFreq,
             samplerParams.penaltyPresent,
             samplerParams.penaltyNewline,
-            samplerParams.ignoreEOS));
+            samplerParams.ignoreEOS));*/
+
+    lib.llama_sampler_chain_add(
+        _smpl,
+        lib.llama_sampler_init_penalties(
+          samplerParams.penaltyLastTokens,
+          samplerParams.penaltyRepeat,
+          samplerParams.penaltyFreq,
+          samplerParams.penaltyPresent,
+        ));
 
     // Add DRY sampler
     final seqBreakers = samplerParams.dryBreakers;
@@ -209,14 +220,12 @@ class Llama {
 
       lib.llama_sampler_chain_add(
           _smpl,
-          lib.llama_sampler_init_dry(
-              model,
-              samplerParams.dryPenalty,
-              samplerParams.dryMultiplier,
-              samplerParams.dryAllowedLen,
-              samplerParams.dryLookback,
-              seqBreakersPointer,
-              numBreakers));
+          lib.llama_sampler_init_penalties(
+            samplerParams.penaltyLastTokens,
+            samplerParams.penaltyRepeat,
+            samplerParams.penaltyFreq,
+            samplerParams.penaltyPresent,
+          ));
     } finally {
       // Clean up DRY sampler allocations
       for (var i = 0; i < numBreakers; i++) {
@@ -257,10 +266,10 @@ class Llama {
       final promptPtr = prompt.toNativeUtf8().cast<Char>();
       try {
         _nPrompt = -lib.llama_tokenize(
-            model, promptPtr, prompt.length, nullptr, 0, true, true);
+            vocab, promptPtr, prompt.length, nullptr, 0, true, true);
 
         _tokens = malloc<llama_token>(_nPrompt);
-        if (lib.llama_tokenize(model, promptPtr, prompt.length, _tokens,
+        if (lib.llama_tokenize(vocab, promptPtr, prompt.length, _tokens,
                 _nPrompt, true, true) <
             0) {
           throw LlamaException("Failed to tokenize prompt");
@@ -299,13 +308,13 @@ class Llama {
 
       int newTokenId = lib.llama_sampler_sample(_smpl, context, -1);
 
-      if (lib.llama_token_is_eog(model, newTokenId)) {
+      if (lib.llama_token_is_eog(vocab, newTokenId)) {
         return ("", true);
       }
 
       final buf = malloc<Char>(128);
       try {
-        int n = lib.llama_token_to_piece(model, newTokenId, buf, 128, 0, true);
+        int n = lib.llama_token_to_piece(vocab, newTokenId, buf, 128, 0, true);
         if (n < 0) {
           throw LlamaException("Failed to convert token to piece");
         }
@@ -315,7 +324,7 @@ class Llama {
         _tokenPtr.value = newTokenId;
         batch = lib.llama_batch_get_one(_tokenPtr, 1);
 
-        bool isEos = newTokenId == lib.llama_token_eos(model);
+        bool isEos = newTokenId == lib.llama_token_eos(vocab);
         return (piece, isEos);
       } finally {
         malloc.free(buf);
@@ -418,7 +427,7 @@ class Llama {
       try {
         // First get the required number of tokens
         int nTokens = -lib.llama_tokenize(
-            model, textPtr, text.length, nullptr, 0, addBos, true);
+            vocab, textPtr, text.length, nullptr, 0, addBos, true);
 
         if (nTokens <= 0) {
           throw LlamaException('Failed to determine token count');
@@ -430,7 +439,7 @@ class Llama {
         try {
           // Perform actual tokenization
           int actualTokens = lib.llama_tokenize(
-              model, textPtr, text.length, tokens, nTokens, addBos, true);
+              vocab, textPtr, text.length, tokens, nTokens, addBos, true);
 
           if (actualTokens < 0) {
             throw LlamaException('Tokenization failed');

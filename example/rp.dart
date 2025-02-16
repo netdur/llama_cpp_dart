@@ -40,7 +40,7 @@ void main() async {
     print('Loading model...');
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     final llama = Llama(
-      "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP.Q8_0.gguf",
+      "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP-Q4_K_M.gguf",
       ModelParams(),
       ContextParams(),
       SamplerParams(),
