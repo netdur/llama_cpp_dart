@@ -457,4 +457,77 @@ class Llama {
       throw LlamaException('Error during tokenization', e);
     }
   }
+
+  /// Generates embeddings for the given prompt.
+  ///
+  /// [prompt] - The input text for which to generate embeddings.
+  /// [addBos] - Whether to add the beginning-of-sequence token.
+  ///
+  /// Returns a List of floats representing the embedding.
+  ///
+  /// Throws [ArgumentError] if prompt is empty.
+  /// Throws [LlamaException] if embedding generation fails.
+  /// Throws [StateError] if the instance is disposed.
+  List<double> getEmbeddings(String prompt, {bool addBos = true}) {
+    if (_isDisposed) {
+      throw StateError('Cannot generate embeddings on disposed instance');
+    }
+
+    if (prompt.isEmpty) {
+      throw ArgumentError('Prompt cannot be empty');
+    }
+
+    try {
+      // 1. Tokenize the prompt
+      List<int> tokens = tokenize(prompt, addBos);
+      int nTokens = tokens.length;
+
+      // 2. Initialize a batch
+      llama_batch promptBatch = lib.llama_batch_init(nTokens, 0, 1);
+
+      // 3. Add tokens to the batch.  Directly set the fields.
+      for (int i = 0; i < nTokens; i++) {
+        promptBatch.token[i] = tokens[i];
+        promptBatch.pos[i] = i;
+        promptBatch.n_seq_id[i] = 1; // Set n_seq_id to 1 (size of seq_id array)
+        promptBatch.seq_id[i] = calloc<llama_seq_id>()
+          ..value = 0; // Use a single sequence ID (0)
+        promptBatch.logits[i] =
+            i == nTokens - 1 ? 1 : 0; // Logits only for the last token
+      }
+      promptBatch.n_tokens = nTokens;
+
+      // 4. Decode the batch (run the model)
+      lib.llama_kv_cache_clear(
+          context); // Clear KV cache before decoding.  IMPORTANT!
+
+      if (lib.llama_decode(context, promptBatch) != 0) {
+        lib.llama_batch_free(promptBatch);
+        throw LlamaException("Failed to decode prompt for embeddings");
+      }
+
+      // 5. Get the embeddings
+      final int nEmbd = lib.llama_n_embd(model);
+      final Pointer<Float> embeddingsPtr = lib.llama_get_embeddings(context);
+
+      if (embeddingsPtr == nullptr) {
+        lib.llama_batch_free(promptBatch);
+        throw LlamaException("Failed to get embeddings");
+      }
+
+      // 6. Copy embeddings to a Dart list
+      final embeddingsList = <double>[];
+      for (int i = 0; i < nEmbd; i++) {
+        embeddingsList.add(embeddingsPtr[i].toDouble()); // Convert to double
+      }
+
+      // 7. Free the batch
+      lib.llama_batch_free(promptBatch);
+
+      return embeddingsList;
+    } catch (e) {
+      _status = LlamaStatus.error;
+      throw LlamaException('Error generating embeddings', e);
+    }
+  }
 }
