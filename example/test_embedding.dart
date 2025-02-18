@@ -9,14 +9,14 @@ void main() async {
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     String modelPath =
         "/Users/adel/Downloads/DeepSeek-R1-Distill-Qwen-1.5B-Q6_K.gguf";
-    Llama llama = Llama(modelPath);
 
-    llama.setPrompt("2 * 2 = ?");
-    while (true) {
-      var (token, done) = llama.getNext();
-      stdout.write(token);
-      if (done) break;
-    }
+    ModelParams modelParams = ModelParams();
+    ContextParams contextParams = ContextParams();
+    contextParams.embeddings = true;
+    Llama llama = Llama(modelPath, modelParams, contextParams);
+
+    List<double> embeddings = llama.getEmbeddings("2 * 2 = ?");
+    stdout.write(embeddings);
     stdout.write("\n");
 
     llama.dispose();

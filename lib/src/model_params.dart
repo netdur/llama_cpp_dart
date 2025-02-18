@@ -72,12 +72,6 @@ class ModelParams {
       modelParams.tensor_split = _tensorSplitPtr!;
     }
 
-    // Handle rpc_servers
-    if (rpcServers.isNotEmpty) {
-      _rpcServersPtr = rpcServers.toNativeUtf8().cast<Char>();
-      modelParams.rpc_servers = _rpcServersPtr!;
-    }
-
     // Complex pointers set to null
     modelParams.progress_callback = nullptr;
     modelParams.progress_callback_user_data = nullptr;

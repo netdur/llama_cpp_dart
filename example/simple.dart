@@ -5,7 +5,8 @@ import 'package:llama_cpp_dart/src/llama_cpp.dart';
 
 void main() {
   // Initialize settings
-  String modelPath = "/Users/adel/Downloads/gemma-7b-it-Q4_K_M.gguf";
+  String modelPath =
+      "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP-Q4_K_M.gguf";
   String prompt = "Hello my name is";
   int ngl = 99;
   int nPredict = 32;
@@ -28,13 +29,14 @@ void main() {
   }
 
   // Tokenize prompt
+  final vocab = lib.llama_model_get_vocab(model);
   final promptPtr = prompt.toNativeUtf8().cast<Char>();
   final nPrompt = -lib.llama_tokenize(
-      model, promptPtr, prompt.length, nullptr, 0, true, true);
+      vocab, promptPtr, prompt.length, nullptr, 0, true, true);
 
   final tokens = malloc<llama_token>(nPrompt);
   if (lib.llama_tokenize(
-          model, promptPtr, prompt.length, tokens, nPrompt, true, true) <
+          vocab, promptPtr, prompt.length, tokens, nPrompt, true, true) <
       0) {
     stderr.writeln("error: failed to tokenize the prompt");
     malloc.free(promptPtr);
@@ -65,7 +67,7 @@ void main() {
   // Print prompt tokens
   for (int i = 0; i < nPrompt; i++) {
     final buf = malloc<Char>(128);
-    int n = lib.llama_token_to_piece(model, tokens[i], buf, 128, 0, true);
+    int n = lib.llama_token_to_piece(vocab, tokens[i], buf, 128, 0, true);
     if (n < 0) {
       stderr.writeln("error: failed to convert token to piece");
       malloc.free(buf);
@@ -101,12 +103,12 @@ void main() {
     // Sample next token
     newTokenId = lib.llama_sampler_sample(smpl, ctx, -1);
 
-    if (lib.llama_token_is_eog(model, newTokenId)) {
+    if (lib.llama_token_is_eog(vocab, newTokenId)) {
       break;
     }
 
     final buf = malloc<Char>(128);
-    int n = lib.llama_token_to_piece(model, newTokenId, buf, 128, 0, true);
+    int n = lib.llama_token_to_piece(vocab, newTokenId, buf, 128, 0, true);
     if (n < 0) {
       stderr.writeln("error: failed to convert token to piece");
       malloc.free(buf);

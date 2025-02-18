@@ -20,7 +20,6 @@ build_for_platform() {
     local shared_libs="ON"
     local lib_extension="dylib"
 
-
     local postfix=""
     if [[ "$platform" == "SIMULATORARM64" ]]; then
         postfix="-iphonesimulator"
@@ -50,19 +49,21 @@ build_for_platform() {
           -DENABLE_VISIBILITY=1 \
           -DENABLE_STRICT_TRY_COMPILE=1 \
           -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM="${dev_team}" \
+          -DCMAKE_INSTALL_PREFIX="./install" \
           ..
 
     cmake --build . --config Release
+    cmake --install . --config Release
 
     # Copy libraries
     mkdir -p "${output_dir}"
     local libs=(
-        "src/Release${postfix}/libllama.${lib_extension}"
-        "ggml/src/Release${postfix}/libggml.${lib_extension}"
-        "ggml/src/Release${postfix}/libggml-base.${lib_extension}"
-        "ggml/src/ggml-metal/Release${postfix}/libggml-metal.${lib_extension}"
-        "ggml/src/ggml-cpu/Release${postfix}/libggml-cpu.${lib_extension}"
-        "ggml/src/ggml-blas/Release${postfix}/libggml-blas.${lib_extension}"
+        "install/lib/libllama.${lib_extension}"
+        "install/lib/libggml.${lib_extension}"
+        "install/lib/libggml-base.${lib_extension}"
+        "install/lib/libggml-metal.${lib_extension}"
+        "install/lib/libggml-cpu.${lib_extension}"
+        "install/lib/libggml-blas.${lib_extension}"
     )
 
     for lib in "${libs[@]}"; do
@@ -81,17 +82,16 @@ main() {
 
     pushd "${llama_cpp_path}" > /dev/null
 
-    #build_for_platform "MAC_ARM64"
-    build_for_platform "OS64"
-    #build_for_platform "SIMULATORARM64"
+    build_for_platform "MAC_ARM64"
+    # build_for_platform "OS64"
+    # build_for_platform "SIMULATORARM64"
 
     # return to original directory
     popd > /dev/null
 
     rm -rf "${output_base_dir}/include"
     mkdir -p "${output_base_dir}/include"
-    cp -r "${llama_cpp_path}"/include/* "${output_base_dir}/include/"
-    cp -r "${llama_cpp_path}"/ggml/include/* "${output_base_dir}/include/"
+    cp -r "${llama_cpp_path}/build_MAC_ARM64/install/include/"* "${output_base_dir}/include/"
 }
 
 main "$@"
