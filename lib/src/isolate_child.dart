@@ -38,14 +38,12 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   void _sendPrompt(String prompt) {
     llama?.setPrompt(prompt);
 
-    int tokenCount = 0;
     while (true) {
       if (shouldStop) {
         break;
       }
 
       final (text, isDone) = llama!.getNext();
-      tokenCount++;
 
       sendToParent(LlamaResponse(text: text, isDone: isDone));
 
