@@ -3,31 +3,50 @@
 import 'dart:io';
 
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
-import 'package:llama_cpp_dart/src/chatml_format.dart';
 
 void main() async {
   Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
 
   ContextParams contextParams = ContextParams();
-  contextParams.nPredit = 100;
+  contextParams.nPredict = 500;
+  contextParams.nCtx = 8192;
+  contextParams.nBatch = 8192;
+
+  final samplerParams = SamplerParams();
+  samplerParams.temp = 1.0;
+  samplerParams.topK = 64;
+  samplerParams.topP = 0.95;
+  samplerParams.penaltyRepeat = 1.1;
 
   final loadCommand = LlamaLoad(
-    path: "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP-Q4_K_M.gguf",
+    path: "/Users/adel/Downloads/gemma-3-12b-it-Q4_K_M.gguf",
     modelParams: ModelParams(),
     contextParams: contextParams,
-    samplingParams: SamplerParams(),
-    format: ChatMLFormat(),
+    samplingParams: samplerParams,
+    // format: ChatMLFormat(),
   );
 
   final llamaParent = LlamaParent(loadCommand);
   await llamaParent.init();
 
+  int i = 0;
+  List<String> prompts = [
+    "<start_of_turn>What is 2 * 4?<end_of_turn>\n<start_of_turn>model\n",
+    "<start_of_turn>What is 4 * 4?<end_of_turn>\n<start_of_turn>model\n"
+  ];
+
   llamaParent.stream.listen((response) {
     stdout.write(response);
   });
 
-  llamaParent.sendPrompt("2 * 2 = ?");
+  llamaParent.completions.listen((event) {
+    i++;
+    if (i >= prompts.length) {
+      llamaParent.dispose();
+    } else {
+      llamaParent.sendPrompt(prompts[i]);
+    }
+  });
 
-  await Future.delayed(Duration(seconds: 12));
-  await llamaParent.dispose();
+  llamaParent.sendPrompt(prompts[0]);
 }

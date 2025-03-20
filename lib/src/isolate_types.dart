@@ -11,9 +11,11 @@ class LlamaInit extends LlamaCommand {
   final ModelParams modelParams;
   final ContextParams contextParams;
   final SamplerParams samplingParams;
-  final PromptFormat format;
+  final PromptFormat? format;
+
   LlamaInit(this.libraryPath, this.modelParams, this.contextParams,
-      this.samplingParams, this.format);
+      this.samplingParams,
+      [this.format]);
 }
 
 class LlamaPrompt extends LlamaCommand {
@@ -35,12 +37,13 @@ class LlamaLoad extends LlamaCommand {
   final ModelParams modelParams;
   final ContextParams contextParams;
   final SamplerParams samplingParams;
-  final PromptFormat format;
+  final PromptFormat? format;
+
   LlamaLoad({
     required this.path,
     required this.modelParams,
     required this.contextParams,
     required this.samplingParams,
-    required this.format,
+    this.format,
   });
 }

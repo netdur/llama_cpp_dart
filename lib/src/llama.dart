@@ -28,8 +28,8 @@ enum LlamaStatus { uninitialized, ready, generating, error, disposed }
 class Llama {
   static llama_cpp? _lib;
   late Pointer<llama_model> model;
-  late Pointer<llama_vocab> vocab;
   late Pointer<llama_context> context;
+  late Pointer<llama_vocab> vocab;
   late llama_batch batch;
 
   Pointer<llama_sampler> _smpl = nullptr;
@@ -39,7 +39,6 @@ class Llama {
   int _nPredict = 32;
   int _nPos = 0;
 
-  // bool _isInitialized = false;
   bool _isDisposed = false;
   LlamaStatus _status = LlamaStatus.uninitialized;
 
@@ -69,18 +68,15 @@ class Llama {
       [ModelParams? modelParamsDart,
       ContextParams? contextParamsDart,
       SamplerParams? samplerParams]) {
+    batch = lib.llama_batch_init(512, 0, 1); // Initialize batch here!
     try {
       _validateConfiguration();
       _initializeLlama(
           modelPath, modelParamsDart, contextParamsDart, samplerParams);
-      // _isInitialized = true;
       _status = LlamaStatus.ready;
-
-      // ggml_log_callback logCallback = nullptr;
-      // lib.llama_log_set(logCallback, nullptr);
     } catch (e) {
       _status = LlamaStatus.error;
-      dispose();
+      dispose(); // Dispose resources on initialization failure
       throw LlamaException('Failed to initialize Llama', e);
     }
   }
@@ -101,34 +97,45 @@ class Llama {
     var modelParams = modelParamsDart.get();
 
     final modelPathPtr = modelPath.toNativeUtf8().cast<Char>();
+    Pointer<llama_model> loadedModel = nullptr; // Use a local variable
     try {
-      model = lib.llama_load_model_from_file(modelPathPtr, modelParams);
-      if (model.address == 0) {
+      loadedModel = lib.llama_load_model_from_file(modelPathPtr, modelParams);
+      if (loadedModel == nullptr) {
         throw LlamaException("Could not load model at $modelPath");
       }
+      model = loadedModel; // Assign to the class member after the check
+      vocab = lib.llama_model_get_vocab(
+          model); // Get the vocab *after* model is loaded.
     } finally {
       malloc.free(modelPathPtr);
     }
-    vocab = lib.llama_model_get_vocab(model);
 
     contextParamsDart ??= ContextParams();
-    _nPredict = contextParamsDart.nPredit;
+    _nPredict = contextParamsDart.nPredict;
     var contextParams = contextParamsDart.get();
+    Pointer<llama_context> loadedContext = nullptr;
+    try {
+      loadedContext = lib.llama_new_context_with_model(model, contextParams);
 
-    context = lib.llama_new_context_with_model(model, contextParams);
-    if (context.address == 0) {
-      throw Exception("Could not load context!");
+      if (loadedContext == nullptr) {
+        lib.llama_free_model(model);
+        throw LlamaException("Could not create context!");
+      }
+      context = loadedContext;
+    } catch (e) {
+      if (loadedContext != nullptr) {
+        lib.llama_free(loadedContext);
+      }
+      lib.llama_free_model(model);
+      rethrow;
     }
 
     samplerParams ??= SamplerParams();
-
-    // Initialize sampler chain
     llama_sampler_chain_params sparams =
         lib.llama_sampler_chain_default_params();
     sparams.no_perf = false;
     _smpl = lib.llama_sampler_chain_init(sparams);
 
-    // Add samplers based on params
     if (samplerParams.greedy) {
       lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_greedy());
     }
@@ -186,19 +193,6 @@ class Llama {
     calloc.free(grammarStrPtr);
     calloc.free(grammarRootPtr);
 
-    /*lib.llama_sampler_chain_add(
-        _smpl,
-        lib.llama_sampler_init_penalties(
-            lib.llama_n_vocab(vocab),
-            lib.llama_token_eos(vocab).toDouble(),
-            lib.llama_token_nl(vocab).toDouble(),
-            samplerParams.penaltyLastTokens.toDouble(),
-            samplerParams.penaltyRepeat,
-            samplerParams.penaltyFreq,
-            samplerParams.penaltyPresent,
-            samplerParams.penaltyNewline,
-            samplerParams.ignoreEOS));*/
-
     lib.llama_sampler_chain_add(
         _smpl,
         lib.llama_sampler_init_penalties(
@@ -208,7 +202,6 @@ class Llama {
           samplerParams.penaltyPresent,
         ));
 
-    // Add DRY sampler
     final seqBreakers = samplerParams.dryBreakers;
     final numBreakers = seqBreakers.length;
     final seqBreakersPointer = calloc<Pointer<Char>>(numBreakers);
@@ -227,14 +220,11 @@ class Llama {
             samplerParams.penaltyPresent,
           ));
     } finally {
-      // Clean up DRY sampler allocations
       for (var i = 0; i < numBreakers; i++) {
         calloc.free(seqBreakersPointer[i]);
       }
       calloc.free(seqBreakersPointer);
     }
-
-    // lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_infill(model));
 
     _tokenPtr = malloc<llama_token>();
   }
@@ -258,7 +248,6 @@ class Llama {
     try {
       _status = LlamaStatus.generating;
 
-      // Free previous tokens if they exist
       if (_tokens != nullptr) {
         malloc.free(_tokens);
       }
@@ -274,8 +263,14 @@ class Llama {
             0) {
           throw LlamaException("Failed to tokenize prompt");
         }
-
-        batch = lib.llama_batch_get_one(_tokens, _nPrompt);
+        for (int i = 0; i < _nPrompt; i++) {
+          batch.token[i] = _tokens[i];
+          batch.pos[i] = i;
+          batch.n_seq_id[i] = 1;
+          batch.seq_id[i] = calloc<llama_seq_id>()..value = 0;
+          batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
+        }
+        batch.n_tokens = _nPrompt;
         _nPos = 0;
       } finally {
         malloc.free(promptPtr);
@@ -305,7 +300,6 @@ class Llama {
       }
 
       _nPos += batch.n_tokens;
-
       int newTokenId = lib.llama_sampler_sample(_smpl, context, -1);
 
       if (lib.llama_token_is_eog(vocab, newTokenId)) {
@@ -315,14 +309,19 @@ class Llama {
       final buf = malloc<Char>(128);
       try {
         int n = lib.llama_token_to_piece(vocab, newTokenId, buf, 128, 0, true);
+
         if (n < 0) {
           throw LlamaException("Failed to convert token to piece");
         }
 
         String piece = String.fromCharCodes(buf.cast<Uint8>().asTypedList(n));
 
-        _tokenPtr.value = newTokenId;
-        batch = lib.llama_batch_get_one(_tokenPtr, 1);
+        batch.token[0] = newTokenId;
+        batch.pos[0] = _nPos;
+        batch.n_seq_id[0] = 1;
+        batch.seq_id[0] = calloc<llama_seq_id>()..value = 0;
+        batch.logits[0] = 1; // Logits for the new token
+        batch.n_tokens = 1;
 
         bool isEos = newTokenId == lib.llama_token_eos(vocab);
         return (piece, isEos);
@@ -356,13 +355,12 @@ class Llama {
   /// Disposes of all resources held by this instance
   void dispose() {
     if (_isDisposed) return;
-
     if (_tokens != nullptr) malloc.free(_tokens);
     if (_tokenPtr != nullptr) malloc.free(_tokenPtr);
     if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
     if (context.address != 0) lib.llama_free(context);
     if (model.address != 0) lib.llama_free_model(model);
-
+    lib.llama_batch_free(batch); // Free the batch
     lib.llama_backend_free();
 
     _isDisposed = true;
@@ -378,23 +376,16 @@ class Llama {
     }
 
     try {
-      // Free current tokens if they exist
       if (_tokens != nullptr) {
         malloc.free(_tokens);
         _tokens = nullptr;
       }
-
-      // Reset internal state
       _nPrompt = 0;
       _nPos = 0;
 
-      // Reset the context state
       if (context.address != 0) {
         lib.llama_kv_cache_clear(context);
       }
-
-      // Reset batch
-      batch = lib.llama_batch_init(0, 0, 1);
 
       _status = LlamaStatus.ready;
     } catch (e) {
@@ -425,7 +416,6 @@ class Llama {
       final textPtr = text.toNativeUtf8().cast<Char>();
 
       try {
-        // First get the required number of tokens
         int nTokens = -lib.llama_tokenize(
             vocab, textPtr, text.length, nullptr, 0, addBos, true);
 
@@ -433,19 +423,15 @@ class Llama {
           throw LlamaException('Failed to determine token count');
         }
 
-        // Allocate token array
         final tokens = malloc<llama_token>(nTokens);
 
         try {
-          // Perform actual tokenization
           int actualTokens = lib.llama_tokenize(
               vocab, textPtr, text.length, tokens, nTokens, addBos, true);
 
           if (actualTokens < 0) {
             throw LlamaException('Tokenization failed');
           }
-
-          // Convert to Dart list
           return List<int>.generate(actualTokens, (i) => tokens[i]);
         } finally {
           malloc.free(tokens);
@@ -478,35 +464,27 @@ class Llama {
     }
 
     try {
-      // 1. Tokenize the prompt
       List<int> tokens = tokenize(prompt, addBos);
       int nTokens = tokens.length;
 
-      // 2. Initialize a batch
       llama_batch promptBatch = lib.llama_batch_init(nTokens, 0, 1);
 
-      // 3. Add tokens to the batch.  Directly set the fields.
       for (int i = 0; i < nTokens; i++) {
         promptBatch.token[i] = tokens[i];
         promptBatch.pos[i] = i;
-        promptBatch.n_seq_id[i] = 1; // Set n_seq_id to 1 (size of seq_id array)
-        promptBatch.seq_id[i] = calloc<llama_seq_id>()
-          ..value = 0; // Use a single sequence ID (0)
-        promptBatch.logits[i] =
-            i == nTokens - 1 ? 1 : 0; // Logits only for the last token
+        promptBatch.n_seq_id[i] = 1;
+        promptBatch.seq_id[i] = calloc<llama_seq_id>()..value = 0;
+        promptBatch.logits[i] = i == nTokens - 1 ? 1 : 0;
       }
       promptBatch.n_tokens = nTokens;
 
-      // 4. Decode the batch (run the model)
-      lib.llama_kv_cache_clear(
-          context); // Clear KV cache before decoding.  IMPORTANT!
+      lib.llama_kv_cache_clear(context);
 
       if (lib.llama_decode(context, promptBatch) != 0) {
         lib.llama_batch_free(promptBatch);
         throw LlamaException("Failed to decode prompt for embeddings");
       }
 
-      // 5. Get the embeddings
       final int nEmbd = lib.llama_n_embd(model);
       final Pointer<Float> embeddingsPtr = lib.llama_get_embeddings(context);
 
@@ -515,15 +493,12 @@ class Llama {
         throw LlamaException("Failed to get embeddings");
       }
 
-      // 6. Copy embeddings to a Dart list
       final embeddingsList = <double>[];
       for (int i = 0; i < nEmbd; i++) {
-        embeddingsList.add(embeddingsPtr[i].toDouble()); // Convert to double
+        embeddingsList.add(embeddingsPtr[i].toDouble());
       }
 
-      // 7. Free the batch
       lib.llama_batch_free(promptBatch);
-
       return embeddingsList;
     } catch (e) {
       _status = LlamaStatus.error;

@@ -1,5 +1,4 @@
 import 'package:typed_isolate/typed_isolate.dart';
-
 import "llama.dart";
 import "isolate_types.dart";
 
@@ -12,9 +11,13 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   @override
   void onData(LlamaCommand data) {
     switch (data) {
-      case LlamaStop() || LlamaClear():
+      case LlamaStop():
+        shouldStop = true;
+
+      case LlamaClear():
         shouldStop = true;
         llama?.clear();
+
       case LlamaLoad(
           :final path,
           :final modelParams,
@@ -22,8 +25,11 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           :final samplingParams
         ):
         llama = Llama(path, modelParams, contextParams, samplingParams);
+
       case LlamaPrompt(:final prompt):
+        shouldStop = false; // Reset stop flag before new prompt
         _sendPrompt(prompt);
+
       case LlamaInit(:final libraryPath):
         Llama.libraryPath = libraryPath;
     }
@@ -31,11 +37,21 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
 
   void _sendPrompt(String prompt) {
     llama?.setPrompt(prompt);
+
+    int tokenCount = 0;
     while (true) {
-      if (shouldStop) break;
+      if (shouldStop) {
+        break;
+      }
+
       final (text, isDone) = llama!.getNext();
+      tokenCount++;
+
       sendToParent(LlamaResponse(text: text, isDone: isDone));
-      if (isDone) shouldStop = true;
+
+      if (isDone) {
+        shouldStop = true;
+      }
     }
   }
 }

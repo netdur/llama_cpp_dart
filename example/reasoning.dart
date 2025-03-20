@@ -20,11 +20,10 @@ void main() async {
     contextParams.nCtx = size;
     contextParams.nBatch = size;
     contextParams.nUbatch = size;
-    contextParams.nPredit = 512;
+    // contextParams.nPredit = 512;
 
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
-    String modelPath =
-        "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP.Q8_0.gguf";
+    String modelPath = "/Users/adel/Downloads/gemma-3-12b-it-Q4_K_M.gguf";
 
     Llama llama = Llama(modelPath, modelParams, contextParams, samplerParams);
 

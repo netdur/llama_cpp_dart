@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:llama_cpp_dart/src/chat.dart';
-import 'package:llama_cpp_dart/src/chatml_format.dart';
 
 void main() async {
   try {
@@ -40,7 +39,7 @@ void main() async {
     print('Loading model...');
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     final llama = Llama(
-      "/Users/adel/Downloads/Qwen2-7B-Multilingual-RP-Q4_K_M.gguf",
+      "/Users/adel/Downloads/gemma-3-12b-it-Q4_K_M.gguf",
       ModelParams(),
       ContextParams(),
       SamplerParams(),
