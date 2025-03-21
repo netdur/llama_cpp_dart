@@ -26,9 +26,12 @@ class LlamaPrompt extends LlamaCommand {
 class LlamaResponse {
   final String text;
   final bool isDone;
+  final LlamaStatus? status;
+
   LlamaResponse({
     required this.text,
     required this.isDone,
+    this.status,
   });
 }
 

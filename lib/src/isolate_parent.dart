@@ -16,10 +16,16 @@ class LlamaParent {
   bool _isDone = false;
   bool _isGenerating = false;
 
+  // Add status tracking
+  LlamaStatus _status = LlamaStatus.uninitialized;
+  LlamaStatus get status => _status;
+
   List<Map<String, dynamic>> messages = [];
 
   final LlamaLoad loadCommand;
   final PromptFormat? formatter;
+
+  Completer<void>? _readyCompleter;
 
   LlamaParent(this.loadCommand, [this.formatter]);
 
@@ -34,54 +40,29 @@ class LlamaParent {
   String _currentPromptId = "";
 
   void _onData(LlamaResponse data) {
-    // print("data.isDone ${data.isDone}");
-
-    // First check if we're already done to avoid processing more data
-    if (_isDone) {
-      return;
+    if (data.status != null) {
+      _status = data.status!;
+      if (data.status == LlamaStatus.ready && !_readyCompleter!.isCompleted) {
+        _readyCompleter!.complete();
+      }
     }
 
-    // Mark as done if this is the final response
+    if (data.text.isNotEmpty) {
+      _controller.add(data.text);
+    }
+
     if (data.isDone) {
-      _isDone = true;
       _isGenerating = false;
-
-      // Emit completion event
       _completionController.add(CompletionEvent(_currentPromptId, true));
-    }
-
-    // Process the response text regardless
-    _parseResponse(data.text);
-
-    /*
-    // Close the controller only after processing the last piece of text
-    if (_isDone) {
-      // Use a small delay to ensure all processing is complete
-      Future.delayed(Duration.zero, () {
-        if (!_controller.isClosed) {
-          _controller.close();
-        }
-      });
-    }
-    */
-  }
-
-  void _parseResponse(String response) {
-    // Check if controller is already closed
-    if (_controller.isClosed) {
-      return;
-    }
-
-    final processed =
-        formatter == null ? response : formatter!.filterResponse(response);
-    if (processed != null) {
-      _controller.add(processed);
     }
   }
 
   Future<void> init() async {
+    _readyCompleter = Completer<void>();
+
     _isDone = false;
     _isGenerating = false;
+    _status = LlamaStatus.uninitialized;
     _parent.init();
 
     // Cancel any existing subscription first
@@ -100,6 +81,12 @@ class LlamaParent {
         id: 1);
 
     _parent.sendToChild(data: loadCommand, id: 1);
+
+    // Wait for model to be ready
+    // Note: This assumes the LlamaChild will send a response with ready status
+    // _status = LlamaStatus.ready;
+    await _readyCompleter!.future;
+    // _readyCompleter!.complete();
   }
 
   // Reset internal state for new generation
@@ -123,6 +110,9 @@ class LlamaParent {
     // Clear the llama context
     _parent.sendToChild(id: 1, data: LlamaClear());
 
+    // Set status to ready after clearing
+    _status = LlamaStatus.ready;
+
     // Wait for the clear to complete
     await Future.delayed(Duration(milliseconds: 200));
   }
@@ -132,6 +122,9 @@ class LlamaParent {
     if (_isGenerating) {
       _parent.sendToChild(id: 1, data: LlamaStop());
       _isGenerating = false;
+
+      // Set status to ready after stopping
+      _status = LlamaStatus.ready;
 
       // Give a moment for the stop to process
       await Future.delayed(Duration(milliseconds: 200));
@@ -146,8 +139,9 @@ class LlamaParent {
     // Generate a unique ID for this prompt (or accept one as parameter)
     _currentPromptId = DateTime.now().millisecondsSinceEpoch.toString();
 
-    // Mark that we're now generating
+    // Mark that we're now generating and update status
     _isGenerating = true;
+    _status = LlamaStatus.generating;
 
     final formattedPrompt = messages.isEmpty
         ? (formatter?.formatPrompt(prompt) ?? prompt)
@@ -166,6 +160,7 @@ class LlamaParent {
   Future<void> dispose() async {
     _isDone = true;
     _isGenerating = false;
+    _status = LlamaStatus.disposed;
 
     await _subscription?.cancel();
 

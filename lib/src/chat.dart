@@ -75,14 +75,15 @@ class ChatHistory {
   }
 
   /// Exports chat history in the specified format
-  String exportFormat(ChatFormat format) {
+  String exportFormat(ChatFormat format,
+      {bool leaveLastAssistantOpen = false}) {
     switch (format) {
       case ChatFormat.chatml:
         return _exportChatML();
       case ChatFormat.alpaca:
         return _exportAlpaca();
       case ChatFormat.gemini:
-        return _exportGemini();
+        return _exportGemini(leaveLastAssistantOpen: leaveLastAssistantOpen);
     }
   }
 
@@ -123,10 +124,21 @@ class ChatHistory {
   }
 
   /// Exports chat history in Gemini format
-  String _exportGemini() {
+  /// If leaveLastAssistantOpen is true and the last message is an empty assistant message,
+  /// it will not add the closing tag for that message
+  String _exportGemini({bool leaveLastAssistantOpen = false}) {
     final buffer = StringBuffer();
 
-    for (final message in messages) {
+    for (int i = 0; i < messages.length; i++) {
+      final message = messages[i];
+      final isLastMessage = i == messages.length - 1;
+
+      // Handle special case for the last assistant message
+      final isEmptyAssistant =
+          message.role == Role.assistant && message.content.isEmpty;
+      final shouldLeaveOpen =
+          leaveLastAssistantOpen && isLastMessage && isEmptyAssistant;
+
       switch (message.role) {
         case Role.user:
           buffer.write('<start_of_turn>user\n');
@@ -135,16 +147,15 @@ class ChatHistory {
         case Role.assistant:
           buffer.write('<start_of_turn>model\n');
           buffer.write(message.content);
-          buffer.writeln('<end_of_turn>');
+          // Only add end tag if we're not leaving this message open
+          if (!shouldLeaveOpen) {
+            buffer.writeln('<end_of_turn>');
+          }
         case Role.system:
-          // Gemini doesn't formally support system messages in this format
-          // System messages are typically handled differently or incorporated into user messages
-          // For backward compatibility, we'll include it with a comment
           buffer.write('<start_of_turn>user\n');
           buffer.write('System instruction: ${message.content}');
           buffer.writeln('<end_of_turn>');
         case Role.unknown:
-          // Skip unknown roles or handle as needed
           break;
       }
     }

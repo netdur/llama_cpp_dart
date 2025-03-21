@@ -8,6 +8,11 @@ import 'model_params.dart';
 import 'llama_cpp.dart';
 import 'context_params.dart';
 
+typedef LlamaLogCallback = Void Function(
+    UnsignedInt level, Pointer<Char> text, Pointer<Void> userData);
+typedef LlamaLogCallbackDart = void Function(
+    int level, Pointer<Char> text, Pointer<Void> userData);
+
 /// Custom exception for Llama-specific errors
 class LlamaException implements Exception {
   final String message;
@@ -39,6 +44,8 @@ class Llama {
   int _nPredict = 32;
   int _nPos = 0;
 
+  bool _verbos = false;
+
   bool _isDisposed = false;
   LlamaStatus _status = LlamaStatus.uninitialized;
 
@@ -67,9 +74,11 @@ class Llama {
   Llama(String modelPath,
       [ModelParams? modelParamsDart,
       ContextParams? contextParamsDart,
-      SamplerParams? samplerParams]) {
+      SamplerParams? samplerParams,
+      bool? verbos]) {
     batch = lib.llama_batch_init(512, 0, 1); // Initialize batch here!
     try {
+      _verbos = verbos ?? false;
       _validateConfiguration();
       _initializeLlama(
           modelPath, modelParamsDart, contextParamsDart, samplerParams);
@@ -88,9 +97,18 @@ class Llama {
     }
   }
 
+  static void llamaLogCallbackNull(
+      int level, Pointer<Char> text, Pointer<Void> userData) {}
+
   /// Initializes the Llama instance with the given parameters
   void _initializeLlama(String modelPath, ModelParams? modelParamsDart,
       ContextParams? contextParamsDart, SamplerParams? samplerParams) {
+    if (_verbos == false) {
+      final nullCallbackPointer =
+          Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackNull);
+      lib.llama_log_set(nullCallbackPointer, nullptr);
+    }
+
     lib.llama_backend_init();
 
     modelParamsDart ??= ModelParams();

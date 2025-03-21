@@ -21,12 +21,12 @@ class GeminiFormat extends PromptFormat {
     String formattedMessages = '';
 
     // First, check for and handle system message
-    bool hasSystemMessage = false;
+    // bool hasSystemMessage = false;
     for (var message in messages) {
       if (message['role'] == 'system') {
         formattedMessages +=
             '$inputSequence$systemPrefix${message['content']}$stopSequence';
-        hasSystemMessage = true;
+        // hasSystemMessage = true;
         break;
       }
     }
