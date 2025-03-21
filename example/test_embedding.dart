@@ -17,6 +17,8 @@ void main() async {
     List<double> embeddings = llama.getEmbeddings("2 * 2 = ?");
     stdout.write(embeddings);
     stdout.write("\n");
+    stdout.write(embeddings.length);
+    stdout.write("\n");
 
     llama.dispose();
   } catch (e) {

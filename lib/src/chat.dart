@@ -1,7 +1,8 @@
 /// Represents supported chat formats for export
 enum ChatFormat {
   chatml,
-  alpaca;
+  alpaca,
+  gemini;
 
   String get value => name;
 }
@@ -80,6 +81,8 @@ class ChatHistory {
         return _exportChatML();
       case ChatFormat.alpaca:
         return _exportAlpaca();
+      case ChatFormat.gemini:
+        return _exportGemini();
     }
   }
 
@@ -114,6 +117,36 @@ class ChatHistory {
       buffer.writeln();
       buffer.writeln(message.content);
       buffer.writeln();
+    }
+
+    return buffer.toString();
+  }
+
+  /// Exports chat history in Gemini format
+  String _exportGemini() {
+    final buffer = StringBuffer();
+
+    for (final message in messages) {
+      switch (message.role) {
+        case Role.user:
+          buffer.write('<start_of_turn>user\n');
+          buffer.write(message.content);
+          buffer.writeln('<end_of_turn>');
+        case Role.assistant:
+          buffer.write('<start_of_turn>model\n');
+          buffer.write(message.content);
+          buffer.writeln('<end_of_turn>');
+        case Role.system:
+          // Gemini doesn't formally support system messages in this format
+          // System messages are typically handled differently or incorporated into user messages
+          // For backward compatibility, we'll include it with a comment
+          buffer.write('<start_of_turn>user\n');
+          buffer.write('System instruction: ${message.content}');
+          buffer.writeln('<end_of_turn>');
+        case Role.unknown:
+          // Skip unknown roles or handle as needed
+          break;
+      }
     }
 
     return buffer.toString();

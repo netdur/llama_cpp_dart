@@ -1,7 +1,11 @@
 import 'package:llama_cpp_dart/src/sequence_filter.dart';
 
 /// An enumeration representing different types of LLM Prompt Formats.
-enum PromptFormatType { raw, chatml, alpaca }
+enum PromptFormatType {
+  raw,
+  chatml,
+  alpaca,
+}
 
 /// A class representing a LLM Prompt Format.
 abstract class PromptFormat {

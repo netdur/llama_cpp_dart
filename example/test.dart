@@ -10,7 +10,8 @@ void main() async {
     String modelPath = "/Users/adel/Downloads/gemma-3-12b-it-Q4_K_M.gguf";
     Llama llama = Llama(modelPath);
 
-    llama.setPrompt("2 * 2 = ?");
+    llama.setPrompt(
+        "<start_of_turn>What is 2 * 4?<end_of_turn>\n<start_of_turn>model\n");
     while (true) {
       var (token, done) = llama.getNext();
       stdout.write(token);

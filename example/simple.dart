@@ -6,7 +6,8 @@ import 'package:llama_cpp_dart/src/llama_cpp.dart';
 void main() {
   // Initialize settings
   String modelPath = "/Users/adel/Downloads/gemma-3-12b-it-Q4_K_M.gguf";
-  String prompt = "Hello my name is";
+  String prompt =
+      "<start_of_turn>Hello my name is.<end_of_turn>\n<start_of_turn>model\n";
   int ngl = 99;
   int nPredict = 32;
 
