@@ -488,7 +488,7 @@ class Llama {
       throw ArgumentError('Prompt cannot be empty');
     }
 
-    llama_batch? promptBatch = null;
+    llama_batch? promptBatch;
 
     try {
       // Tokenize the input text
@@ -498,9 +498,6 @@ class Llama {
       // Check if token count exceeds batch size
       int batchSize = _contextParams?.nBatch ?? 512;
       if (nTokens > batchSize) {
-        print(
-            "Warning: Input length (${nTokens} tokens) exceeds batch size (${batchSize})");
-        print("Trimming input to fit batch size...");
         tokens = tokens.sublist(0, batchSize - 1);
         nTokens = tokens.length;
       }
@@ -524,12 +521,8 @@ class Llama {
 
       // Process the batch
       bool isEncoderOnly = false;
-      try {
-        isEncoderOnly = lib.llama_model_has_encoder(model) &&
-            !lib.llama_model_has_decoder(model);
-      } catch (e) {
-        print("Warning: Could not determine model type: $e");
-      }
+      isEncoderOnly = lib.llama_model_has_encoder(model) &&
+          !lib.llama_model_has_decoder(model);
 
       if (isEncoderOnly) {
         if (lib.llama_encode(context, promptBatch) != 0) {

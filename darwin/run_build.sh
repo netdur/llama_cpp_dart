@@ -19,16 +19,18 @@ build_for_platform() {
     local output_dir="${output_base_dir}/bin/${platform}"
     local shared_libs="ON"
     local lib_extension="dylib"
+    local deployment_target=13.1
 
     local postfix=""
-    if [[ "$platform" == "SIMULATORARM64" ]]; then
+    if [[ "$platform" == "SIMULATORARM64" || "$platform" == "SIMULATOR64" ]]; then
         postfix="-iphonesimulator"
     fi
     if [[ "$platform" == "OS64" ]]; then
         postfix="-iphoneos"
+        deployment_target=13.1  # Set higher deployment target for iOS platforms
     fi
 
-    echo "Building for platform: ${platform}"
+    echo "Building for platform: ${platform} with deployment target iOS ${deployment_target}"
     
     rm -rf "${build_dir}"
     mkdir -p "${build_dir}"
@@ -43,7 +45,7 @@ build_for_platform() {
           -G Xcode \
           -DCMAKE_TOOLCHAIN_FILE="${script_dir}/ios-arm64.toolchain.cmake" \
           -DPLATFORM="${platform}" \
-          -DDEPLOYMENT_TARGET=12 \
+          -DDEPLOYMENT_TARGET=${deployment_target} \
           -DENABLE_BITCODE=0 \
           -DENABLE_ARC=0 \
           -DENABLE_VISIBILITY=1 \
@@ -78,20 +80,17 @@ build_for_platform() {
 }
 
 main() {
+    # Check if a specific platform was provided as a third argument
+    local platform=${3:-"MAC_ARM64"}
+    
     cp "${script_dir}/ios-arm64.toolchain.cmake" "${llama_cpp_path}/"
 
     pushd "${llama_cpp_path}" > /dev/null
 
-    build_for_platform "MAC_ARM64"
-    # build_for_platform "OS64"
-    # build_for_platform "SIMULATORARM64"
+    build_for_platform "${platform}"
 
     # return to original directory
     popd > /dev/null
-
-    rm -rf "${output_base_dir}/include"
-    mkdir -p "${output_base_dir}/include"
-    cp -r "${llama_cpp_path}/build_MAC_ARM64/install/include/"* "${output_base_dir}/include/"
 }
 
 main "$@"

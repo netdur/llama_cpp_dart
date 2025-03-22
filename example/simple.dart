@@ -12,7 +12,8 @@ void main() {
   int nPredict = 32;
 
   // Load library
-  final lib = llama_cpp(DynamicLibrary.open("bin/MAC_ARM64/libllama.dylib"));
+  final lib = llama_cpp(DynamicLibrary.open(
+      "/Users/adel/Workspace/llama_cpp_dart/bin/MAC_ARM64/libllama.dylib"));
   lib.llama_backend_init();
 
   // Initialize model
