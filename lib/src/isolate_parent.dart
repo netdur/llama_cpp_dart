@@ -13,7 +13,7 @@ class LlamaParent {
   final _parent = IsolateParent<LlamaCommand, LlamaResponse>();
 
   StreamSubscription<LlamaResponse>? _subscription;
-  bool _isDone = false;
+  // bool _isDone = false;
   bool _isGenerating = false;
 
   // Add status tracking
@@ -60,7 +60,7 @@ class LlamaParent {
   Future<void> init() async {
     _readyCompleter = Completer<void>();
 
-    _isDone = false;
+    // _isDone = false;
     _isGenerating = false;
     _status = LlamaStatus.uninitialized;
     _parent.init();
@@ -96,7 +96,7 @@ class LlamaParent {
       await _stopGeneration();
     }
 
-    _isDone = false;
+    // _isDone = false;
 
     // Recreate the stream controller if it was closed
     if (_controller.isClosed) {
@@ -158,7 +158,7 @@ class LlamaParent {
   }
 
   Future<void> dispose() async {
-    _isDone = true;
+    // _isDone = true;
     _isGenerating = false;
     _status = LlamaStatus.disposed;
 

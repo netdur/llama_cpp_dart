@@ -3,7 +3,6 @@
 import 'dart:io';
 
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
-import 'package:llama_cpp_dart/src/chat.dart';
 
 void main() async {
   try {
@@ -25,7 +24,7 @@ void main() async {
     // Load the LLM model
     print("Loading model, please wait...");
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
-    String modelPath = "/Users/adel/Downloads/gemma-3-12b-it-Q4_K_M.gguf";
+    String modelPath = "/Users/adel/Workspace/gguf/gemma-3-12b-it-Q4_K_M.gguf";
     Llama llama =
         Llama(modelPath, ModelParams(), contextParams, samplerParams, false);
     print("Model loaded successfully! ${llama.status}");

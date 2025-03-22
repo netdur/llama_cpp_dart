@@ -18,8 +18,9 @@ void main() async {
   samplerParams.topP = 0.95;
   samplerParams.penaltyRepeat = 1.1;
 
+  String modelPath = "/Users/adel/Workspace/gguf/gemma-3-12b-it-Q4_K_M.gguf";
   final loadCommand = LlamaLoad(
-    path: "/Users/adel/Downloads/gemma-3-12b-it-Q4_K_M.gguf",
+    path: modelPath,
     modelParams: ModelParams(),
     contextParams: contextParams,
     samplingParams: samplerParams,

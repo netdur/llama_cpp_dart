@@ -32,9 +32,11 @@ ffigen: # dart run ffigen
   # ignore-source-errors: true
   headers:
     entry-points:
-      - 'include/llama.h'
+      - 'src/llama.cpp/include/llama.h'
   compiler-opts:
     - '-I/usr/lib/clang/17/include'
+    - '-Isrc/llama.cpp/ggml/include'
+    - '-Isrc/llama.cpp/include'
 
 flutter:
   plugin:

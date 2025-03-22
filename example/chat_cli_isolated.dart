@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:async';
 
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
-import 'package:llama_cpp_dart/src/chat.dart';
 
 void main() async {
   print("Starting LLM CLI Chat App with Isolates...");
@@ -26,7 +25,7 @@ void main() async {
 
   // Initialize load command for the isolate
   final loadCommand = LlamaLoad(
-    path: "/Users/adel/Downloads/gemma-3-12b-it-Q4_K_M.gguf",
+    path: "/Users/adel/Workspace/gguf/gemma-3-12b-it-Q4_K_M.gguf",
     modelParams: ModelParams(),
     contextParams: contextParams,
     samplingParams: samplerParams,
