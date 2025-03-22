@@ -10,15 +10,6 @@ This library provides three levels of abstraction for integrating llama.cpp into
 2. **High-Level Wrapper**: Simplified, object-oriented API
 3. **Managed Isolate**: Flutter-friendly, non-blocking implementation
 
-## Features
-
-- Asynchronous text generation using Dart isolates
-- Flexible configuration through customizable parameters
-- Multiple integration approaches to suit different needs
-- Real-time text generation with stream-based output
-- Support for different prompt formats (ChatML, Alpaca)
-- Comprehensive parameter control for model, context, and sampling
-
 ## Usage Examples
 
 ### Low-Level FFI Bindings
@@ -32,6 +23,10 @@ void main() {
   // See examples/low_level.dart for complete example
 }
 ```
+
+check examples:
+- [simple](example/simple.dart)
+- [embedding](example/embedding_raw.dart)
 
 ### High-Level Wrapper
 Simplified API for common use cases:
@@ -51,6 +46,12 @@ void main() {
   llama.dispose();
 }
 ```
+
+check examples:
+- [test](example/test.dart)
+- [rag](example/rag.dart)
+- [chat](example/chat_cli.dart)
+
 
 ### Managed Isolate
 Perfect for Flutter applications:
@@ -74,6 +75,10 @@ void main() async {
 }
 ```
 
+check examples:
+- [test](example/test_isolated.dart)
+- [chat](example/chat_cli_isolated.dart)
+
 ## Getting Started
 
 ### Prerequisites
@@ -85,13 +90,15 @@ void main() async {
 
 1. Clone the llama.cpp repository:
 ```bash
-git clone https://github.com/ggerganov/llama.cpp
+git clone https://github.com/ggml-org/llama.cpp
 ```
 
 2. Compile into a shared library:
 - Windows: Outputs .dll
 - Linux: Outputs .so
 - macOS: Outputs .dylib
+
+check [BUILD.md](BUILD.md)
 
 3. Place the compiled library in your project's accessible directory
 
@@ -102,6 +109,72 @@ Add to your `pubspec.yaml`:
 dependencies:
   llama_cpp_dart: ^latest_version
 ```
+
+## Model Selection Guide
+
+When choosing and using LLM models with this library, consider the following:
+
+### Use-Case Specific Models
+
+Different models excel at different tasks:
+
+- **Text Generation**: Most LLMs work well for general text generation.
+- **Embeddings**: Not all models produce high-quality embeddings for semantic search. For example, while Gemma 3 can generate embeddings, it's not optimized for vector search. Instead, consider dedicated embedding models like E5, BGE, or SGPT.
+- **Code Generation**: Models like CodeLlama or StarCoder are specifically trained for code.
+- **Multilingual**: Some models have better support for non-English languages.
+
+### Chat Formats
+
+Each model family expects prompts in a specific format:
+
+- **Llama 2**: Uses a specific format with `[INST]` and `[/INST]` tags
+- **ChatML**: Used by models like Claude and GPT
+- **Gemma**: Has its own system prompt format
+- **Mistral/Mixtral**: Uses `<s>` tags in a particular way
+
+Using the correct format is critical for optimal results. Our library provides common format templates:
+
+```dart
+// Example of setting the right chat format
+final loadCommand = LlamaLoad(
+  path: "path/to/llama2.gguf",
+  format: Llama2ChatFormat(), // Choose the correct format for your model
+);
+
+// Other available formats
+// ChatMLFormat()
+// GemmaChatFormat()
+// MistralChatFormat()
+// Custom formats can be created by implementing the ChatFormat interface
+```
+
+### Model Size Considerations
+
+Balance quality and performance:
+
+- **7B models**: Fastest, lowest memory requirements, but less capable
+- **13-14B models**: Good balance of performance and quality
+- **30-70B models**: Highest quality, but significantly higher memory and processing requirements
+
+### Quantization
+
+Models come in different quantization levels that affect size, speed, and quality:
+
+- **F16**: Highest quality, largest size
+- **Q4_K_M**: Good balance of quality and size
+- **Q3_K_M**: Smaller size, slightly reduced quality
+- **Q2_K**: Smallest size, noticeable quality degradation
+
+For most applications, Q4_K_M provides an excellent balance.
+
+### Hardware Considerations
+
+- **CPU**: All models work on CPU, but larger models require more RAM
+- **Metal (Apple)**: Significant speed improvements on Apple Silicon
+- **CUDA (NVIDIA)**: Best performance for NVIDIA GPUs
+- **ROCm (AMD)**: Support for AMD GPUs
+
+Ensure your compiled llama.cpp library includes support for your target hardware.
 
 ## License
 
