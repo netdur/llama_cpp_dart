@@ -47,6 +47,41 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
         Llama.libraryPath = libraryPath;
         sendToParent(LlamaResponse(
             text: "", isDone: true, status: LlamaStatus.uninitialized));
+
+      case LlamaGetEmbeddings(:final prompt, :final addBos, :final normalize):
+        // Basic check if llama exists (essential)
+        if (llama == null || llama!.isDisposed) {
+          sendToParent(LlamaResponse(
+              isDone: true, // Embedding attempt is done (failed)
+              status: LlamaStatus.error,
+              error: "Llama model not loaded or disposed."));
+          return;
+        }
+
+        try {
+          // Ensure the contextParams used to load the model had embeddings=true
+          // The check for this will now be primarily in LlamaParent before sending
+          final List<double> embeddingsResult = llama!.getEmbeddings(
+            prompt,
+            addBos: addBos,
+            normalize: normalize,
+          );
+          // Send success response
+          sendToParent(LlamaResponse(
+            isDone: true, // Embedding task is done
+            status:
+                llama!.status, // Reflect current llama status (should be ready)
+            embeddings: embeddingsResult,
+          ));
+        } catch (e) {
+          // Send error response
+          sendToParent(LlamaResponse(
+            isDone: true, // Embedding task is done (with failure)
+            status: LlamaStatus.error, // Llama might be in error state now
+            error: "Error getting embeddings: ${e.toString()}",
+          ));
+        }
+        break;
     }
   }
 

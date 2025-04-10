@@ -23,16 +23,26 @@ class LlamaPrompt extends LlamaCommand {
   LlamaPrompt(this.prompt);
 }
 
+class LlamaGetEmbeddings extends LlamaCommand {
+  final String prompt;
+  final bool addBos;
+  final bool normalize;
+  LlamaGetEmbeddings(this.prompt, {this.addBos = true, this.normalize = true});
+}
+
 class LlamaResponse {
   final String text;
   final bool isDone;
   final LlamaStatus? status;
+  final List<double>? embeddings;
+  final String? error;
 
-  LlamaResponse({
-    required this.text,
-    required this.isDone,
-    this.status,
-  });
+  LlamaResponse(
+      {this.text = "",
+      required this.isDone,
+      this.status,
+      this.embeddings,
+      this.error});
 }
 
 class LlamaLoad extends LlamaCommand {

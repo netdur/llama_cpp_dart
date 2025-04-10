@@ -27,6 +27,8 @@ class LlamaParent {
 
   Completer<void>? _readyCompleter;
 
+  Completer<List<double>>? _embeddingCompleter;
+
   LlamaParent(this.loadCommand, [this.formatter]);
 
   Stream<String> get stream => _controller.stream;
@@ -40,6 +42,23 @@ class LlamaParent {
   String _currentPromptId = "";
 
   void _onData(LlamaResponse data) {
+    if (_embeddingCompleter != null && !_embeddingCompleter!.isCompleted) {
+      if (data.embeddings != null) {
+        // Success
+        _embeddingCompleter!.complete(data.embeddings!);
+      } else {
+        // Assume error if embeddings are null (use the error field if available)
+        _embeddingCompleter!.completeError(
+            LlamaException(data.error ?? "Unknown error getting embeddings"));
+      }
+      _embeddingCompleter = null; // Reset completer
+      // Update status if provided in the response (optional refinement)
+      if (data.status != null) {
+        _status = data.status!;
+      }
+      return; // IMPORTANT: Stop processing here for embedding responses
+    }
+
     if (data.status != null) {
       _status = data.status!;
       if (data.status == LlamaStatus.ready && !_readyCompleter!.isCompleted) {
@@ -133,6 +152,11 @@ class LlamaParent {
 
   // Enhanced sendPrompt that auto-resets and handles ongoing generations
   Future<String> sendPrompt(String prompt) async {
+    if (loadCommand.contextParams.embeddings) {
+      throw StateError(
+          "This LlamaParent instance is configured for embeddings only and cannot generate text.");
+    }
+
     // Auto-reset before sending a new prompt
     await _reset();
 
@@ -172,5 +196,42 @@ class LlamaParent {
     _parent.sendToChild(id: 1, data: LlamaClear());
 
     _parent.dispose();
+  }
+
+  Future<List<double>> getEmbeddings(String prompt,
+      {bool addBos = true, bool normalize = true}) async {
+    // 1. Check configuration: Must be an embedding instance
+    if (!loadCommand.contextParams.embeddings) {
+      throw StateError(
+          "This LlamaParent instance is configured for text generation only and cannot get embeddings.");
+    }
+
+    // 2. Basic Status Check (use whatever check was implicitly working before for sendPrompt/init)
+    if (_status != LlamaStatus.ready) {
+      // If init needs awaiting (based on your original usage)
+      if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
+        await _readyCompleter!.future;
+      }
+      // Check again after potential wait
+      if (_status != LlamaStatus.ready) {
+        throw StateError('Llama is not ready. Current status: $_status');
+      }
+    }
+
+    // 3. Prevent concurrent embedding requests (still useful within embedding mode)
+    if (_embeddingCompleter != null && !_embeddingCompleter!.isCompleted) {
+      throw StateError('Another embedding request is already in progress.');
+    }
+
+    // 4. Create completer and send command
+    _embeddingCompleter = Completer<List<double>>();
+    _parent.sendToChild(
+      id: 1,
+      data: LlamaGetEmbeddings(prompt, addBos: addBos, normalize: normalize),
+    );
+
+    // 5. Return the future (add timeout if desired)
+    // return _embeddingCompleter!.future.timeout(Duration(seconds: 60)); // Optional
+    return _embeddingCompleter!.future;
   }
 }

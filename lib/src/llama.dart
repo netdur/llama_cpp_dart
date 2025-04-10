@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:async';
@@ -79,12 +80,18 @@ class Llama {
       ContextParams? contextParamsDart,
       SamplerParams? samplerParams,
       bool? verbos]) {
-    batch = lib.llama_batch_init(512, 0, 1); // Initialize batch here!
     try {
       _verbos = verbos ?? false;
+      // _verbos = true;
       _validateConfiguration();
       _initializeLlama(
           modelPath, modelParamsDart, contextParamsDart, samplerParams);
+
+      if (contextParamsDart != null) {
+        var contextParams = contextParamsDart.get();
+        batch = lib.llama_batch_init(contextParams.n_batch, 0, 1);
+      }
+
       _status = LlamaStatus.ready;
     } catch (e) {
       _status = LlamaStatus.error;
@@ -95,9 +102,12 @@ class Llama {
 
   /// Validates the configuration parameters
   void _validateConfiguration() {
-    if (_nPredict <= 0) {
-      throw ArgumentError('nPredict must be positive');
+    // Allow nPredict = -1 for unlimited generation,
+    // but disallow 0 or other negative values.
+    if (_nPredict == 0 || _nPredict < -1) {
+      throw ArgumentError('nPredict must be positive or -1 for unlimited');
     }
+    // No error if _nPredict > 0 or _nPredict == -1
   }
 
   static void llamaLogCallbackNull(
@@ -217,8 +227,8 @@ class Llama {
       lib.llama_sampler_chain_add(_smpl, grammar);
     }
 
-    calloc.free(grammarStrPtr);
-    calloc.free(grammarRootPtr);
+    if (grammarStrPtr != nullptr) malloc.free(grammarStrPtr);
+    if (grammarRootPtr != nullptr) malloc.free(grammarRootPtr);
 
     lib.llama_sampler_chain_add(
         _smpl,
@@ -248,7 +258,7 @@ class Llama {
           ));
     } finally {
       for (var i = 0; i < numBreakers; i++) {
-        calloc.free(seqBreakersPointer[i]);
+        malloc.free(seqBreakersPointer[i]);
       }
       calloc.free(seqBreakersPointer);
     }
@@ -318,8 +328,14 @@ class Llama {
     }
 
     try {
+      /*
       if (_nPos + batch.n_tokens >= _nPrompt + _nPredict) {
         return ("", true);
+      }
+      */
+      // Only check the n_predict limit if it's positive
+      if (_nPredict > 0 && (_nPos + batch.n_tokens >= _nPrompt + _nPredict)) {
+        return ("", true); // Indicate completion due to n_predict limit
       }
 
       if (lib.llama_decode(context, batch) != 0) {
@@ -341,11 +357,14 @@ class Llama {
           throw LlamaException("Failed to convert token to piece");
         }
 
-        String piece = String.fromCharCodes(buf.cast<Uint8>().asTypedList(n));
+        String piece = utf8.decode(buf.cast<Uint8>().asTypedList(n));
 
         batch.token[0] = newTokenId;
         batch.pos[0] = _nPos;
         batch.n_seq_id[0] = 1;
+        if (batch.seq_id != nullptr && batch.seq_id[0] != nullptr) {
+          calloc.free(batch.seq_id[0]);
+        }
         batch.seq_id[0] = calloc<llama_seq_id>()..value = 0;
         batch.logits[0] = 1; // Logits for the new token
         batch.n_tokens = 1;
@@ -387,6 +406,7 @@ class Llama {
     if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
     if (context.address != 0) lib.llama_free(context);
     if (model.address != 0) lib.llama_free_model(model);
+
     lib.llama_batch_free(batch); // Free the batch
     lib.llama_backend_free();
 
@@ -413,6 +433,19 @@ class Llama {
       if (context.address != 0) {
         lib.llama_kv_cache_clear(context);
       }
+
+      if (batch.seq_id != nullptr) {
+        int batchCapacity = _contextParams?.nBatch ?? 0;
+        if (batchCapacity > 0) {
+          for (int i = 0; i < batchCapacity; ++i) {
+            if (batch.seq_id[i] != nullptr) {
+              calloc.free(batch.seq_id[i]);
+              batch.seq_id[i] = nullptr; // Set to null as batch is reused
+            }
+          }
+        }
+      }
+      batch.n_tokens = 0;
 
       _status = LlamaStatus.ready;
     } catch (e) {
