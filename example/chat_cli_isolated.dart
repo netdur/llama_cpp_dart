@@ -15,7 +15,7 @@ void main() async {
   ContextParams contextParams = ContextParams();
   contextParams.nPredict = 8192;
   contextParams.nCtx = 8192;
-  contextParams.nBatch = 8192;
+  contextParams.nBatch = 512;
 
   final samplerParams = SamplerParams();
   samplerParams.temp = 0.7;

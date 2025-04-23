@@ -3,31 +3,13 @@
 import 'dart:io';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
-String prompt = """Hey everyone,
-
-I’ve been testing out Gemini 2.5 Pro Preview inside Google AI Studio
-and I’m a bit confused about the pricing.
-
-I’m not using the API or Vertex AI, just playing around in AI Studio
-(the browser interface). According to the docs, it should be free for now—but
-I’ve seen a few posts from people saying they got charged 500 after
-just a few hours of use. 😳
-
-So my question is:
-Is Gemini 2.5 Pro Preview actually free in AI Studio right now?
-Has anyone here received a bill even though they only used it inside AI Studio?
-
-Just trying to make sure I’m not missing something that could cost me big later on.
-
-Thanks in advance!""";
-
 void main() async {
   try {
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     String modelPath = "/Users/adel/Workspace/gguf/gemma-3-12b-it-q4_0.gguf";
 
     ChatHistory history = ChatHistory()
-      ..addMessage(role: Role.user, content: prompt)
+      ..addMessage(role: Role.user, content: "hello, tell me a sexy joke!")
       ..addMessage(role: Role.assistant, content: "");
 
     final modelParams = ModelParams();

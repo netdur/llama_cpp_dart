@@ -28,7 +28,15 @@ class LlamaException implements Exception {
 }
 
 /// Status tracking for the Llama instance
-enum LlamaStatus { uninitialized, ready, generating, error, disposed }
+// enum LlamaStatus { initializing, uninitialized, ready, generating, error, disposed }
+enum LlamaStatus {
+  uninitialized,
+  loading,
+  ready,
+  generating,
+  error,
+  disposed,
+}
 
 /// A Dart wrapper for llama.cpp functionality.
 /// Provides text generation capabilities using the llama model.
@@ -282,39 +290,96 @@ class Llama {
       throw StateError('Cannot set prompt on disposed instance');
     }
 
+    Pointer<Utf8>? promptUtf8Ptr; // Declare outside try for finally block
+
     try {
       _status = LlamaStatus.generating;
-
       if (_tokens != nullptr) {
         malloc.free(_tokens);
+        _tokens = nullptr; // Ensure it's reset
       }
 
-      final promptPtr = prompt.toNativeUtf8().cast<Char>();
-      try {
-        _nPrompt = -lib.llama_tokenize(
-            vocab, promptPtr, prompt.length, nullptr, 0, true, true);
+      // 1. Convert ONCE to Pointer<Utf8>
+      promptUtf8Ptr = prompt.toNativeUtf8();
 
-        _tokens = malloc<llama_token>(_nPrompt);
-        if (lib.llama_tokenize(vocab, promptPtr, prompt.length, _tokens,
-                _nPrompt, true, true) <
-            0) {
-          throw LlamaException("Failed to tokenize prompt");
-        }
-        for (int i = 0; i < _nPrompt; i++) {
-          batch.token[i] = _tokens[i];
-          batch.pos[i] = i;
-          batch.n_seq_id[i] = 1;
-          batch.seq_id[i] = calloc<llama_seq_id>()..value = 0;
-          batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
-        }
-        batch.n_tokens = _nPrompt;
-        _nPos = 0;
-      } finally {
-        malloc.free(promptPtr);
+      // 2. Get byte length from Pointer<Utf8>
+      final int promptBytes = promptUtf8Ptr.length;
+
+      // 3. Cast to Pointer<Char> for C function calls
+      final Pointer<Char> promptCharPtr = promptUtf8Ptr.cast<Char>();
+
+      // --- Now use promptBytes and promptCharPtr ---
+
+      // 4. First llama_tokenize call (Estimate size)
+      _nPrompt = -lib.llama_tokenize(
+          vocab, promptCharPtr, promptBytes, nullptr, 0, true, true);
+
+      if (_nPrompt <= 0) {
+        throw LlamaException(
+            "Failed to estimate token count (returned $_nPrompt)");
       }
+
+      // 5. Allocate token buffer
+      _tokens = malloc<llama_token>(_nPrompt);
+
+      // 6. Second llama_tokenize call (Populate buffer and get actual count)
+      final int actualTokens = lib.llama_tokenize(vocab, promptCharPtr,
+          promptBytes, _tokens, _nPrompt, true, true); // Use correct args
+
+      // 7. Check for errors from the second call
+      if (actualTokens < 0) {
+        malloc.free(_tokens); // Free buffer on failure
+        _tokens = nullptr;
+        throw LlamaException(
+            "Failed to tokenize prompt (returned $actualTokens)");
+      }
+
+      // 8. Update _nPrompt with the ACTUAL token count
+      _nPrompt = actualTokens;
+
+      // 9. Check batch capacity
+      int batchCapacity = _contextParams?.nBatch ?? 512;
+      if (_nPrompt > batchCapacity) {
+        malloc.free(_tokens); // Free buffer if prompt too long
+        _tokens = nullptr;
+        throw LlamaException(
+            "Prompt token count ($_nPrompt) exceeds batch capacity ($batchCapacity)");
+      }
+
+      // 10. Clear potentially stale seq_id pointers in the batch
+      for (int i = 0; i < batch.n_tokens; ++i) {
+        if (batch.seq_id != nullptr && batch.seq_id[i] != nullptr) {
+          calloc.free(batch.seq_id[i]);
+          batch.seq_id[i] = nullptr;
+        }
+      }
+
+      // 11. Populate the batch correctly
+      for (int i = 0; i < _nPrompt; i++) {
+        // Iterate up to the actual token count
+        batch.token[i] = _tokens[i];
+        batch.pos[i] = i;
+        batch.n_seq_id[i] = 1;
+        batch.seq_id[i] = calloc<llama_seq_id>()..value = 0;
+        batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
+      }
+      batch.n_tokens =
+          _nPrompt; // Set the correct number of tokens in the batch
+      _nPos = 0;
     } catch (e) {
       _status = LlamaStatus.error;
-      throw LlamaException('Error setting prompt', e);
+      // Ensure _tokens is freed if an error occurred after allocation but before finally
+      if (_tokens != nullptr) {
+        malloc.free(_tokens);
+        _tokens = nullptr;
+      }
+      // Rethrow the original exception to preserve stack trace and context
+      rethrow;
+    } finally {
+      // 12. Free the single Pointer<Utf8> allocated by toNativeUtf8()
+      if (promptUtf8Ptr != null) {
+        malloc.free(promptUtf8Ptr);
+      }
     }
   }
 

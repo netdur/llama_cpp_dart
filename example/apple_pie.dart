@@ -9,7 +9,7 @@ void main() async {
     ContextParams contextParams = ContextParams();
     contextParams.nPredict = 8192;
     contextParams.nCtx = 8192;
-    contextParams.nBatch = 8192;
+    contextParams.nBatch = 512;
 
     final samplerParams = SamplerParams();
     samplerParams.temp = 1.0;
@@ -22,7 +22,7 @@ void main() async {
     Llama llama = Llama(modelPath, ModelParams(), contextParams, samplerParams);
 
     llama.setPrompt(
-        "<start_of_turn>apple pie recipe?<end_of_turn>\n<start_of_turn>model\n");
+        "<start_of_turn>user\napple pie recipe?<end_of_turn>\n<start_of_turn>model\n");
     while (true) {
       var (token, done) = llama.getNext();
       stdout.write(token);
