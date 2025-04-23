@@ -32,3 +32,4 @@ doc/api/
 
 **.DS_Store
 **.idea
+.cache
