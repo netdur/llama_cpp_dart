@@ -25,7 +25,7 @@ void main() async {
 
   // Initialize load command for the isolate
   final loadCommand = LlamaLoad(
-    path: "/Users/adel/Workspace/gguf/gemma-3-12b-it-Q4_K_M.gguf",
+    path: "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf",
     modelParams: ModelParams(),
     contextParams: contextParams,
     samplingParams: samplerParams,

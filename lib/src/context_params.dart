@@ -94,7 +94,7 @@ class ContextParams {
   double defragThold = -1.0;
 
   /// The llama_decode() call computes all logits, not just the last one
-  bool logitsAll = false;
+  // bool logitsAll = false;
 
   /// If true, extract embeddings (together with logits)
   bool embeddings = false;
@@ -131,7 +131,7 @@ class ContextParams {
     contextParams.yarn_beta_slow = yarnBetaSlow;
     contextParams.yarn_orig_ctx = yarnOrigCtx;
     contextParams.defrag_thold = defragThold;
-    contextParams.logits_all = logitsAll;
+    // contextParams.logits_all = logitsAll;
     contextParams.embeddings = embeddings;
     contextParams.offload_kqv = offloadKqv;
     contextParams.flash_attn = flashAttn;
@@ -163,7 +163,7 @@ class ContextParams {
       ..yarnBetaSlow = json['yarnBetaSlow']?.toDouble() ?? 1.0
       ..yarnOrigCtx = json['yarnOrigCtx'] ?? 0
       ..defragThold = json['defragThold']?.toDouble() ?? -1.0
-      ..logitsAll = json['logitsAll'] ?? false
+      // ..logitsAll = json['logitsAll'] ?? false
       ..embeddings = json['embeddings'] ?? false
       ..offloadKqv = json['offloadKqv'] ?? true
       ..flashAttn = json['flashAttn'] ?? false
@@ -189,7 +189,7 @@ class ContextParams {
         'yarnBetaSlow': yarnBetaSlow,
         'yarnOrigCtx': yarnOrigCtx,
         'defragThold': defragThold,
-        'logitsAll': logitsAll,
+        // 'logitsAll': logitsAll,
         'embeddings': embeddings,
         'offloadKqv': offloadKqv,
         'flashAttn': flashAttn,

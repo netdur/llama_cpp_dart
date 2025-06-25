@@ -18,7 +18,7 @@ void main() async {
     samplerParams.penaltyRepeat = 1.1;
 
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
-    String modelPath = "/Users/adel/Workspace/gguf/gemma-3-12b-it-Q4_K_M.gguf";
+    String modelPath = "/Users/adel/Workspace/gguf/gemma-3-12b-it-q4_0.gguf";
     Llama llama = Llama(modelPath, ModelParams(), contextParams, samplerParams);
 
     llama.setPrompt(

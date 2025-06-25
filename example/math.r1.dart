@@ -25,7 +25,7 @@ void main() async {
         Llama(modelPath, ModelParams(), contextParams, samplerParams, true);
 
     ChatHistory history = ChatHistory();
-    history.addMessage(role: Role.user, content: "apple pie recipe?");
+    history.addMessage(role: Role.user, content: "what is 2 * 2?");
     history.addMessage(role: Role.assistant, content: "");
 
     llama.setPrompt(history.exportFormat(ChatFormat.chatml));

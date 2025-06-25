@@ -290,27 +290,33 @@ class Llama {
       throw StateError('Cannot set prompt on disposed instance');
     }
 
-    Pointer<Utf8>? promptUtf8Ptr; // Declare outside try for finally block
+    Pointer<Utf8>? promptUtf8Ptr;
 
     try {
       _status = LlamaStatus.generating;
       if (_tokens != nullptr) {
         malloc.free(_tokens);
-        _tokens = nullptr; // Ensure it's reset
+        _tokens = nullptr;
       }
 
-      // 1. Convert ONCE to Pointer<Utf8>
+      if (context.address != 0) {
+        final mem = lib.llama_get_memory(context);
+        lib.llama_memory_clear(mem, true);
+      }
+      _nPos = 0;
+
+      for (int i = 0; i < batch.n_tokens; ++i) {
+        if (batch.seq_id[i] != nullptr) {
+          calloc.free(batch.seq_id[i]);
+          batch.seq_id[i] = nullptr;
+        }
+      }
+      batch.n_tokens = 0;
+
       promptUtf8Ptr = prompt.toNativeUtf8();
-
-      // 2. Get byte length from Pointer<Utf8>
       final int promptBytes = promptUtf8Ptr.length;
-
-      // 3. Cast to Pointer<Char> for C function calls
       final Pointer<Char> promptCharPtr = promptUtf8Ptr.cast<Char>();
 
-      // --- Now use promptBytes and promptCharPtr ---
-
-      // 4. First llama_tokenize call (Estimate size)
       _nPrompt = -lib.llama_tokenize(
           vocab, promptCharPtr, promptBytes, nullptr, 0, true, true);
 
@@ -319,64 +325,43 @@ class Llama {
             "Failed to estimate token count (returned $_nPrompt)");
       }
 
-      // 5. Allocate token buffer
       _tokens = malloc<llama_token>(_nPrompt);
+      final int actualTokens = lib.llama_tokenize(
+          vocab, promptCharPtr, promptBytes, _tokens, _nPrompt, true, true);
 
-      // 6. Second llama_tokenize call (Populate buffer and get actual count)
-      final int actualTokens = lib.llama_tokenize(vocab, promptCharPtr,
-          promptBytes, _tokens, _nPrompt, true, true); // Use correct args
-
-      // 7. Check for errors from the second call
       if (actualTokens < 0) {
-        malloc.free(_tokens); // Free buffer on failure
+        malloc.free(_tokens);
         _tokens = nullptr;
         throw LlamaException(
             "Failed to tokenize prompt (returned $actualTokens)");
       }
-
-      // 8. Update _nPrompt with the ACTUAL token count
       _nPrompt = actualTokens;
 
-      // 9. Check batch capacity
       int batchCapacity = _contextParams?.nBatch ?? 512;
       if (_nPrompt > batchCapacity) {
-        malloc.free(_tokens); // Free buffer if prompt too long
+        malloc.free(_tokens);
         _tokens = nullptr;
         throw LlamaException(
             "Prompt token count ($_nPrompt) exceeds batch capacity ($batchCapacity)");
       }
 
-      // 10. Clear potentially stale seq_id pointers in the batch
-      for (int i = 0; i < batch.n_tokens; ++i) {
-        if (batch.seq_id != nullptr && batch.seq_id[i] != nullptr) {
-          calloc.free(batch.seq_id[i]);
-          batch.seq_id[i] = nullptr;
-        }
-      }
-
-      // 11. Populate the batch correctly
       for (int i = 0; i < _nPrompt; i++) {
-        // Iterate up to the actual token count
         batch.token[i] = _tokens[i];
         batch.pos[i] = i;
         batch.n_seq_id[i] = 1;
         batch.seq_id[i] = calloc<llama_seq_id>()..value = 0;
         batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
       }
-      batch.n_tokens =
-          _nPrompt; // Set the correct number of tokens in the batch
+      batch.n_tokens = _nPrompt;
       _nPos = 0;
     } catch (e) {
       _status = LlamaStatus.error;
-      // Ensure _tokens is freed if an error occurred after allocation but before finally
       if (_tokens != nullptr) {
         malloc.free(_tokens);
         _tokens = nullptr;
       }
-      // Rethrow the original exception to preserve stack trace and context
       rethrow;
     } finally {
-      // 12. Free the single Pointer<Utf8> allocated by toNativeUtf8()
       if (promptUtf8Ptr != null) {
         malloc.free(promptUtf8Ptr);
       }
@@ -393,20 +378,14 @@ class Llama {
     }
 
     try {
-      /*
-      if (_nPos + batch.n_tokens >= _nPrompt + _nPredict) {
+      final nGenerated = _nPos > _nPrompt ? _nPos - _nPrompt : 0;
+      if (_nPredict > 0 && nGenerated >= _nPredict) {
         return ("", true);
-      }
-      */
-      // Only check the n_predict limit if it's positive
-      if (_nPredict > 0 && (_nPos + batch.n_tokens >= _nPrompt + _nPredict)) {
-        return ("", true); // Indicate completion due to n_predict limit
       }
 
       if (lib.llama_decode(context, batch) != 0) {
         throw LlamaException("Failed to eval");
       }
-
       _nPos += batch.n_tokens;
       int newTokenId = lib.llama_sampler_sample(_smpl, context, -1);
 
@@ -417,21 +396,16 @@ class Llama {
       final buf = malloc<Char>(128);
       try {
         int n = lib.llama_token_to_piece(vocab, newTokenId, buf, 128, 0, true);
-
         if (n < 0) {
           throw LlamaException("Failed to convert token to piece");
         }
-
         String piece = utf8.decode(buf.cast<Uint8>().asTypedList(n));
 
         batch.token[0] = newTokenId;
         batch.pos[0] = _nPos;
         batch.n_seq_id[0] = 1;
-        if (batch.seq_id != nullptr && batch.seq_id[0] != nullptr) {
-          calloc.free(batch.seq_id[0]);
-        }
-        batch.seq_id[0] = calloc<llama_seq_id>()..value = 0;
-        batch.logits[0] = 1; // Logits for the new token
+        batch.seq_id[0].value = 0;
+        batch.logits[0] = 1;
         batch.n_tokens = 1;
 
         bool isEos = newTokenId == lib.llama_token_eos(vocab);
@@ -496,7 +470,8 @@ class Llama {
       _nPos = 0;
 
       if (context.address != 0) {
-        lib.llama_kv_cache_clear(context);
+        final mem = lib.llama_get_memory(context);
+        lib.llama_memory_clear(mem, true);
       }
 
       if (batch.seq_id != nullptr) {
@@ -615,7 +590,9 @@ class Llama {
       promptBatch.n_tokens = nTokens;
 
       // Clear the KV cache
-      lib.llama_kv_cache_clear(context);
+      // lib.llama_kv_cache_clear(context);
+      final mem = lib.llama_get_memory(context);
+      lib.llama_memory_clear(mem, true);
 
       // Process the batch
       bool isEncoderOnly = false;

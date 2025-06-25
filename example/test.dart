@@ -3,23 +3,7 @@
 import 'dart:io';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
-String prompt = """Hey everyone,
-
-I’ve been testing out Gemini 2.5 Pro Preview inside Google AI Studio
-and I’m a bit confused about the pricing.
-
-I’m not using the API or Vertex AI, just playing around in AI Studio
-(the browser interface). According to the docs, it should be free for now—but
-I’ve seen a few posts from people saying they got charged 500 after
-just a few hours of use. 😳
-
-So my question is:
-Is Gemini 2.5 Pro Preview actually free in AI Studio right now?
-Has anyone here received a bill even though they only used it inside AI Studio?
-
-Just trying to make sure I’m not missing something that could cost me big later on.
-
-Thanks in advance!""";
+String prompt = """what is 2 * 4?""";
 
 void main() async {
   try {
@@ -30,11 +14,12 @@ void main() async {
       ..addMessage(role: Role.user, content: prompt)
       ..addMessage(role: Role.assistant, content: "");
 
-    final modelParams = ModelParams();
+    final modelParams = ModelParams()..nGpuLayers = 99;
 
     final contextParams = ContextParams()
       ..nPredict = -1
-      ..nCtx = 8192;
+      ..nCtx = 8192
+      ..nBatch = 8192;
 
     final samplerParams = SamplerParams()
       ..temp = 0.7

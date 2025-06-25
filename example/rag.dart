@@ -18,7 +18,7 @@ class Config {
   static const String embeddingModelPath =
       "/Users/adel/Workspace/gguf/multilingual-e5-large-instruct-q8_0.gguf";
   static const String llmModelPath =
-      "/Users/adel/Workspace/gguf/gemma-3-12b-it-Q4_K_M.gguf";
+      "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
   static const String documentPath = "example/pie.txt";
 
   // Default query if none provided

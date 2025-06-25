@@ -41,6 +41,7 @@ build_for_platform() {
           -DLLAMA_BUILD_TESTS=OFF \
           -DLLAMA_BUILD_EXAMPLES=OFF \
           -DLLAMA_BUILD_SERVER=OFF \
+          -DLLAMA_BUILD_TOOLS=OFF \
           -DCMAKE_BUILD_TYPE=Release \
           -G Xcode \
           -DCMAKE_TOOLCHAIN_FILE="${script_dir}/ios-arm64.toolchain.cmake" \
@@ -54,7 +55,7 @@ build_for_platform() {
           -DCMAKE_INSTALL_PREFIX="./install" \
           ..
 
-    cmake --build . --config Release
+    cmake --build . --config Release -j
     cmake --install . --config Release
 
     # Copy libraries

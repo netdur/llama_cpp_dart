@@ -1,3 +1,11 @@
+## 0.0.9
+* Major internal refactoring to improve code organization and maintainability
+* Fixed critical bug where subsequent prompts would fail due to batch seq_id memory management
+* Improved position tracking for continuous conversation support
+* Enhanced error handling and debugging capabilities
+* Added foundation for future chat optimization features
+* Breaking change: Internal API restructuring (public API remains stable)
+
 ## 0.0.8
 * disabled llava
 * compatible with llama.cpp 42ae10bb

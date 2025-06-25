@@ -62,7 +62,7 @@ The project includes llama.cpp as a submodule and requires native binaries for v
 
 5. Run the build script:
    ```bash
-   ./build.sh
+   ./darwin/build.sh
    ```
 
 ### Available Platforms

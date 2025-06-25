@@ -71,9 +71,8 @@ void main() {
 
   Llama? llama;
   try {
-    Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib"; // ADJUST
-    String modelPath =
-        "/Users/adel/Workspace/gguf/gemma-3-12b-it-q4_0.gguf"; // ADJUST
+    Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
+    String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
 
     final modelParams = ModelParams();
     final contextParams = ContextParams()

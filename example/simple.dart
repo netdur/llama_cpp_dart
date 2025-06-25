@@ -7,6 +7,7 @@ void main() {
   // Initialize settings
   String modelPath = "/Users/adel/Workspace/gguf/gemma-3-12b-it-q4_0.gguf";
   String prompt = "<start_of_turn>2 * 4 =<end_of_turn>\n<start_of_turn>model\n";
+
   int ngl = 99;
   int nPredict = 32;
 
