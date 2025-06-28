@@ -38,6 +38,7 @@ build_for_platform() {
 
     cmake -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
           -DBUILD_SHARED_LIBS=${shared_libs} \
+          -DLLAMA_CURL=OFF \
           -DLLAMA_BUILD_TESTS=OFF \
           -DLLAMA_BUILD_EXAMPLES=OFF \
           -DLLAMA_BUILD_SERVER=OFF \

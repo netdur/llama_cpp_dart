@@ -1,16 +1,24 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.18)
 
-set(BUILD_SHARED_LIBS ON)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+project(LlamaCppAAR)
 
-if(ANDROID)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DANDROID_ARM_NEON=TRUE -DANDROID_TOOLCHAIN=clang -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-23")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DANDROID_ARM_NEON=TRUE -DANDROID_TOOLCHAIN=clang -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-23")
-    # Log the flags
-    message(STATUS "CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
-endif()
+# --- Configuration for the llama.cpp sub-project ---
+set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libraries" FORCE)
+set(LLAMA_NATIVE OFF CACHE BOOL "Disable -march=native for cross-compilation" FORCE)
+# set(LLAMA_BLAS OFF CACHE BOOL "Disable BLAS")
+# set(LLAMA_AVX2 OFF CACHE BOOL "Disable AVX2")
 
-#set(LLAMA_STATIC ON CACHE BOOL "llama: enable static link libraries" FORCE)
-set(LLAMA_NATIVE OFF CACHE BOOL "llama: disable -march=native flag" FORCE)
-
+# --- End of Configuration ---
 add_subdirectory(./llama.cpp)
+
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/include/
+    DESTINATION include
+    FILES_MATCHING PATTERN "*.h"
+)
+
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/ggml/include/
+    DESTINATION include
+    FILES_MATCHING PATTERN "*.h"
+)

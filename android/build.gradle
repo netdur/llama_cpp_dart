@@ -1,7 +1,7 @@
 // The Android Gradle Plugin builds the native code with the Android NDK.
 
-group 'com.example.llama_cpp_dart'
-version '1.0'
+group 'io.github.netdur.llama_cpp_dart'
+version '0.0.9'
 
 buildscript {
     repositories {
@@ -10,8 +10,7 @@ buildscript {
     }
 
     dependencies {
-        // The Android Gradle Plugin knows how to build native code with the NDK.
-        classpath 'com.android.tools.build:gradle:7.3.0'
+        classpath 'com.android.tools.build:gradle:7.3.1'
     }
 }
 
@@ -26,12 +25,12 @@ apply plugin: 'com.android.library'
 
 android {
     if (project.android.hasProperty("namespace")) {
-        namespace 'com.example.llama_cpp_dart'
+        namespace 'io.github.netdur.llama_cpp_dart'
     }
 
     // Bumping the plugin compileSdkVersion requires all clients of this plugin
     // to bump the version in their app.
-    compileSdkVersion 31
+    compileSdkVersion 34
 
     // Use the NDK version
     // declared in /android/app/build.gradle file of the Flutter project.
@@ -64,6 +63,6 @@ android {
             abiFilters 'arm64-v8a', 'x86_64'
         }
         minSdkVersion 23
-        targetSdkVersion 31
+        targetSdkVersion 34
     }
 }
