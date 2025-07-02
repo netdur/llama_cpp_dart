@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 // ==========================================================
-// TOOLS (No changes here, they are correct)
+// TOOLS
 // ==========================================================
 
 /// Tool to get the current time.
@@ -83,23 +83,23 @@ Your response:
 }
 
 // ==========================================================
-// MAIN AGENT LOGIC (This is where the fix is)
+// MAIN AGENT LOGIC
 // ==========================================================
 
 Future<void> main() async {
   try {
-    // --- Standard LLM Setup (using your working example's structure) ---
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
 
     final modelParams = ModelParams()..nGpuLayers = -1;
-    final contextParams = ContextParams()..nCtx = 2048;
-    final samplerParams = SamplerParams();
+    final contextParams = ContextParams()
+      ..nPredict = -1
+      ..nCtx = 4096;
+    final samplerParams = SamplerParams()..temp = 0.1;
 
     final llama =
         Llama(modelPath, modelParams, contextParams, samplerParams, false);
 
-    // --- The Agent's Main Loop ---
     while (true) {
       stdout.write("\nAsk me something (or type 'exit'): ");
       final userInput = stdin.readLineSync();
@@ -110,13 +110,11 @@ Future<void> main() async {
 
       print("🧠 Thinking...");
 
-      // 1. Build the prompt using ChatHistory (THE CORRECT WAY)
       final history = ChatHistory()
         ..addMessage(role: Role.user, content: buildSystemPrompt())
         ..addMessage(role: Role.user, content: userInput)
         ..addMessage(role: Role.assistant, content: '');
 
-      // 2. Set the prompt and get the response by streaming tokens (THE CORRECT WAY)
       llama.setPrompt(history.exportFormat(ChatFormat.gemini,
           leaveLastAssistantOpen: true));
 
@@ -130,9 +128,9 @@ Future<void> main() async {
 
       print("✅ LLM's Plan (raw response): $llmResponse");
 
-      // 3. The "Coordinator" (our code) reads the plan and executes it.
       try {
-        final jsonRegex = RegExp(r'\[.*\]', dotAll: true);
+        final jsonRegex =
+            RegExp(r'```json\s*(\[.*\])\s*```|(\[.*\])', dotAll: true);
         final match = jsonRegex.firstMatch(llmResponse);
 
         if (match == null) {
@@ -141,7 +139,7 @@ Future<void> main() async {
           continue;
         }
 
-        final jsonString = match.group(0)!;
+        final jsonString = match.group(1) ?? match.group(2)!;
         final List<dynamic> toolCalls = jsonDecode(jsonString);
 
         if (toolCalls.isEmpty) {
@@ -150,7 +148,6 @@ Future<void> main() async {
           continue;
         }
 
-        // 4. Execute each tool in the plan
         for (var call in toolCalls) {
           final toolName = call['tool_name'];
           final arguments = call['arguments'] as Map<String, dynamic>;

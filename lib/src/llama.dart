@@ -10,6 +10,8 @@ import 'model_params.dart';
 import 'llama_cpp.dart';
 import 'context_params.dart';
 
+import 'llama_input.dart';
+
 typedef LlamaLogCallback = Void Function(
     UnsignedInt level, Pointer<Char> text, Pointer<Void> userData);
 typedef LlamaLogCallbackDart = void Function(
@@ -80,6 +82,9 @@ class Llama {
     return _lib!;
   }
 
+  Pointer<mtmd_context> _mctx = nullptr;
+  bool _isVisionEnabled = false;
+
   /// Creates a new Llama instance with the specified model path and optional parameters.
   ///
   /// Throws [LlamaException] if model loading or initialization fails.
@@ -87,13 +92,14 @@ class Llama {
       [ModelParams? modelParamsDart,
       ContextParams? contextParamsDart,
       SamplerParams? samplerParams,
-      bool? verbos]) {
+      bool? verbos,
+      String? mmprojPath]) {
     try {
       _verbos = verbos ?? false;
       // _verbos = true;
       _validateConfiguration();
-      _initializeLlama(
-          modelPath, modelParamsDart, contextParamsDart, samplerParams);
+      _initializeLlama(modelPath, mmprojPath, modelParamsDart,
+          contextParamsDart, samplerParams);
 
       if (contextParamsDart != null) {
         var contextParams = contextParamsDart.get();
@@ -122,8 +128,12 @@ class Llama {
       int level, Pointer<Char> text, Pointer<Void> userData) {}
 
   /// Initializes the Llama instance with the given parameters
-  void _initializeLlama(String modelPath, ModelParams? modelParamsDart,
-      ContextParams? contextParamsDart, SamplerParams? samplerParams) {
+  void _initializeLlama(
+      String modelPath,
+      String? mmprojPath,
+      ModelParams? modelParamsDart,
+      ContextParams? contextParamsDart,
+      SamplerParams? samplerParams) {
     if (_verbos == false) {
       final nullCallbackPointer =
           Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackNull);
@@ -269,6 +279,22 @@ class Llama {
         malloc.free(seqBreakersPointer[i]);
       }
       calloc.free(seqBreakersPointer);
+    }
+
+    if (mmprojPath != null && mmprojPath.isNotEmpty) {
+      final mprojPathPtr = mmprojPath.toNativeUtf8().cast<Char>();
+      try {
+        var mparam = lib.mtmd_context_params_default();
+        mparam.use_gpu = modelParamsDart.nGpuLayers != 0;
+        _mctx = lib.mtmd_init_from_file(mprojPathPtr, model, mparam);
+        if (_mctx == nullptr) {
+          throw LlamaException(
+              "Failed to create multimodal projector context from $mmprojPath");
+        }
+        _isVisionEnabled = true;
+      } finally {
+        malloc.free(mprojPathPtr);
+      }
     }
 
     _tokenPtr = malloc<llama_token>();
@@ -437,6 +463,186 @@ class Llama {
     }
   }
 
+  /// This is the primary method for multimodal generation. It is a stateless
+  /// operation that processes the entire input and generates a response stream.
+  ///
+  /// [prompt]: The text part of the prompt. It must contain the `<image>` marker
+  ///          for each image provided in the `inputs` list.
+  /// [inputs]: A list of `LlamaInput` objects (currently `LlamaImage`). The
+  ///          number of images must match the number of `<image>` markers.
+  ///
+  /// Returns a stream of generated text tokens.
+  /// Generates a response based on a prompt that includes text and images.
+  /// Generates a response from a prompt that combines text and one or more images.
+  /// The prompt must contain a `<image>` placeholder for every image in `inputs`.
+  Stream<String> generateWithMeda(
+    String prompt, {
+    required List<LlamaInput> inputs,
+  }) async* {
+    if (_isDisposed) throw StateError('Instance disposed');
+    if (!_isVisionEnabled || _mctx == nullptr) {
+      throw LlamaException(
+          'Vision disabled – construct Llama with mmprojPath.');
+    }
+    if (inputs.isEmpty) {
+      throw ArgumentError('No images given; for text only use setPrompt().');
+    }
+
+    final images = inputs.whereType<LlamaImage>().toList();
+    const marker = '<image>';
+    final mCnt = marker.allMatches(prompt).length;
+    if (mCnt != images.length) {
+      throw ArgumentError(
+          'Prompt has $mCnt <image> marker(s) but ${images.length} image(s) supplied.');
+    }
+
+    Pointer<mtmd_input_text> txtPtr = nullptr;
+    Pointer<Char> fullPtr = nullptr;
+    Pointer<mtmd_input_chunks> chunks = nullptr;
+    final bitmapRefs = <BitmapPointers>[];
+    Pointer<Pointer<mtmd_bitmap>> bmpArr = nullptr;
+
+    try {
+      _status = LlamaStatus.generating;
+
+      final mem = lib.llama_get_memory(context);
+      lib.llama_memory_clear(mem, true);
+
+      for (final img in images) {
+        bitmapRefs.add(img.toBitmap(lib, malloc));
+      }
+      bmpArr = malloc<Pointer<mtmd_bitmap>>(bitmapRefs.length);
+      for (var i = 0; i < bitmapRefs.length; ++i) {
+        bmpArr[i] = bitmapRefs[i].bitmap;
+      }
+
+      final modelMark = lib.mtmd_default_marker().cast<Utf8>().toDartString();
+      final fullPrompt = prompt.replaceAll(marker, modelMark);
+      fullPtr = fullPrompt.toNativeUtf8().cast<Char>();
+
+      txtPtr = calloc<mtmd_input_text>();
+      txtPtr.ref
+        ..text = fullPtr
+        ..add_special = true
+        ..parse_special = true;
+
+      chunks = lib.mtmd_input_chunks_init();
+      final tk =
+          lib.mtmd_tokenize(_mctx, chunks, txtPtr, bmpArr, bitmapRefs.length);
+      if (tk != 0) throw LlamaException('mtmd_tokenize failed ($tk)');
+
+      var nPast = 0;
+      final nCtx = _contextParams?.nCtx ?? 2048;
+      final nChunks = lib.mtmd_input_chunks_size(chunks);
+
+      for (var i = 0; i < nChunks; ++i) {
+        final chunk = lib.mtmd_input_chunks_get(chunks, i);
+        final type = lib.mtmd_input_chunk_get_type(chunk);
+
+        if (type == mtmd_input_chunk_type.MTMD_INPUT_CHUNK_TYPE_IMAGE) {
+          if (lib.mtmd_encode_chunk(_mctx, chunk) != 0) {
+            throw LlamaException('encode image chunk #$i failed');
+          }
+
+          final embd = lib.mtmd_get_output_embd(_mctx);
+          final nTok = lib.mtmd_input_chunk_get_n_tokens(chunk);
+          if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
+
+          final b = lib.llama_batch_init(nTok, /*embd=*/ 1, /*seq_id_max=*/ 1);
+          try {
+            for (var k = 0; k < nTok; ++k) {
+              b.pos[k] = nPast + k;
+              b.n_seq_id[k] = 1;
+              b.seq_id[k] = calloc<llama_seq_id>()..value = 0;
+              b.logits[k] = 0;
+            }
+            b.logits[nTok - 1] = 1;
+            b.n_tokens = nTok;
+            b.embd = embd;
+
+            if (lib.llama_decode(context, b) != 0) {
+              throw LlamaException('llama_decode image chunk #$i failed');
+            }
+            nPast += nTok;
+          } finally {
+            lib.llama_batch_free(b);
+          }
+        } else {
+          final nPtr = malloc<Size>();
+          final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
+          final nTok = nPtr.value;
+          malloc.free(nPtr);
+          if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
+
+          final b = lib.llama_batch_init(nTok, /*embd=*/ 0, /*seq_id_max=*/ 1);
+          try {
+            for (var k = 0; k < nTok; ++k) {
+              b.token[k] = tokPt[k];
+              b.pos[k] = nPast + k;
+              b.n_seq_id[k] = 1;
+              b.seq_id[k] = calloc<llama_seq_id>()..value = 0;
+              b.logits[k] = 0;
+            }
+            b.logits[nTok - 1] = 1;
+            b.n_tokens = nTok;
+
+            if (lib.llama_decode(context, b) != 0) {
+              throw LlamaException('llama_decode text chunk #$i failed');
+            }
+            nPast += nTok;
+          } finally {
+            lib.llama_batch_free(b);
+          }
+        }
+      }
+
+      var produced = 0;
+      while (nPast < nCtx && (_nPredict == -1 || produced < _nPredict)) {
+        final tok = lib.llama_sampler_sample(_smpl, context, -1);
+        if (lib.llama_token_is_eog(vocab, tok)) break;
+
+        final buf = malloc<Char>(128);
+        try {
+          final n = lib.llama_token_to_piece(vocab, tok, buf, 128, 0, false);
+          if (n < 0) throw LlamaException('token_to_piece failed ($tok)');
+          yield utf8.decode(buf.cast<Uint8>().asTypedList(n));
+        } finally {
+          malloc.free(buf);
+        }
+
+        final b =
+            lib.llama_batch_init(/*nTok*/ 1, /*embd*/ 0, /*seq_id_max*/ 1);
+        try {
+          b.token[0] = tok;
+          b.pos[0] = nPast;
+          b.n_seq_id[0] = 1;
+          b.seq_id[0] = calloc<llama_seq_id>()..value = 0;
+          b.logits[0] = 1;
+          b.n_tokens = 1;
+
+          if (lib.llama_decode(context, b) != 0) {
+            throw LlamaException('llama_decode generated token failed');
+          }
+          ++nPast;
+          ++produced;
+        } finally {
+          lib.llama_batch_free(b);
+        }
+      }
+    } finally {
+      if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
+      if (bmpArr != nullptr) malloc.free(bmpArr);
+      for (final r in bitmapRefs) {
+        if (r.bitmap != nullptr) lib.mtmd_bitmap_free(r.bitmap);
+        // if (r.imageData != nullptr) malloc.free(r.imageData);
+      }
+      if (txtPtr != nullptr) calloc.free(txtPtr);
+      if (fullPtr != nullptr) malloc.free(fullPtr);
+
+      _status = LlamaStatus.ready;
+    }
+  }
+
   /// Disposes of all resources held by this instance
   void dispose() {
     if (_isDisposed) return;
@@ -445,8 +651,9 @@ class Llama {
     if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
     if (context.address != 0) lib.llama_free(context);
     if (model.address != 0) lib.llama_free_model(model);
+    // if (_mctx != nullptr) lib.mtmd_free(_mctx); // <- crash - double free
 
-    lib.llama_batch_free(batch); // Free the batch
+    lib.llama_batch_free(batch);
     lib.llama_backend_free();
 
     _isDisposed = true;

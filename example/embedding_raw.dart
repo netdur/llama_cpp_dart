@@ -59,7 +59,7 @@ void batchDecode(llama_cpp lib, Pointer<llama_context> ctx, llama_batch batch,
 
   try {
     // Get pooling type using the correct function from bindings
-    poolingType = lib.llama_pooling_type1(
+    poolingType = lib.llama_pooling_type$1(
         ctx); // Use llama_pooling_type1 instead of llama_pooling_type
     print("Using model pooling type: $poolingType");
   } catch (e) {
@@ -347,7 +347,8 @@ void main(List<String> args) {
   // Determine pooling type
   llama_pooling_type poolingType;
   try {
-    poolingType = lib.llama_pooling_type1(ctx); // Use the correct function name
+    poolingType =
+        lib.llama_pooling_type$1(ctx); // Use the correct function name
     print("Model pooling type: $poolingType");
   } catch (e) {
     // This would happen if the function is not available or fails

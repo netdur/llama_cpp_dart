@@ -42,7 +42,8 @@ build_for_platform() {
           -DLLAMA_BUILD_TESTS=OFF \
           -DLLAMA_BUILD_EXAMPLES=OFF \
           -DLLAMA_BUILD_SERVER=OFF \
-          -DLLAMA_BUILD_TOOLS=OFF \
+          -DLLAMA_BUILD_TOOLS=ON  \
+          -DCMAKE_PROJECT_INCLUDE="${script_dir}/no_bundle.cmake" \
           -DCMAKE_BUILD_TYPE=Release \
           -G Xcode \
           -DCMAKE_TOOLCHAIN_FILE="${script_dir}/ios-arm64.toolchain.cmake" \
@@ -56,7 +57,7 @@ build_for_platform() {
           -DCMAKE_INSTALL_PREFIX="./install" \
           ..
 
-    cmake --build . --config Release -j
+    cmake --build . --config Release --parallel
     cmake --install . --config Release
 
     # Copy libraries
@@ -68,6 +69,7 @@ build_for_platform() {
         "install/lib/libggml-metal.${lib_extension}"
         "install/lib/libggml-cpu.${lib_extension}"
         "install/lib/libggml-blas.${lib_extension}"
+        "install/lib/libmtmd.${lib_extension}"
     )
 
     for lib in "${libs[@]}"; do

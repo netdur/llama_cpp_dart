@@ -4404,13 +4404,13 @@ class llama_cpp {
 
   ffi.Pointer<ggml_tensor> ggml_mul_mat_id(
     ffi.Pointer<ggml_context> ctx,
-    ffi.Pointer<ggml_tensor> as1,
+    ffi.Pointer<ggml_tensor> as$,
     ffi.Pointer<ggml_tensor> b,
     ffi.Pointer<ggml_tensor> ids,
   ) {
     return _ggml_mul_mat_id(
       ctx,
-      as1,
+      as$,
       b,
       ids,
     );
@@ -9271,19 +9271,19 @@ class llama_cpp {
       void Function(
           ggml_backend_dev_t, ffi.Pointer<ffi.Size>, ffi.Pointer<ffi.Size>)>();
 
-  ggml_backend_dev_type ggml_backend_dev_type1(
+  ggml_backend_dev_type ggml_backend_dev_type$1(
     ggml_backend_dev_t device,
   ) {
-    return ggml_backend_dev_type.fromValue(_ggml_backend_dev_type1(
+    return ggml_backend_dev_type.fromValue(_ggml_backend_dev_type$1(
       device,
     ));
   }
 
-  late final _ggml_backend_dev_type1Ptr =
+  late final _ggml_backend_dev_type$1Ptr =
       _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(ggml_backend_dev_t)>>(
           'ggml_backend_dev_type');
-  late final _ggml_backend_dev_type1 =
-      _ggml_backend_dev_type1Ptr.asFunction<int Function(ggml_backend_dev_t)>();
+  late final _ggml_backend_dev_type$1 = _ggml_backend_dev_type$1Ptr
+      .asFunction<int Function(ggml_backend_dev_t)>();
 
   void ggml_backend_dev_get_props(
     ggml_backend_dev_t device,
@@ -10009,22 +10009,22 @@ class llama_cpp {
           void Function(ggml_backend_sched_t, ggml_backend_sched_eval_callback,
               ffi.Pointer<ffi.Void>)>();
 
-  ggml_backend_graph_copy ggml_backend_graph_copy1(
+  ggml_backend_graph_copy ggml_backend_graph_copy$1(
     ggml_backend_t backend,
     ffi.Pointer<ggml_cgraph> graph,
   ) {
-    return _ggml_backend_graph_copy1(
+    return _ggml_backend_graph_copy$1(
       backend,
       graph,
     );
   }
 
-  late final _ggml_backend_graph_copy1Ptr = _lookup<
+  late final _ggml_backend_graph_copy$1Ptr = _lookup<
       ffi.NativeFunction<
           ggml_backend_graph_copy Function(ggml_backend_t,
               ffi.Pointer<ggml_cgraph>)>>('ggml_backend_graph_copy');
-  late final _ggml_backend_graph_copy1 =
-      _ggml_backend_graph_copy1Ptr.asFunction<
+  late final _ggml_backend_graph_copy$1 =
+      _ggml_backend_graph_copy$1Ptr.asFunction<
           ggml_backend_graph_copy Function(
               ggml_backend_t, ffi.Pointer<ggml_cgraph>)>();
 
@@ -12123,18 +12123,18 @@ class llama_cpp {
   late final _llama_get_memory = _llama_get_memoryPtr
       .asFunction<llama_memory_t Function(ffi.Pointer<llama_context>)>();
 
-  llama_pooling_type llama_pooling_type1(
+  llama_pooling_type llama_pooling_type$1(
     ffi.Pointer<llama_context> ctx,
   ) {
-    return llama_pooling_type.fromValue(_llama_pooling_type1(
+    return llama_pooling_type.fromValue(_llama_pooling_type$1(
       ctx,
     ));
   }
 
-  late final _llama_pooling_type1Ptr =
+  late final _llama_pooling_type$1Ptr =
       _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<llama_context>)>>(
           'llama_pooling_type');
-  late final _llama_pooling_type1 = _llama_pooling_type1Ptr
+  late final _llama_pooling_type$1 = _llama_pooling_type$1Ptr
       .asFunction<int Function(ffi.Pointer<llama_context>)>();
 
   ffi.Pointer<llama_kv_cache> llama_get_kv_self(
@@ -12311,19 +12311,19 @@ class llama_cpp {
   late final _llama_model_cls_label = _llama_model_cls_labelPtr.asFunction<
       ffi.Pointer<ffi.Char> Function(ffi.Pointer<llama_model>, int)>();
 
-  llama_vocab_type llama_vocab_type1(
+  llama_vocab_type llama_vocab_type$1(
     ffi.Pointer<llama_vocab> vocab,
   ) {
-    return llama_vocab_type.fromValue(_llama_vocab_type1(
+    return llama_vocab_type.fromValue(_llama_vocab_type$1(
       vocab,
     ));
   }
 
-  late final _llama_vocab_type1Ptr = _lookup<
+  late final _llama_vocab_type$1Ptr = _lookup<
           ffi
           .NativeFunction<ffi.UnsignedInt Function(ffi.Pointer<llama_vocab>)>>(
       'llama_vocab_type');
-  late final _llama_vocab_type1 = _llama_vocab_type1Ptr
+  late final _llama_vocab_type$1 = _llama_vocab_type$1Ptr
       .asFunction<int Function(ffi.Pointer<llama_vocab>)>();
 
   int llama_vocab_n_tokens(
@@ -15400,6 +15400,640 @@ class llama_cpp {
           int,
           ggml_opt_epoch_callback,
           ggml_opt_epoch_callback)>();
+
+  ffi.Pointer<ffi.Char> mtmd_default_marker() {
+    return _mtmd_default_marker();
+  }
+
+  late final _mtmd_default_markerPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<ffi.Char> Function()>>(
+          'mtmd_default_marker');
+  late final _mtmd_default_marker =
+      _mtmd_default_markerPtr.asFunction<ffi.Pointer<ffi.Char> Function()>();
+
+  mtmd_context_params mtmd_context_params_default() {
+    return _mtmd_context_params_default();
+  }
+
+  late final _mtmd_context_params_defaultPtr =
+      _lookup<ffi.NativeFunction<mtmd_context_params Function()>>(
+          'mtmd_context_params_default');
+  late final _mtmd_context_params_default = _mtmd_context_params_defaultPtr
+      .asFunction<mtmd_context_params Function()>();
+
+  ffi.Pointer<mtmd_context> mtmd_init_from_file(
+    ffi.Pointer<ffi.Char> mmproj_fname,
+    ffi.Pointer<llama_model> text_model,
+    mtmd_context_params ctx_params,
+  ) {
+    return _mtmd_init_from_file(
+      mmproj_fname,
+      text_model,
+      ctx_params,
+    );
+  }
+
+  late final _mtmd_init_from_filePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<mtmd_context> Function(
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<llama_model>,
+              mtmd_context_params)>>('mtmd_init_from_file');
+  late final _mtmd_init_from_file = _mtmd_init_from_filePtr.asFunction<
+      ffi.Pointer<mtmd_context> Function(ffi.Pointer<ffi.Char>,
+          ffi.Pointer<llama_model>, mtmd_context_params)>();
+
+  void mtmd_free(
+    ffi.Pointer<mtmd_context> ctx,
+  ) {
+    return _mtmd_free(
+      ctx,
+    );
+  }
+
+  late final _mtmd_freePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<mtmd_context>)>>(
+          'mtmd_free');
+  late final _mtmd_free =
+      _mtmd_freePtr.asFunction<void Function(ffi.Pointer<mtmd_context>)>();
+
+  bool mtmd_decode_use_non_causal(
+    ffi.Pointer<mtmd_context> ctx,
+  ) {
+    return _mtmd_decode_use_non_causal(
+      ctx,
+    );
+  }
+
+  late final _mtmd_decode_use_non_causalPtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<mtmd_context>)>>(
+          'mtmd_decode_use_non_causal');
+  late final _mtmd_decode_use_non_causal = _mtmd_decode_use_non_causalPtr
+      .asFunction<bool Function(ffi.Pointer<mtmd_context>)>();
+
+  bool mtmd_decode_use_mrope(
+    ffi.Pointer<mtmd_context> ctx,
+  ) {
+    return _mtmd_decode_use_mrope(
+      ctx,
+    );
+  }
+
+  late final _mtmd_decode_use_mropePtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<mtmd_context>)>>(
+          'mtmd_decode_use_mrope');
+  late final _mtmd_decode_use_mrope = _mtmd_decode_use_mropePtr
+      .asFunction<bool Function(ffi.Pointer<mtmd_context>)>();
+
+  bool mtmd_support_vision(
+    ffi.Pointer<mtmd_context> ctx,
+  ) {
+    return _mtmd_support_vision(
+      ctx,
+    );
+  }
+
+  late final _mtmd_support_visionPtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<mtmd_context>)>>(
+          'mtmd_support_vision');
+  late final _mtmd_support_vision = _mtmd_support_visionPtr
+      .asFunction<bool Function(ffi.Pointer<mtmd_context>)>();
+
+  bool mtmd_support_audio(
+    ffi.Pointer<mtmd_context> ctx,
+  ) {
+    return _mtmd_support_audio(
+      ctx,
+    );
+  }
+
+  late final _mtmd_support_audioPtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<mtmd_context>)>>(
+          'mtmd_support_audio');
+  late final _mtmd_support_audio = _mtmd_support_audioPtr
+      .asFunction<bool Function(ffi.Pointer<mtmd_context>)>();
+
+  int mtmd_get_audio_bitrate(
+    ffi.Pointer<mtmd_context> ctx,
+  ) {
+    return _mtmd_get_audio_bitrate(
+      ctx,
+    );
+  }
+
+  late final _mtmd_get_audio_bitratePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Pointer<mtmd_context>)>>(
+          'mtmd_get_audio_bitrate');
+  late final _mtmd_get_audio_bitrate = _mtmd_get_audio_bitratePtr
+      .asFunction<int Function(ffi.Pointer<mtmd_context>)>();
+
+  ffi.Pointer<mtmd_bitmap> mtmd_bitmap_init(
+    int nx,
+    int ny,
+    ffi.Pointer<ffi.UnsignedChar> data,
+  ) {
+    return _mtmd_bitmap_init(
+      nx,
+      ny,
+      data,
+    );
+  }
+
+  late final _mtmd_bitmap_initPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<mtmd_bitmap> Function(ffi.Uint32, ffi.Uint32,
+              ffi.Pointer<ffi.UnsignedChar>)>>('mtmd_bitmap_init');
+  late final _mtmd_bitmap_init = _mtmd_bitmap_initPtr.asFunction<
+      ffi.Pointer<mtmd_bitmap> Function(
+          int, int, ffi.Pointer<ffi.UnsignedChar>)>();
+
+  ffi.Pointer<mtmd_bitmap> mtmd_bitmap_init_from_audio(
+    int n_samples,
+    ffi.Pointer<ffi.Float> data,
+  ) {
+    return _mtmd_bitmap_init_from_audio(
+      n_samples,
+      data,
+    );
+  }
+
+  late final _mtmd_bitmap_init_from_audioPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<mtmd_bitmap> Function(ffi.Size,
+              ffi.Pointer<ffi.Float>)>>('mtmd_bitmap_init_from_audio');
+  late final _mtmd_bitmap_init_from_audio =
+      _mtmd_bitmap_init_from_audioPtr.asFunction<
+          ffi.Pointer<mtmd_bitmap> Function(int, ffi.Pointer<ffi.Float>)>();
+
+  int mtmd_bitmap_get_nx(
+    ffi.Pointer<mtmd_bitmap> bitmap,
+  ) {
+    return _mtmd_bitmap_get_nx(
+      bitmap,
+    );
+  }
+
+  late final _mtmd_bitmap_get_nxPtr = _lookup<
+          ffi.NativeFunction<ffi.Uint32 Function(ffi.Pointer<mtmd_bitmap>)>>(
+      'mtmd_bitmap_get_nx');
+  late final _mtmd_bitmap_get_nx = _mtmd_bitmap_get_nxPtr
+      .asFunction<int Function(ffi.Pointer<mtmd_bitmap>)>();
+
+  int mtmd_bitmap_get_ny(
+    ffi.Pointer<mtmd_bitmap> bitmap,
+  ) {
+    return _mtmd_bitmap_get_ny(
+      bitmap,
+    );
+  }
+
+  late final _mtmd_bitmap_get_nyPtr = _lookup<
+          ffi.NativeFunction<ffi.Uint32 Function(ffi.Pointer<mtmd_bitmap>)>>(
+      'mtmd_bitmap_get_ny');
+  late final _mtmd_bitmap_get_ny = _mtmd_bitmap_get_nyPtr
+      .asFunction<int Function(ffi.Pointer<mtmd_bitmap>)>();
+
+  ffi.Pointer<ffi.UnsignedChar> mtmd_bitmap_get_data(
+    ffi.Pointer<mtmd_bitmap> bitmap,
+  ) {
+    return _mtmd_bitmap_get_data(
+      bitmap,
+    );
+  }
+
+  late final _mtmd_bitmap_get_dataPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ffi.UnsignedChar> Function(
+              ffi.Pointer<mtmd_bitmap>)>>('mtmd_bitmap_get_data');
+  late final _mtmd_bitmap_get_data = _mtmd_bitmap_get_dataPtr.asFunction<
+      ffi.Pointer<ffi.UnsignedChar> Function(ffi.Pointer<mtmd_bitmap>)>();
+
+  int mtmd_bitmap_get_n_bytes(
+    ffi.Pointer<mtmd_bitmap> bitmap,
+  ) {
+    return _mtmd_bitmap_get_n_bytes(
+      bitmap,
+    );
+  }
+
+  late final _mtmd_bitmap_get_n_bytesPtr =
+      _lookup<ffi.NativeFunction<ffi.Size Function(ffi.Pointer<mtmd_bitmap>)>>(
+          'mtmd_bitmap_get_n_bytes');
+  late final _mtmd_bitmap_get_n_bytes = _mtmd_bitmap_get_n_bytesPtr
+      .asFunction<int Function(ffi.Pointer<mtmd_bitmap>)>();
+
+  bool mtmd_bitmap_is_audio(
+    ffi.Pointer<mtmd_bitmap> bitmap,
+  ) {
+    return _mtmd_bitmap_is_audio(
+      bitmap,
+    );
+  }
+
+  late final _mtmd_bitmap_is_audioPtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<mtmd_bitmap>)>>(
+          'mtmd_bitmap_is_audio');
+  late final _mtmd_bitmap_is_audio = _mtmd_bitmap_is_audioPtr
+      .asFunction<bool Function(ffi.Pointer<mtmd_bitmap>)>();
+
+  void mtmd_bitmap_free(
+    ffi.Pointer<mtmd_bitmap> bitmap,
+  ) {
+    return _mtmd_bitmap_free(
+      bitmap,
+    );
+  }
+
+  late final _mtmd_bitmap_freePtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<mtmd_bitmap>)>>(
+          'mtmd_bitmap_free');
+  late final _mtmd_bitmap_free = _mtmd_bitmap_freePtr
+      .asFunction<void Function(ffi.Pointer<mtmd_bitmap>)>();
+
+  ffi.Pointer<ffi.Char> mtmd_bitmap_get_id(
+    ffi.Pointer<mtmd_bitmap> bitmap,
+  ) {
+    return _mtmd_bitmap_get_id(
+      bitmap,
+    );
+  }
+
+  late final _mtmd_bitmap_get_idPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ffi.Char> Function(
+              ffi.Pointer<mtmd_bitmap>)>>('mtmd_bitmap_get_id');
+  late final _mtmd_bitmap_get_id = _mtmd_bitmap_get_idPtr
+      .asFunction<ffi.Pointer<ffi.Char> Function(ffi.Pointer<mtmd_bitmap>)>();
+
+  void mtmd_bitmap_set_id(
+    ffi.Pointer<mtmd_bitmap> bitmap,
+    ffi.Pointer<ffi.Char> id,
+  ) {
+    return _mtmd_bitmap_set_id(
+      bitmap,
+      id,
+    );
+  }
+
+  late final _mtmd_bitmap_set_idPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<mtmd_bitmap>,
+              ffi.Pointer<ffi.Char>)>>('mtmd_bitmap_set_id');
+  late final _mtmd_bitmap_set_id = _mtmd_bitmap_set_idPtr.asFunction<
+      void Function(ffi.Pointer<mtmd_bitmap>, ffi.Pointer<ffi.Char>)>();
+
+  ffi.Pointer<mtmd_input_chunks> mtmd_input_chunks_init() {
+    return _mtmd_input_chunks_init();
+  }
+
+  late final _mtmd_input_chunks_initPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<mtmd_input_chunks> Function()>>(
+          'mtmd_input_chunks_init');
+  late final _mtmd_input_chunks_init = _mtmd_input_chunks_initPtr
+      .asFunction<ffi.Pointer<mtmd_input_chunks> Function()>();
+
+  int mtmd_input_chunks_size(
+    ffi.Pointer<mtmd_input_chunks> chunks,
+  ) {
+    return _mtmd_input_chunks_size(
+      chunks,
+    );
+  }
+
+  late final _mtmd_input_chunks_sizePtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Size Function(ffi.Pointer<mtmd_input_chunks>)>>(
+      'mtmd_input_chunks_size');
+  late final _mtmd_input_chunks_size = _mtmd_input_chunks_sizePtr
+      .asFunction<int Function(ffi.Pointer<mtmd_input_chunks>)>();
+
+  ffi.Pointer<mtmd_input_chunk> mtmd_input_chunks_get(
+    ffi.Pointer<mtmd_input_chunks> chunks,
+    int idx,
+  ) {
+    return _mtmd_input_chunks_get(
+      chunks,
+      idx,
+    );
+  }
+
+  late final _mtmd_input_chunks_getPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<mtmd_input_chunk> Function(ffi.Pointer<mtmd_input_chunks>,
+              ffi.Size)>>('mtmd_input_chunks_get');
+  late final _mtmd_input_chunks_get = _mtmd_input_chunks_getPtr.asFunction<
+      ffi.Pointer<mtmd_input_chunk> Function(
+          ffi.Pointer<mtmd_input_chunks>, int)>();
+
+  void mtmd_input_chunks_free(
+    ffi.Pointer<mtmd_input_chunks> chunks,
+  ) {
+    return _mtmd_input_chunks_free(
+      chunks,
+    );
+  }
+
+  late final _mtmd_input_chunks_freePtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Void Function(ffi.Pointer<mtmd_input_chunks>)>>(
+      'mtmd_input_chunks_free');
+  late final _mtmd_input_chunks_free = _mtmd_input_chunks_freePtr
+      .asFunction<void Function(ffi.Pointer<mtmd_input_chunks>)>();
+
+  mtmd_input_chunk_type mtmd_input_chunk_get_type(
+    ffi.Pointer<mtmd_input_chunk> chunk,
+  ) {
+    return mtmd_input_chunk_type.fromValue(_mtmd_input_chunk_get_type(
+      chunk,
+    ));
+  }
+
+  late final _mtmd_input_chunk_get_typePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.Pointer<mtmd_input_chunk>)>>('mtmd_input_chunk_get_type');
+  late final _mtmd_input_chunk_get_type = _mtmd_input_chunk_get_typePtr
+      .asFunction<int Function(ffi.Pointer<mtmd_input_chunk>)>();
+
+  ffi.Pointer<llama_token> mtmd_input_chunk_get_tokens_text(
+    ffi.Pointer<mtmd_input_chunk> chunk,
+    ffi.Pointer<ffi.Size> n_tokens_output,
+  ) {
+    return _mtmd_input_chunk_get_tokens_text(
+      chunk,
+      n_tokens_output,
+    );
+  }
+
+  late final _mtmd_input_chunk_get_tokens_textPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<llama_token> Function(ffi.Pointer<mtmd_input_chunk>,
+              ffi.Pointer<ffi.Size>)>>('mtmd_input_chunk_get_tokens_text');
+  late final _mtmd_input_chunk_get_tokens_text =
+      _mtmd_input_chunk_get_tokens_textPtr.asFunction<
+          ffi.Pointer<llama_token> Function(
+              ffi.Pointer<mtmd_input_chunk>, ffi.Pointer<ffi.Size>)>();
+
+  ffi.Pointer<mtmd_image_tokens> mtmd_input_chunk_get_tokens_image(
+    ffi.Pointer<mtmd_input_chunk> chunk,
+  ) {
+    return _mtmd_input_chunk_get_tokens_image(
+      chunk,
+    );
+  }
+
+  late final _mtmd_input_chunk_get_tokens_imagePtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Pointer<mtmd_image_tokens> Function(
+                  ffi.Pointer<mtmd_input_chunk>)>>(
+      'mtmd_input_chunk_get_tokens_image');
+  late final _mtmd_input_chunk_get_tokens_image =
+      _mtmd_input_chunk_get_tokens_imagePtr.asFunction<
+          ffi.Pointer<mtmd_image_tokens> Function(
+              ffi.Pointer<mtmd_input_chunk>)>();
+
+  int mtmd_input_chunk_get_n_tokens(
+    ffi.Pointer<mtmd_input_chunk> chunk,
+  ) {
+    return _mtmd_input_chunk_get_n_tokens(
+      chunk,
+    );
+  }
+
+  late final _mtmd_input_chunk_get_n_tokensPtr = _lookup<
+          ffi.NativeFunction<ffi.Size Function(ffi.Pointer<mtmd_input_chunk>)>>(
+      'mtmd_input_chunk_get_n_tokens');
+  late final _mtmd_input_chunk_get_n_tokens = _mtmd_input_chunk_get_n_tokensPtr
+      .asFunction<int Function(ffi.Pointer<mtmd_input_chunk>)>();
+
+  ffi.Pointer<ffi.Char> mtmd_input_chunk_get_id(
+    ffi.Pointer<mtmd_input_chunk> chunk,
+  ) {
+    return _mtmd_input_chunk_get_id(
+      chunk,
+    );
+  }
+
+  late final _mtmd_input_chunk_get_idPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ffi.Char> Function(
+              ffi.Pointer<mtmd_input_chunk>)>>('mtmd_input_chunk_get_id');
+  late final _mtmd_input_chunk_get_id = _mtmd_input_chunk_get_idPtr.asFunction<
+      ffi.Pointer<ffi.Char> Function(ffi.Pointer<mtmd_input_chunk>)>();
+
+  int mtmd_input_chunk_get_n_pos(
+    ffi.Pointer<mtmd_input_chunk> chunk,
+  ) {
+    return _mtmd_input_chunk_get_n_pos(
+      chunk,
+    );
+  }
+
+  late final _mtmd_input_chunk_get_n_posPtr = _lookup<
+          ffi
+          .NativeFunction<llama_pos Function(ffi.Pointer<mtmd_input_chunk>)>>(
+      'mtmd_input_chunk_get_n_pos');
+  late final _mtmd_input_chunk_get_n_pos = _mtmd_input_chunk_get_n_posPtr
+      .asFunction<int Function(ffi.Pointer<mtmd_input_chunk>)>();
+
+  ffi.Pointer<mtmd_input_chunk> mtmd_input_chunk_copy(
+    ffi.Pointer<mtmd_input_chunk> chunk,
+  ) {
+    return _mtmd_input_chunk_copy(
+      chunk,
+    );
+  }
+
+  late final _mtmd_input_chunk_copyPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<mtmd_input_chunk> Function(
+              ffi.Pointer<mtmd_input_chunk>)>>('mtmd_input_chunk_copy');
+  late final _mtmd_input_chunk_copy = _mtmd_input_chunk_copyPtr.asFunction<
+      ffi.Pointer<mtmd_input_chunk> Function(ffi.Pointer<mtmd_input_chunk>)>();
+
+  void mtmd_input_chunk_free(
+    ffi.Pointer<mtmd_input_chunk> chunk,
+  ) {
+    return _mtmd_input_chunk_free(
+      chunk,
+    );
+  }
+
+  late final _mtmd_input_chunk_freePtr = _lookup<
+          ffi.NativeFunction<ffi.Void Function(ffi.Pointer<mtmd_input_chunk>)>>(
+      'mtmd_input_chunk_free');
+  late final _mtmd_input_chunk_free = _mtmd_input_chunk_freePtr
+      .asFunction<void Function(ffi.Pointer<mtmd_input_chunk>)>();
+
+  int mtmd_image_tokens_get_n_tokens(
+    ffi.Pointer<mtmd_image_tokens> image_tokens,
+  ) {
+    return _mtmd_image_tokens_get_n_tokens(
+      image_tokens,
+    );
+  }
+
+  late final _mtmd_image_tokens_get_n_tokensPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Size Function(ffi.Pointer<mtmd_image_tokens>)>>(
+      'mtmd_image_tokens_get_n_tokens');
+  late final _mtmd_image_tokens_get_n_tokens =
+      _mtmd_image_tokens_get_n_tokensPtr
+          .asFunction<int Function(ffi.Pointer<mtmd_image_tokens>)>();
+
+  int mtmd_image_tokens_get_nx(
+    ffi.Pointer<mtmd_image_tokens> image_tokens,
+  ) {
+    return _mtmd_image_tokens_get_nx(
+      image_tokens,
+    );
+  }
+
+  late final _mtmd_image_tokens_get_nxPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Size Function(ffi.Pointer<mtmd_image_tokens>)>>(
+      'mtmd_image_tokens_get_nx');
+  late final _mtmd_image_tokens_get_nx = _mtmd_image_tokens_get_nxPtr
+      .asFunction<int Function(ffi.Pointer<mtmd_image_tokens>)>();
+
+  int mtmd_image_tokens_get_ny(
+    ffi.Pointer<mtmd_image_tokens> image_tokens,
+  ) {
+    return _mtmd_image_tokens_get_ny(
+      image_tokens,
+    );
+  }
+
+  late final _mtmd_image_tokens_get_nyPtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Size Function(ffi.Pointer<mtmd_image_tokens>)>>(
+      'mtmd_image_tokens_get_ny');
+  late final _mtmd_image_tokens_get_ny = _mtmd_image_tokens_get_nyPtr
+      .asFunction<int Function(ffi.Pointer<mtmd_image_tokens>)>();
+
+  ffi.Pointer<ffi.Char> mtmd_image_tokens_get_id(
+    ffi.Pointer<mtmd_image_tokens> image_tokens,
+  ) {
+    return _mtmd_image_tokens_get_id(
+      image_tokens,
+    );
+  }
+
+  late final _mtmd_image_tokens_get_idPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ffi.Char> Function(
+              ffi.Pointer<mtmd_image_tokens>)>>('mtmd_image_tokens_get_id');
+  late final _mtmd_image_tokens_get_id =
+      _mtmd_image_tokens_get_idPtr.asFunction<
+          ffi.Pointer<ffi.Char> Function(ffi.Pointer<mtmd_image_tokens>)>();
+
+  int mtmd_image_tokens_get_n_pos(
+    ffi.Pointer<mtmd_image_tokens> image_tokens,
+  ) {
+    return _mtmd_image_tokens_get_n_pos(
+      image_tokens,
+    );
+  }
+
+  late final _mtmd_image_tokens_get_n_posPtr = _lookup<
+          ffi
+          .NativeFunction<llama_pos Function(ffi.Pointer<mtmd_image_tokens>)>>(
+      'mtmd_image_tokens_get_n_pos');
+  late final _mtmd_image_tokens_get_n_pos = _mtmd_image_tokens_get_n_posPtr
+      .asFunction<int Function(ffi.Pointer<mtmd_image_tokens>)>();
+
+  int mtmd_tokenize(
+    ffi.Pointer<mtmd_context> ctx,
+    ffi.Pointer<mtmd_input_chunks> output,
+    ffi.Pointer<mtmd_input_text> text,
+    ffi.Pointer<ffi.Pointer<mtmd_bitmap>> bitmaps,
+    int n_bitmaps,
+  ) {
+    return _mtmd_tokenize(
+      ctx,
+      output,
+      text,
+      bitmaps,
+      n_bitmaps,
+    );
+  }
+
+  late final _mtmd_tokenizePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(
+              ffi.Pointer<mtmd_context>,
+              ffi.Pointer<mtmd_input_chunks>,
+              ffi.Pointer<mtmd_input_text>,
+              ffi.Pointer<ffi.Pointer<mtmd_bitmap>>,
+              ffi.Size)>>('mtmd_tokenize');
+  late final _mtmd_tokenize = _mtmd_tokenizePtr.asFunction<
+      int Function(
+          ffi.Pointer<mtmd_context>,
+          ffi.Pointer<mtmd_input_chunks>,
+          ffi.Pointer<mtmd_input_text>,
+          ffi.Pointer<ffi.Pointer<mtmd_bitmap>>,
+          int)>();
+
+  int mtmd_encode(
+    ffi.Pointer<mtmd_context> ctx,
+    ffi.Pointer<mtmd_image_tokens> image_tokens,
+  ) {
+    return _mtmd_encode(
+      ctx,
+      image_tokens,
+    );
+  }
+
+  late final _mtmd_encodePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Pointer<mtmd_context>,
+              ffi.Pointer<mtmd_image_tokens>)>>('mtmd_encode');
+  late final _mtmd_encode = _mtmd_encodePtr.asFunction<
+      int Function(
+          ffi.Pointer<mtmd_context>, ffi.Pointer<mtmd_image_tokens>)>();
+
+  int mtmd_encode_chunk(
+    ffi.Pointer<mtmd_context> ctx,
+    ffi.Pointer<mtmd_input_chunk> chunk,
+  ) {
+    return _mtmd_encode_chunk(
+      ctx,
+      chunk,
+    );
+  }
+
+  late final _mtmd_encode_chunkPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Int32 Function(ffi.Pointer<mtmd_context>,
+              ffi.Pointer<mtmd_input_chunk>)>>('mtmd_encode_chunk');
+  late final _mtmd_encode_chunk = _mtmd_encode_chunkPtr.asFunction<
+      int Function(ffi.Pointer<mtmd_context>, ffi.Pointer<mtmd_input_chunk>)>();
+
+  ffi.Pointer<ffi.Float> mtmd_get_output_embd(
+    ffi.Pointer<mtmd_context> ctx,
+  ) {
+    return _mtmd_get_output_embd(
+      ctx,
+    );
+  }
+
+  late final _mtmd_get_output_embdPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ffi.Float> Function(
+              ffi.Pointer<mtmd_context>)>>('mtmd_get_output_embd');
+  late final _mtmd_get_output_embd = _mtmd_get_output_embdPtr
+      .asFunction<ffi.Pointer<ffi.Float> Function(ffi.Pointer<mtmd_context>)>();
+
+  /// //////////////////////////////////////
+  ffi.Pointer<mtmd_input_chunks> mtmd_test_create_input_chunks() {
+    return _mtmd_test_create_input_chunks();
+  }
+
+  late final _mtmd_test_create_input_chunksPtr =
+      _lookup<ffi.NativeFunction<ffi.Pointer<mtmd_input_chunks> Function()>>(
+          'mtmd_test_create_input_chunks');
+  late final _mtmd_test_create_input_chunks = _mtmd_test_create_input_chunksPtr
+      .asFunction<ffi.Pointer<mtmd_input_chunks> Function()>();
 }
 
 typedef __int8_t = ffi.SignedChar;
@@ -15726,7 +16360,7 @@ enum ggml_status {
         -1 => GGML_STATUS_FAILED,
         0 => GGML_STATUS_SUCCESS,
         1 => GGML_STATUS_ABORTED,
-        _ => throw ArgumentError("Unknown value for ggml_status: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_status: $value'),
       };
 }
 
@@ -15814,7 +16448,7 @@ enum ggml_type {
         34 => GGML_TYPE_TQ1_0,
         35 => GGML_TYPE_TQ2_0,
         39 => GGML_TYPE_COUNT,
-        _ => throw ArgumentError("Unknown value for ggml_type: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_type: $value'),
       };
 }
 
@@ -15828,7 +16462,7 @@ enum ggml_prec {
   static ggml_prec fromValue(int value) => switch (value) {
         0 => GGML_PREC_DEFAULT,
         10 => GGML_PREC_F32,
-        _ => throw ArgumentError("Unknown value for ggml_prec: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_prec: $value'),
       };
 }
 
@@ -15886,7 +16520,7 @@ enum ggml_ftype {
         22 => GGML_FTYPE_MOSTLY_IQ4_XS,
         23 => GGML_FTYPE_MOSTLY_IQ1_M,
         24 => GGML_FTYPE_MOSTLY_BF16,
-        _ => throw ArgumentError("Unknown value for ggml_ftype: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_ftype: $value'),
       };
 }
 
@@ -16064,7 +16698,7 @@ enum ggml_op {
         81 => GGML_OP_CROSS_ENTROPY_LOSS_BACK,
         82 => GGML_OP_OPT_STEP_ADAMW,
         83 => GGML_OP_COUNT,
-        _ => throw ArgumentError("Unknown value for ggml_op: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_op: $value'),
       };
 }
 
@@ -16106,7 +16740,7 @@ enum ggml_unary_op {
         13 => GGML_UNARY_OP_EXP,
         14 => GGML_UNARY_OP_GELU_ERF,
         15 => GGML_UNARY_OP_COUNT,
-        _ => throw ArgumentError("Unknown value for ggml_unary_op: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_unary_op: $value'),
       };
 }
 
@@ -16122,7 +16756,7 @@ enum ggml_object_type {
         0 => GGML_OBJECT_TYPE_TENSOR,
         1 => GGML_OBJECT_TYPE_GRAPH,
         2 => GGML_OBJECT_TYPE_WORK_BUFFER,
-        _ => throw ArgumentError("Unknown value for ggml_object_type: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_object_type: $value'),
       };
 }
 
@@ -16144,7 +16778,7 @@ enum ggml_log_level {
         3 => GGML_LOG_LEVEL_WARN,
         4 => GGML_LOG_LEVEL_ERROR,
         5 => GGML_LOG_LEVEL_CONT,
-        _ => throw ArgumentError("Unknown value for ggml_log_level: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_log_level: $value'),
       };
 }
 
@@ -16162,7 +16796,7 @@ enum ggml_tensor_flag {
         2 => GGML_TENSOR_FLAG_OUTPUT,
         4 => GGML_TENSOR_FLAG_PARAM,
         8 => GGML_TENSOR_FLAG_LOSS,
-        _ => throw ArgumentError("Unknown value for ggml_tensor_flag: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_tensor_flag: $value'),
       };
 }
 
@@ -16242,7 +16876,7 @@ enum ggml_op_pool {
         0 => GGML_OP_POOL_MAX,
         1 => GGML_OP_POOL_AVG,
         2 => GGML_OP_POOL_COUNT,
-        _ => throw ArgumentError("Unknown value for ggml_op_pool: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_op_pool: $value'),
       };
 }
 
@@ -16256,7 +16890,7 @@ enum ggml_scale_mode {
   static ggml_scale_mode fromValue(int value) => switch (value) {
         0 => GGML_SCALE_MODE_NEAREST,
         1 => GGML_SCALE_MODE_BILINEAR,
-        _ => throw ArgumentError("Unknown value for ggml_scale_mode: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_scale_mode: $value'),
       };
 }
 
@@ -16270,7 +16904,7 @@ enum ggml_sort_order {
   static ggml_sort_order fromValue(int value) => switch (value) {
         0 => GGML_SORT_ORDER_ASC,
         1 => GGML_SORT_ORDER_DESC,
-        _ => throw ArgumentError("Unknown value for ggml_sort_order: $value"),
+        _ => throw ArgumentError('Unknown value for ggml_sort_order: $value'),
       };
 }
 
@@ -16390,7 +17024,7 @@ enum ggml_sched_priority {
         2 => GGML_SCHED_PRIO_HIGH,
         3 => GGML_SCHED_PRIO_REALTIME,
         _ =>
-          throw ArgumentError("Unknown value for ggml_sched_priority: $value"),
+          throw ArgumentError('Unknown value for ggml_sched_priority: $value'),
       };
 }
 
@@ -16471,7 +17105,7 @@ enum ggml_backend_buffer_usage {
         1 => GGML_BACKEND_BUFFER_USAGE_WEIGHTS,
         2 => GGML_BACKEND_BUFFER_USAGE_COMPUTE,
         _ => throw ArgumentError(
-            "Unknown value for ggml_backend_buffer_usage: $value"),
+            'Unknown value for ggml_backend_buffer_usage: $value'),
       };
 }
 
@@ -16488,13 +17122,13 @@ enum ggml_backend_dev_type {
         1 => GGML_BACKEND_DEVICE_TYPE_GPU,
         2 => GGML_BACKEND_DEVICE_TYPE_ACCEL,
         _ => throw ArgumentError(
-            "Unknown value for ggml_backend_dev_type: $value"),
+            'Unknown value for ggml_backend_dev_type: $value'),
       };
 }
 
 final class ggml_backend_dev_caps extends ffi.Struct {
   @ffi.Bool()
-  external bool async1;
+  external bool async$;
 
   @ffi.Bool()
   external bool host_buffer;
@@ -16633,7 +17267,7 @@ enum ggml_numa_strategy {
         4 => GGML_NUMA_STRATEGY_MIRROR,
         5 => GGML_NUMA_STRATEGY_COUNT,
         _ =>
-          throw ArgumentError("Unknown value for ggml_numa_strategy: $value"),
+          throw ArgumentError('Unknown value for ggml_numa_strategy: $value'),
       };
 }
 
@@ -16697,7 +17331,7 @@ enum ggml_opt_loss_type {
         2 => GGML_OPT_LOSS_TYPE_CROSS_ENTROPY,
         3 => GGML_OPT_LOSS_TYPE_MEAN_SQUARED_ERROR,
         _ =>
-          throw ArgumentError("Unknown value for ggml_opt_loss_type: $value"),
+          throw ArgumentError('Unknown value for ggml_opt_loss_type: $value'),
       };
 }
 
@@ -16714,7 +17348,7 @@ enum ggml_opt_build_type {
         20 => GGML_OPT_BUILD_TYPE_GRAD,
         30 => GGML_OPT_BUILD_TYPE_OPT,
         _ =>
-          throw ArgumentError("Unknown value for ggml_opt_build_type: $value"),
+          throw ArgumentError('Unknown value for ggml_opt_build_type: $value'),
       };
 }
 
@@ -16893,7 +17527,7 @@ enum llama_vocab_type {
         3 => LLAMA_VOCAB_TYPE_WPM,
         4 => LLAMA_VOCAB_TYPE_UGM,
         5 => LLAMA_VOCAB_TYPE_RWKV,
-        _ => throw ArgumentError("Unknown value for llama_vocab_type: $value"),
+        _ => throw ArgumentError('Unknown value for llama_vocab_type: $value'),
       };
 }
 
@@ -16976,7 +17610,7 @@ enum llama_vocab_pre_type {
         34 => LLAMA_VOCAB_PRE_TYPE_PIXTRAL,
         35 => LLAMA_VOCAB_PRE_TYPE_SEED_CODER,
         _ =>
-          throw ArgumentError("Unknown value for llama_vocab_pre_type: $value"),
+          throw ArgumentError('Unknown value for llama_vocab_pre_type: $value'),
       };
 }
 
@@ -16996,7 +17630,7 @@ enum llama_rope_type {
         2 => LLAMA_ROPE_TYPE_NEOX,
         8 => LLAMA_ROPE_TYPE_MROPE,
         24 => LLAMA_ROPE_TYPE_VISION,
-        _ => throw ArgumentError("Unknown value for llama_rope_type: $value"),
+        _ => throw ArgumentError('Unknown value for llama_rope_type: $value'),
       };
 }
 
@@ -17020,7 +17654,7 @@ enum llama_token_type {
         4 => LLAMA_TOKEN_TYPE_USER_DEFINED,
         5 => LLAMA_TOKEN_TYPE_UNUSED,
         6 => LLAMA_TOKEN_TYPE_BYTE,
-        _ => throw ArgumentError("Unknown value for llama_token_type: $value"),
+        _ => throw ArgumentError('Unknown value for llama_token_type: $value'),
       };
 }
 
@@ -17052,7 +17686,7 @@ enum llama_token_attr {
         128 => LLAMA_TOKEN_ATTR_LSTRIP,
         256 => LLAMA_TOKEN_ATTR_RSTRIP,
         512 => LLAMA_TOKEN_ATTR_SINGLE_WORD,
-        _ => throw ArgumentError("Unknown value for llama_token_attr: $value"),
+        _ => throw ArgumentError('Unknown value for llama_token_attr: $value'),
       };
 }
 
@@ -17128,7 +17762,7 @@ enum llama_ftype {
         36 => LLAMA_FTYPE_MOSTLY_TQ1_0,
         37 => LLAMA_FTYPE_MOSTLY_TQ2_0,
         1024 => LLAMA_FTYPE_GUESSED,
-        _ => throw ArgumentError("Unknown value for llama_ftype: $value"),
+        _ => throw ArgumentError('Unknown value for llama_ftype: $value'),
       };
 }
 
@@ -17152,7 +17786,7 @@ enum llama_rope_scaling_type {
         2 => LLAMA_ROPE_SCALING_TYPE_YARN,
         3 => LLAMA_ROPE_SCALING_TYPE_LONGROPE,
         _ => throw ArgumentError(
-            "Unknown value for llama_rope_scaling_type: $value"),
+            'Unknown value for llama_rope_scaling_type: $value'),
       };
 
   @override
@@ -17182,7 +17816,7 @@ enum llama_pooling_type {
         3 => LLAMA_POOLING_TYPE_LAST,
         4 => LLAMA_POOLING_TYPE_RANK,
         _ =>
-          throw ArgumentError("Unknown value for llama_pooling_type: $value"),
+          throw ArgumentError('Unknown value for llama_pooling_type: $value'),
       };
 }
 
@@ -17199,7 +17833,7 @@ enum llama_attention_type {
         0 => LLAMA_ATTENTION_TYPE_CAUSAL,
         1 => LLAMA_ATTENTION_TYPE_NON_CAUSAL,
         _ =>
-          throw ArgumentError("Unknown value for llama_attention_type: $value"),
+          throw ArgumentError('Unknown value for llama_attention_type: $value'),
       };
 }
 
@@ -17215,7 +17849,7 @@ enum llama_split_mode {
         0 => LLAMA_SPLIT_MODE_NONE,
         1 => LLAMA_SPLIT_MODE_LAYER,
         2 => LLAMA_SPLIT_MODE_ROW,
-        _ => throw ArgumentError("Unknown value for llama_split_mode: $value"),
+        _ => throw ArgumentError('Unknown value for llama_split_mode: $value'),
       };
 }
 
@@ -17258,7 +17892,7 @@ enum llama_model_kv_override_type {
         2 => LLAMA_KV_OVERRIDE_TYPE_BOOL,
         3 => LLAMA_KV_OVERRIDE_TYPE_STR,
         _ => throw ArgumentError(
-            "Unknown value for llama_model_kv_override_type: $value"),
+            'Unknown value for llama_model_kv_override_type: $value'),
       };
 }
 
@@ -17545,11 +18179,68 @@ final class llama_opt_params extends ffi.Struct {
   external ffi.Pointer<ffi.Void> get_opt_pars_ud;
 }
 
+enum mtmd_input_chunk_type {
+  MTMD_INPUT_CHUNK_TYPE_TEXT(0),
+  MTMD_INPUT_CHUNK_TYPE_IMAGE(1),
+  MTMD_INPUT_CHUNK_TYPE_AUDIO(2);
+
+  final int value;
+  const mtmd_input_chunk_type(this.value);
+
+  static mtmd_input_chunk_type fromValue(int value) => switch (value) {
+        0 => MTMD_INPUT_CHUNK_TYPE_TEXT,
+        1 => MTMD_INPUT_CHUNK_TYPE_IMAGE,
+        2 => MTMD_INPUT_CHUNK_TYPE_AUDIO,
+        _ => throw ArgumentError(
+            'Unknown value for mtmd_input_chunk_type: $value'),
+      };
+}
+
+final class mtmd_context extends ffi.Opaque {}
+
+final class mtmd_bitmap extends ffi.Opaque {}
+
+final class mtmd_image_tokens extends ffi.Opaque {}
+
+final class mtmd_input_chunk extends ffi.Opaque {}
+
+final class mtmd_input_chunks extends ffi.Opaque {}
+
+final class mtmd_input_text extends ffi.Struct {
+  external ffi.Pointer<ffi.Char> text;
+
+  @ffi.Bool()
+  external bool add_special;
+
+  @ffi.Bool()
+  external bool parse_special;
+}
+
+final class mtmd_context_params extends ffi.Struct {
+  @ffi.Bool()
+  external bool use_gpu;
+
+  @ffi.Bool()
+  external bool print_timings;
+
+  @ffi.Int()
+  external int n_threads;
+
+  @ffi.UnsignedInt()
+  external int verbosityAsInt;
+
+  ggml_log_level get verbosity => ggml_log_level.fromValue(verbosityAsInt);
+
+  external ffi.Pointer<ffi.Char> image_marker;
+
+  external ffi.Pointer<ffi.Char> media_marker;
+}
+
 const int __bool_true_false_are_defined = 1;
 
-const int true1 = 1;
+const int true$ = 1;
 
-const int false1 = 0;
+const int false$ = 0;
 
 const int __has_safe_buffers = 1;
 
@@ -18704,3 +19395,5 @@ const int LLAMA_SESSION_VERSION = 9;
 const int LLAMA_STATE_SEQ_MAGIC = 1734833009;
 
 const int LLAMA_STATE_SEQ_VERSION = 2;
+
+const String MTMD_DEFAULT_IMAGE_MARKER = '<__image__>';

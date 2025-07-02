@@ -67,6 +67,7 @@ fi
 # Main libraries
 fix_rpaths "$LIB_DIR/libllama.dylib"
 fix_rpaths "$LIB_DIR/libggml.dylib"
+fix_rpaths "$LIB_DIR/libmtmd.dylib"
 
 # Component libraries
 for lib in "$LIB_DIR/libggml-"*.dylib; do
