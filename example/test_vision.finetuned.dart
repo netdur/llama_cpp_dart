@@ -18,18 +18,20 @@ Future<void> main() async {
     ..penaltyRepeat = 1.1;
 
   final llama = Llama(
-      "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf",
+      "/Users/adel/Downloads/gemma-3n-E2B-it-plantvillage-model-Q4_K_M.gguf",
       modelParams,
       contextParams,
       samplerParams,
-      false,
-      "/Users/adel/Workspace/gguf/mmproj-model-f16-4B.gguf");
+      true,
+      "/Users/adel/Downloads/gemma-3n-E2B-it-plantvillage -mmproj.gguf");
 
-  final image = LlamaImage.fromFile(File("/Users/adel/Downloads/test.jpg"));
+  final image =
+      LlamaImage.fromFile(File("/Users/adel/Downloads/plantvillage-test.png"));
   final prompt = """
 <start_of_turn>user\n
 <image>\n
-Describe this image in detail
+You are an expert plant pathologist.
+Your task is to identify the plant species and its health status from the image.
 <start_of_turn>model\n""";
 
   try {

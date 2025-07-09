@@ -479,7 +479,9 @@ class Llama {
     String prompt, {
     required List<LlamaInput> inputs,
   }) async* {
-    if (_isDisposed) throw StateError('Instance disposed');
+    if (_isDisposed) {
+      throw StateError('Instance disposed');
+    }
     if (!_isVisionEnabled || _mctx == nullptr) {
       throw LlamaException(
           'Vision disabled – construct Llama with mmprojPath.');
@@ -505,8 +507,10 @@ class Llama {
     try {
       _status = LlamaStatus.generating;
 
-      final mem = lib.llama_get_memory(context);
-      lib.llama_memory_clear(mem, true);
+      lib.llama_sampler_reset(_smpl);
+
+      // Clear KV cache and reset batch state for a clean run.
+      clear();
 
       for (final img in images) {
         bitmapRefs.add(img.toBitmap(lib, malloc));
@@ -527,6 +531,7 @@ class Llama {
         ..parse_special = true;
 
       chunks = lib.mtmd_input_chunks_init();
+
       final tk =
           lib.mtmd_tokenize(_mctx, chunks, txtPtr, bmpArr, bitmapRefs.length);
       if (tk != 0) throw LlamaException('mtmd_tokenize failed ($tk)');
@@ -535,7 +540,11 @@ class Llama {
       final nCtx = _contextParams?.nCtx ?? 2048;
       final nChunks = lib.mtmd_input_chunks_size(chunks);
 
+      final b = batch;
+      final Pointer<llama_token> originalTokenPtr = b.token;
+
       for (var i = 0; i < nChunks; ++i) {
+        b.n_tokens = 0;
         final chunk = lib.mtmd_input_chunks_get(chunks, i);
         final type = lib.mtmd_input_chunk_get_type(chunk);
 
@@ -548,58 +557,69 @@ class Llama {
           final nTok = lib.mtmd_input_chunk_get_n_tokens(chunk);
           if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
 
-          final b = lib.llama_batch_init(nTok, /*embd=*/ 1, /*seq_id_max=*/ 1);
-          try {
-            for (var k = 0; k < nTok; ++k) {
-              b.pos[k] = nPast + k;
-              b.n_seq_id[k] = 1;
-              b.seq_id[k] = calloc<llama_seq_id>()..value = 0;
-              b.logits[k] = 0;
-            }
-            b.logits[nTok - 1] = 1;
-            b.n_tokens = nTok;
-            b.embd = embd;
+          b.token = nullptr;
+          b.embd = embd;
 
-            if (lib.llama_decode(context, b) != 0) {
-              throw LlamaException('llama_decode image chunk #$i failed');
-            }
-            nPast += nTok;
-          } finally {
-            lib.llama_batch_free(b);
+          for (var k = 0; k < nTok; ++k) {
+            b.pos[k] = nPast + k;
+            b.n_seq_id[k] = 1;
+            b.seq_id[k] = calloc<llama_seq_id>()..value = 0; // <<< FIX
+            b.logits[k] = 0;
+          }
+          b.logits[nTok - 1] = 1;
+          b.n_tokens = nTok;
+
+          if (lib.llama_decode(context, b) != 0) {
+            throw LlamaException('llama_decode image chunk #$i failed');
+          }
+          nPast += nTok;
+
+          for (var k = 0; k < nTok; ++k) {
+            calloc.free(b.seq_id[k]);
+            b.seq_id[k] = nullptr;
           }
         } else {
+          // Text chunk
           final nPtr = malloc<Size>();
           final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
           final nTok = nPtr.value;
           malloc.free(nPtr);
           if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
 
-          final b = lib.llama_batch_init(nTok, /*embd=*/ 0, /*seq_id_max=*/ 1);
-          try {
-            for (var k = 0; k < nTok; ++k) {
-              b.token[k] = tokPt[k];
-              b.pos[k] = nPast + k;
-              b.n_seq_id[k] = 1;
-              b.seq_id[k] = calloc<llama_seq_id>()..value = 0;
-              b.logits[k] = 0;
-            }
-            b.logits[nTok - 1] = 1;
-            b.n_tokens = nTok;
+          b.token = originalTokenPtr;
+          b.embd = nullptr;
 
-            if (lib.llama_decode(context, b) != 0) {
-              throw LlamaException('llama_decode text chunk #$i failed');
-            }
-            nPast += nTok;
-          } finally {
-            lib.llama_batch_free(b);
+          for (var k = 0; k < nTok; ++k) {
+            b.token[k] = tokPt[k];
+            b.pos[k] = nPast + k;
+            b.n_seq_id[k] = 1;
+            b.seq_id[k] = calloc<llama_seq_id>()..value = 0; // <<< FIX
+            b.logits[k] = 0;
+          }
+          b.logits[nTok - 1] = 1;
+          b.n_tokens = nTok;
+
+          if (lib.llama_decode(context, b) != 0) {
+            throw LlamaException('llama_decode text chunk #$i failed');
+          }
+          nPast += nTok;
+
+          for (var k = 0; k < nTok; ++k) {
+            calloc.free(b.seq_id[k]);
+            b.seq_id[k] = nullptr;
           }
         }
       }
 
       var produced = 0;
       while (nPast < nCtx && (_nPredict == -1 || produced < _nPredict)) {
+        b.token = originalTokenPtr;
+        b.embd = nullptr;
+
         final tok = lib.llama_sampler_sample(_smpl, context, -1);
-        if (lib.llama_token_is_eog(vocab, tok)) break;
+        if (lib.llama_token_is_eog(vocab, tok)) {
+          break;
+        }
 
         final buf = malloc<Char>(128);
         try {
@@ -610,35 +630,32 @@ class Llama {
           malloc.free(buf);
         }
 
-        final b =
-            lib.llama_batch_init(/*nTok*/ 1, /*embd*/ 0, /*seq_id_max*/ 1);
-        try {
-          b.token[0] = tok;
-          b.pos[0] = nPast;
-          b.n_seq_id[0] = 1;
-          b.seq_id[0] = calloc<llama_seq_id>()..value = 0;
-          b.logits[0] = 1;
-          b.n_tokens = 1;
+        b.n_tokens = 0;
+        b.token[0] = tok;
+        b.pos[0] = nPast;
+        b.n_seq_id[0] = 1;
+        b.seq_id[0] = calloc<llama_seq_id>()..value = 0; // <<< FIX
+        b.logits[0] = 1;
+        b.n_tokens = 1;
 
-          if (lib.llama_decode(context, b) != 0) {
-            throw LlamaException('llama_decode generated token failed');
-          }
-          ++nPast;
-          ++produced;
-        } finally {
-          lib.llama_batch_free(b);
+        if (lib.llama_decode(context, b) != 0) {
+          throw LlamaException('llama_decode generated token failed');
         }
+
+        calloc.free(b.seq_id[0]);
+        b.seq_id[0] = nullptr;
+
+        ++nPast;
+        ++produced;
       }
     } finally {
       if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
       if (bmpArr != nullptr) malloc.free(bmpArr);
       for (final r in bitmapRefs) {
         if (r.bitmap != nullptr) lib.mtmd_bitmap_free(r.bitmap);
-        // if (r.imageData != nullptr) malloc.free(r.imageData);
       }
       if (txtPtr != nullptr) calloc.free(txtPtr);
       if (fullPtr != nullptr) malloc.free(fullPtr);
-
       _status = LlamaStatus.ready;
     }
   }

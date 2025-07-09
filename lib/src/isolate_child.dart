@@ -22,12 +22,14 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           :final path,
           :final modelParams,
           :final contextParams,
-          :final samplingParams
+          :final samplingParams,
+          :final mmprojPath // Add this
         ):
-        _handleLoad(path, modelParams, contextParams, samplingParams);
+        _handleLoad(
+            path, modelParams, contextParams, samplingParams, mmprojPath);
 
-      case LlamaPrompt(:final prompt, :final promptId):
-        _handlePrompt(prompt, promptId);
+      case LlamaPrompt(:final prompt, :final promptId, :final images):
+        _handlePrompt(prompt, promptId, images);
 
       case LlamaInit(:final libraryPath):
         _handleInit(libraryPath);
@@ -56,10 +58,20 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   }
 
   /// Handle load command
-  void _handleLoad(String path, ModelParams modelParams,
-      ContextParams contextParams, SamplerParams samplingParams) {
+  void _handleLoad(
+      String path,
+      ModelParams modelParams,
+      ContextParams contextParams,
+      SamplerParams samplingParams,
+      String? mmprojPath) {
     try {
-      llama = Llama(path, modelParams, contextParams, samplingParams);
+      // Create Llama instance with optional mmproj path for VLM support
+      if (mmprojPath != null) {
+        llama = Llama(path, modelParams, contextParams, samplingParams, false,
+            mmprojPath);
+      } else {
+        llama = Llama(path, modelParams, contextParams, samplingParams);
+      }
       sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));
     } catch (e) {
       sendToParent(LlamaResponse.error("Error loading model: $e"));
@@ -67,9 +79,9 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   }
 
   /// Handle prompt command
-  void _handlePrompt(String prompt, String promptId) {
+  void _handlePrompt(String prompt, String promptId, List<LlamaImage>? images) {
     shouldStop = false;
-    _sendPrompt(prompt, promptId);
+    _sendPrompt(prompt, promptId, images);
   }
 
   /// Handle init command
@@ -79,7 +91,8 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   }
 
   /// Process a prompt and send responses
-  void _sendPrompt(String prompt, String promptId) async {
+  void _sendPrompt(
+      String prompt, String promptId, List<LlamaImage>? images) async {
     if (llama == null) {
       sendToParent(LlamaResponse.error(
           "Cannot generate: model not initialized", promptId));
@@ -87,8 +100,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     }
 
     try {
-      llama!.setPrompt(prompt);
-
       // Send confirmation that generation has started
       sendToParent(LlamaResponse(
           text: "",
@@ -96,24 +107,50 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           status: LlamaStatus.generating,
           promptId: promptId));
 
-      bool generationDone = false;
+      // Use different generation method based on whether images are provided
+      if (images != null && images.isNotEmpty) {
+        final stream = llama!.generateWithMeda(prompt, inputs: images);
 
-      while (!generationDone && !shouldStop) {
-        final (text, isDone) = llama!.getNext();
+        await for (final token in stream) {
+          if (shouldStop) break;
 
+          sendToParent(LlamaResponse(
+              text: token,
+              isDone: false,
+              status: LlamaStatus.generating,
+              promptId: promptId));
+        }
+
+        // Send completion
         sendToParent(LlamaResponse(
-            text: text,
-            isDone: isDone,
-            status: isDone ? LlamaStatus.ready : LlamaStatus.generating,
+            text: "",
+            isDone: true,
+            status: LlamaStatus.ready,
             promptId: promptId));
+      } else {
+        // Use regular text generation
+        llama!.setPrompt(prompt);
 
-        generationDone = isDone;
+        bool generationDone = false;
+        while (!generationDone && !shouldStop) {
+          final (text, isDone) = llama!.getNext();
 
-        await Future.delayed(Duration(milliseconds: isDone ? 0 : 5));
+          sendToParent(LlamaResponse(
+              text: text,
+              isDone: isDone,
+              status: isDone ? LlamaStatus.ready : LlamaStatus.generating,
+              promptId: promptId));
+
+          generationDone = isDone;
+
+          if (!isDone) {
+            await Future.delayed(Duration(milliseconds: 5));
+          }
+        }
       }
 
       // If stopped by external request, send completion confirmation
-      if (shouldStop && !generationDone) {
+      if (shouldStop) {
         sendToParent(LlamaResponse(
             text: "",
             isDone: true,

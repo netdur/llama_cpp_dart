@@ -5,8 +5,8 @@ set -euo pipefail
 # 🛠  CONFIGURATION – adjust names/paths if your project changes
 ###############################################################################
 FRAMEWORK_NAME="Llama"
-MAIN_LIB_NAME="libllama.dylib"
-FRAMEWORK_VERSION="0.0.9"
+MAIN_LIB_NAME="libmtmd.dylib"
+FRAMEWORK_VERSION="0.1.0"
 FRAMEWORK_ID="io.github.netdur.llama_cpp_dart"
 
 MIN_IOS_VERSION="13.0"
@@ -14,7 +14,7 @@ MIN_MACOS_VERSION="12.0"
 
 DEPENDENCY_LIBS=(
   "libggml.dylib" "libggml-metal.dylib" "libggml-base.dylib"
-  "libggml-cpu.dylib" "libggml-blas.dylib"
+  "libggml-cpu.dylib" "libggml-blas.dylib" "libmtmd.dylib"
 )
 
 # paths where YOUR build system placed the thin architectures

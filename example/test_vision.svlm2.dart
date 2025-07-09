@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'dart:io';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
@@ -6,10 +8,13 @@ Future<void> main() async {
 
   final modelParams = ModelParams()..nGpuLayers = -1;
 
-  final contextParams = ContextParams()..nPredict = -1;
+  final contextParams = ContextParams()
+    ..nPredict = -1
+    ..nCtx = 4096
+    ..nBatch = 1024;
 
   final samplerParams = SamplerParams()
-    ..temp = 0.2
+    ..temp = 0.25
     ..topP = 0.90;
 
   final llama = Llama(
@@ -21,27 +26,27 @@ Future<void> main() async {
       "/Users/adel/Workspace/gguf/mmproj-SmolVLM-500M-Instruct-Q8_0.gguf");
 
   final image = LlamaImage.fromFile(File("/Users/adel/Downloads/test.jpg"));
+  var prompt = """
+Generate a detailed product listing for this item,
+including a title, key features, and a description.
+output shouly be only, title, key features and description, DO NOT ADD ANYTHING ELSE OR ASK QUESTION OR MAKE SUGGESTIONS
+example of output:
 
-  const prompt = '''
-[
-  {
-    "role": "system",
-    "content": [
-      { "type": "text", "text": "You are a helpful vision assistant." }
-    ]
-  },
-  {
-    "role": "user",
-    "content": [
-      { "type": "<image>" },
-      { "type": "text", "text": "What's in this image?" }
-    ]
-  }
-]
-''';
+**Title:** {title}"
 
-  final sw = Stopwatch()..start();
+**Key Features:**
+  - feature
+
+**Description:** {description}"
+""";
+  prompt = """
+<|im_start|>System: You are a helpful vision assistant.<end_of_utterance>
+<|im_start|>User: <image> $prompt<end_of_utterance>
+Assistant:
+""";
+
   try {
+    print("First generation:");
     final stream = llama.generateWithMeda(prompt, inputs: [image]);
 
     await for (final token in stream) {
@@ -51,9 +56,7 @@ Future<void> main() async {
     stdout.writeln();
   } on LlamaException catch (e) {
     stderr.writeln("An error occurred: $e");
-  } finally {
-    sw.stop();
-    stdout.writeln('⏱️  Inference time: ${sw.elapsed}');
-    llama.dispose();
   }
+
+  llama.dispose();
 }

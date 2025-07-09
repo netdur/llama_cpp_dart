@@ -15,9 +15,16 @@ class CompletionEvent {
 class _QueuedPrompt {
   final String prompt;
   final Completer<String> idCompleter = Completer<String>();
-  final Object? scope; // Using Object to avoid circular dependency
+  final Object? scope;
+  final List<LlamaImage>? images;
 
-  _QueuedPrompt(this.prompt, this.scope);
+  _QueuedPrompt(this.prompt, this.scope, {this.images});
+}
+
+// Create a subclass for prompts with images (optional, for clarity):
+class _QueuedPromptWithImages extends _QueuedPrompt {
+  _QueuedPromptWithImages(super.prompt, List<LlamaImage> images, super.scope)
+      : super(images: images);
 }
 
 /// Parent class that manages communication with the LlamaChild isolate
@@ -271,9 +278,11 @@ class LlamaParent {
     _isGenerating = true;
     _status = LlamaStatus.generating;
 
-    // Send the actual prompt to the child isolate
+    // Send the prompt with images if available
     _parent.sendToChild(
-        id: 1, data: LlamaPrompt(formattedPrompt, _currentPromptId));
+        id: 1,
+        data: LlamaPrompt(formattedPrompt, _currentPromptId,
+            images: nextPrompt.images));
 
     // Set up completion handling for starting the next prompt
     _promptCompleters[_currentPromptId]!.future.then((_) {
@@ -357,5 +366,32 @@ class LlamaParent {
     await Future.delayed(const Duration(milliseconds: 100));
 
     _parent.dispose();
+  }
+
+  /// Send a prompt with images to the model for VLM generation
+  ///
+  /// [prompt] The text prompt to generate from
+  /// [images] List of images to include with the prompt
+  /// [scope] Optional scope to associate with this prompt
+  ///
+  /// Returns a prompt ID that can be used to track completion
+  Future<String> sendPromptWithImages(String prompt, List<LlamaImage> images,
+      {Object? scope}) async {
+    if (loadCommand.contextParams.embeddings) {
+      throw StateError(
+          "This LlamaParent instance is configured for embeddings only and cannot generate text.");
+    }
+
+    // Create a queued prompt with images
+    final queuedPrompt = _QueuedPromptWithImages(prompt, images, scope);
+    _promptQueue.add(queuedPrompt);
+
+    // Start processing the queue if not already doing so
+    if (!_isProcessingQueue) {
+      _processNextPrompt();
+    }
+
+    // Return a Future that completes when this prompt gets an ID
+    return queuedPrompt.idCompleter.future;
   }
 }

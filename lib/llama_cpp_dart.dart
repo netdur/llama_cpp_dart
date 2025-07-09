@@ -18,3 +18,5 @@ export 'src/isolate_scope.dart';
 
 export 'src/chat.dart';
 export 'src/text_chunker.dart';
+
+export 'src/llama_input.dart';

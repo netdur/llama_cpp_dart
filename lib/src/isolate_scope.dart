@@ -53,4 +53,13 @@ class LlamaScope {
     if (!_streamController.isClosed) await _streamController.close();
     if (!_completionController.isClosed) await _completionController.close();
   }
+
+  /// Send a prompt with images to the model and track its ID in this scope
+  Future<String> sendPromptWithImages(
+      String prompt, List<LlamaImage> images) async {
+    final promptId =
+        await _parent.sendPromptWithImages(prompt, images, scope: this);
+    _promptIds.add(promptId);
+    return promptId;
+  }
 }

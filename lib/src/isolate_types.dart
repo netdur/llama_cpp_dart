@@ -24,8 +24,9 @@ class LlamaInit extends LlamaCommand {
 class LlamaPrompt extends LlamaCommand {
   final String prompt;
   final String promptId;
+  final List<LlamaImage>? images;
 
-  LlamaPrompt(this.prompt, this.promptId);
+  LlamaPrompt(this.prompt, this.promptId, {this.images});
 }
 
 /// Response from the LlamaChild isolate
@@ -76,6 +77,7 @@ class LlamaLoad extends LlamaCommand {
   final ContextParams contextParams;
   final SamplerParams samplingParams;
   final PromptFormat? format;
+  final String? mmprojPath;
 
   LlamaLoad({
     required this.path,
@@ -83,5 +85,6 @@ class LlamaLoad extends LlamaCommand {
     required this.contextParams,
     required this.samplingParams,
     this.format,
+    this.mmprojPath,
   });
 }
