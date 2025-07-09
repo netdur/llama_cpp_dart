@@ -8,8 +8,9 @@ Future<void> main() async {
 
   final contextParams = ContextParams()
     ..nPredict = -1
-    ..nCtx = 8192
-    ..nBatch = 8192;
+    ..nCtx = 2048
+    ..nUbatch = 2048
+    ..nBatch = 2048;
 
   final samplerParams = SamplerParams()
     ..temp = 0.7
@@ -18,12 +19,13 @@ Future<void> main() async {
     ..penaltyRepeat = 1.1;
 
   final llama = Llama(
-      "/Users/adel/Downloads/gemma-3n-E2B-it-plantvillage-model-Q4_K_M.gguf",
+      // "/Users/adel/Downloads/gemma-3n-E2B-it-plantvillage-model.gguf",
+      "/Users/adel/Downloads/gemma-3-4B-it-plantvillage-model-Q4_K_M.gguf",
       modelParams,
       contextParams,
       samplerParams,
       true,
-      "/Users/adel/Downloads/gemma-3n-E2B-it-plantvillage -mmproj.gguf");
+      "/Users/adel/Downloads/gemma-3-4B-it-plantvillage-mmproj.gguf");
 
   final image =
       LlamaImage.fromFile(File("/Users/adel/Downloads/plantvillage-test.png"));

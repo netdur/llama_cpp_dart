@@ -1,183 +1,46 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
-// ==========================================================
-// TOOLS (No changes here, they are correct)
-// ==========================================================
+String prompt = """what is 2 * 4?""";
 
-/// Tool to get the current time.
-String getCurrentTime() {
-  final now = DateTime.now();
-  final formattedTime = DateFormat('HH:mm').format(now);
-  return "The current time is $formattedTime.";
-}
-
-/// Tool to get the weather for a city.
-Future<String> getWeather(String city) async {
+void main() async {
   try {
-    final url = Uri.parse('https://wttr.in/$city?format=%C,+%t');
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      final body = response.body.trim();
-      if (body.contains(',')) {
-        return "The weather in $city is ${body.split(',')[0]} with a temperature of ${body.split(',')[1]}.";
-      }
-      return "Could not parse weather for $city. Response: $body";
-    } else {
-      return "Sorry, I couldn't get the weather for $city.";
-    }
-  } catch (e) {
-    return "An error occurred while fetching weather: $e";
-  }
-}
-
-final Map<String, Function> toolBox = {
-  'getCurrentTime': getCurrentTime,
-  'getWeather': getWeather,
-};
-
-// ==========================================================
-// PROMPT ENGINEERING
-// ==========================================================
-
-String buildToolDescriptions() {
-  return """
-- `getCurrentTime()`: Use this tool to get the current time. It takes no arguments.
-- `getWeather(city: string)`: Use this tool to get the weather for a specific city.
-""";
-}
-
-String buildSystemPrompt() {
-  return """
-You are an expert at choosing the right function to call to answer a user's question. You have access to the following tools:
-${buildToolDescriptions()}
-
-Your goal is to respond with ONLY a JSON object that represents the function call(s) needed.
-- The JSON should be an array of objects.
-- Each object must have a "tool_name" and an "arguments" map.
-- If no tool is needed, or if you don't have enough information (e.g., the user asks for weather but doesn't name a city), respond with an empty JSON array: `[]`.
-- Do NOT add any other text, explanation, or conversation.
-
-Example:
-User: What's the weather like in Paris?
-Your response:
-[
-  {"tool_name": "getWeather", "arguments": {"city": "Paris"}}
-]
-
-User: what time is it?
-Your response:
-[
-  {"tool_name": "getCurrentTime", "arguments": {}}
-]
-
-User: Tell me a joke.
-Your response:
-[]
-""";
-}
-
-// ==========================================================
-// MAIN AGENT LOGIC (This is where the fix is)
-// ==========================================================
-
-Future<void> main() async {
-  try {
-    // --- Standard LLM Setup (using your working example's structure) ---
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
 
-    final modelParams = ModelParams()..nGpuLayers = -1;
-    final contextParams = ContextParams()..nCtx = 2048;
-    final samplerParams = SamplerParams();
+    ChatHistory history = ChatHistory()
+      ..addMessage(role: Role.user, content: prompt)
+      ..addMessage(role: Role.assistant, content: "");
 
-    final llama =
+    final modelParams = ModelParams()..nGpuLayers = 99;
+
+    final contextParams = ContextParams()
+      ..nPredict = -1
+      ..nCtx = 8192
+      ..nBatch = 8192;
+
+    final samplerParams = SamplerParams()
+      ..temp = 0.7
+      ..topK = 64
+      ..topP = 0.95
+      ..penaltyRepeat = 1.1;
+
+    Llama llama =
         Llama(modelPath, modelParams, contextParams, samplerParams, false);
 
-    // --- The Agent's Main Loop ---
+    llama.setPrompt(
+        history.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true));
     while (true) {
-      stdout.write("\nAsk me something (or type 'exit'): ");
-      final userInput = stdin.readLineSync();
-
-      if (userInput == null || userInput.toLowerCase() == 'exit') {
-        break;
-      }
-
-      print("🧠 Thinking...");
-
-      // 1. Build the prompt using ChatHistory (THE CORRECT WAY)
-      final history = ChatHistory()
-        ..addMessage(role: Role.user, content: buildSystemPrompt())
-        ..addMessage(role: Role.user, content: userInput)
-        ..addMessage(role: Role.assistant, content: '');
-
-      // 2. Set the prompt and get the response by streaming tokens (THE CORRECT WAY)
-      llama.setPrompt(history.exportFormat(ChatFormat.gemini,
-          leaveLastAssistantOpen: true));
-
-      final responseBuffer = StringBuffer();
-      while (true) {
-        final (token, done) = llama.getNext();
-        responseBuffer.write(token);
-        if (done) break;
-      }
-      final llmResponse = responseBuffer.toString().trim();
-
-      print("✅ LLM's Plan (raw response): $llmResponse");
-
-      // 3. The "Coordinator" (our code) reads the plan and executes it.
-      try {
-        final jsonRegex = RegExp(r'\[.*\]', dotAll: true);
-        final match = jsonRegex.firstMatch(llmResponse);
-
-        if (match == null) {
-          print(
-              "🤖 I couldn't decide on a tool to use. Here's my raw thought: $llmResponse");
-          continue;
-        }
-
-        final jsonString = match.group(0)!;
-        final List<dynamic> toolCalls = jsonDecode(jsonString);
-
-        if (toolCalls.isEmpty) {
-          print(
-              "🤖 I don't have a tool for that. Please ask me about the time or weather.");
-          continue;
-        }
-
-        // 4. Execute each tool in the plan
-        for (var call in toolCalls) {
-          final toolName = call['tool_name'];
-          final arguments = call['arguments'] as Map<String, dynamic>;
-          final tool = toolBox[toolName];
-
-          if (tool != null) {
-            print("🛠️  Executing tool: $toolName with args: $arguments");
-            if (toolName == 'getWeather') {
-              final result = await getWeather(arguments['city']);
-              print("✔️  Result: $result");
-            } else if (toolName == 'getCurrentTime') {
-              final result = getCurrentTime();
-              print("✔️  Result: $result");
-            }
-          } else {
-            print("❌ Error: Tool '$toolName' not found in my toolbox.");
-          }
-        }
-      } catch (e) {
-        print("❌ Error processing the LLM's plan: $e");
-        print("   My plan was: $llmResponse");
-      }
+      var (token, done) = llama.getNext();
+      stdout.write(token);
+      if (done) break;
     }
+    stdout.write("\n");
 
     llama.dispose();
-    print("Goodbye!");
   } catch (e) {
-    print("\nFatal Error: ${e.toString()}");
+    print("\nError: ${e.toString()}");
   }
 }
