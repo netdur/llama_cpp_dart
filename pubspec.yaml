@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.1.0 # 98bab638
+version: 0.1.1 # 98bab638
 homepage: https://github.com/netdur/llama_cpp_dart
 repository: https://github.com/netdur/llama_cpp_dart
 
@@ -44,17 +44,3 @@ ffigen: # dart run ffigen
     - '-Isrc/llama.cpp/ggml/include'
     - '-Isrc/llama.cpp/include'
     - '-Isrc/llama.cpp/tools/mtmd'
-
-flutter:
-  plugin:
-    platforms:
-      ios:
-        ffiPlugin: true
-      macos:
-        ffiPlugin: true
-      android:
-        ffiPlugin: true
-      linux:
-        ffiPlugin: true
-      windows:
-        ffiPlugin: true

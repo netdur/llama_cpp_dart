@@ -1,3 +1,9 @@
+## 0.1.1
+* State load / save
+
+## 0.1.0
+* Multimodal support - vision
+
 ## 0.0.9
 * Major internal refactoring to improve code organization and maintainability
 * Fixed critical bug where subsequent prompts would fail due to batch seq_id memory management

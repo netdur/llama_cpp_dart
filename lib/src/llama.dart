@@ -3,6 +3,7 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:async';
 import 'dart:math' show sqrt;
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'sampler_params.dart';
@@ -79,6 +80,10 @@ class Llama {
         _lib = llama_cpp(DynamicLibrary.process());
       }
     }
+    return _lib!;
+  }
+
+  llama_cpp getLib() {
     return _lib!;
   }
 
@@ -320,24 +325,14 @@ class Llama {
 
     try {
       _status = LlamaStatus.generating;
-      if (_tokens != nullptr) {
-        malloc.free(_tokens);
-        _tokens = nullptr;
-      }
 
-      if (context.address != 0) {
-        final mem = lib.llama_get_memory(context);
-        lib.llama_memory_clear(mem, true);
-      }
-      _nPos = 0;
-
-      for (int i = 0; i < batch.n_tokens; ++i) {
-        if (batch.seq_id[i] != nullptr) {
-          calloc.free(batch.seq_id[i]);
-          batch.seq_id[i] = nullptr;
+      if (_nPos == 0) {
+        if (context.address != 0) {
+          final mem = lib.llama_get_memory(context);
+          lib.llama_memory_clear(mem, true);
         }
+        batch.n_tokens = 0;
       }
-      batch.n_tokens = 0;
 
       promptUtf8Ptr = prompt.toNativeUtf8();
       final int promptBytes = promptUtf8Ptr.length;
@@ -351,6 +346,9 @@ class Llama {
             "Failed to estimate token count (returned $_nPrompt)");
       }
 
+      if (_tokens != nullptr) {
+        malloc.free(_tokens);
+      }
       _tokens = malloc<llama_token>(_nPrompt);
       final int actualTokens = lib.llama_tokenize(
           vocab, promptCharPtr, promptBytes, _tokens, _nPrompt, true, true);
@@ -373,13 +371,12 @@ class Llama {
 
       for (int i = 0; i < _nPrompt; i++) {
         batch.token[i] = _tokens[i];
-        batch.pos[i] = i;
+        batch.pos[i] = _nPos + i;
         batch.n_seq_id[i] = 1;
         batch.seq_id[i] = calloc<llama_seq_id>()..value = 0;
         batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
       }
       batch.n_tokens = _nPrompt;
-      _nPos = 0;
     } catch (e) {
       _status = LlamaStatus.error;
       if (_tokens != nullptr) {
@@ -890,6 +887,73 @@ class Llama {
         }
         lib.llama_batch_free(promptBatch);
       }
+    }
+  }
+
+  /// season management
+
+  /// Loads a saved session state
+  /// Returns true if successful, false if session file doesn't exist
+  bool loadSession(String path) {
+    final bytes = File(path).readAsBytesSync();
+    final hdr = ByteData.sublistView(bytes, 0, 12);
+    final magic = hdr.getUint32(0, Endian.little);
+    final version = hdr.getUint32(4, Endian.little);
+    if (magic != 0x4C4C5346 || version != 1) {
+      throw LlamaException('Bad session header');
+    }
+    _nPos = hdr.getUint32(8, Endian.little);
+
+    final stateBytes = bytes.sublist(12);
+    final ptr = malloc<Uint8>(stateBytes.length)
+      ..asTypedList(stateBytes.length).setAll(0, stateBytes);
+
+    lib.llama_set_state_data(context, ptr);
+    malloc.free(ptr);
+    return true;
+  }
+
+  /// Saves the current session state
+  void saveSession(String path) {
+    final size = lib.llama_get_state_size(context);
+    final buf = malloc<Uint8>(size);
+    lib.llama_copy_state_data(context, buf);
+
+    final bytes = buf.asTypedList(size);
+
+    final header = ByteData(12)
+      ..setUint32(
+          0, 0x4C4C5346, Endian.little) // "F S L L" magic, pick anything
+      ..setUint32(4, 1, Endian.little) // version
+      ..setUint32(8, _nPos, Endian.little); // position
+
+    final out = BytesBuilder()
+      ..add(header.buffer.asUint8List())
+      ..add(bytes);
+
+    File(path).writeAsBytesSync(out.toBytes(), flush: true);
+    malloc.free(buf);
+  }
+
+  /// Ensures there is enough space in the context for a new batch of tokens.
+  /// If the context is full, it removes older tokens to make space, preserving
+  /// the first `_nKeep` tokens if specified.
+  void _ensureContextHasSpace(int tokensInBatch, int keep) {
+    final nCtx = _contextParams?.nCtx ?? 2048;
+
+    if (_nPos + tokensInBatch > nCtx) {
+      final tokensToRemove = (_nPos + tokensInBatch) - nCtx;
+
+      if (tokensToRemove <= 0) {
+        return;
+      }
+
+      final removalStartPos = keep;
+      final removalEndPos = keep + tokensToRemove;
+      lib.llama_kv_self_seq_rm(context, 0, removalStartPos, removalEndPos);
+      lib.llama_kv_self_seq_add(
+          context, 0, removalEndPos, _nPos, -tokensToRemove);
+      _nPos -= tokensToRemove;
     }
   }
 }

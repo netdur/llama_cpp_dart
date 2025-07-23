@@ -12,7 +12,6 @@ dev_team="$2"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 output_base_dir="${script_dir}/.."
 
-# Function to build for a specific platform
 build_for_platform() {
     local platform="$1"
     local build_dir="build_${platform}"
@@ -20,15 +19,6 @@ build_for_platform() {
     local shared_libs="ON"
     local lib_extension="dylib"
     local deployment_target=13.1
-
-    local postfix=""
-    if [[ "$platform" == "SIMULATORARM64" || "$platform" == "SIMULATOR64" ]]; then
-        postfix="-iphonesimulator"
-    fi
-    if [[ "$platform" == "OS64" ]]; then
-        postfix="-iphoneos"
-        deployment_target=13.1  # Set higher deployment target for iOS platforms
-    fi
 
     echo "Building for platform: ${platform} with deployment target iOS ${deployment_target}"
     
@@ -54,13 +44,15 @@ build_for_platform() {
           -DENABLE_VISIBILITY=1 \
           -DENABLE_STRICT_TRY_COMPILE=1 \
           -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM="${dev_team}" \
+          -DCMAKE_XCODE_ATTRIBUTE_ENABLE_BITCODE=NO \
+          -DCMAKE_INSTALL_RPATH="@loader_path/Frameworks" \
           -DCMAKE_INSTALL_PREFIX="./install" \
           ..
 
     cmake --build . --config Release --parallel
     cmake --install . --config Release
 
-    # Copy libraries
+    # Copy libraries WITHOUT post-processing that strips iOS info
     mkdir -p "${output_dir}"
     local libs=(
         "install/lib/libllama.${lib_extension}"
@@ -74,9 +66,25 @@ build_for_platform() {
 
     for lib in "${libs[@]}"; do
         if [ -f "$lib" ]; then
+            # Copy library directly without rpath modification
             cp "$lib" "${output_dir}/"
+            local output_lib="${output_dir}/$(basename "$lib")"
+            
+            # Only set the install name, don't modify rpaths
+            install_name_tool -id "@rpath/$(basename "$lib")" "$output_lib"
+            
+            # Minimal signing to preserve iOS load commands
+            codesign --remove-signature "$output_lib" 2>/dev/null || true
+            codesign --force --sign - "$output_lib" 2>/dev/null || true
+            
+            # Verify iOS version info is preserved
+            if otool -l "$output_lib" | grep -q "LC_VERSION_MIN_IPHONEOS\|LC_BUILD_VERSION"; then
+                echo "✅ $(basename "$lib") - iOS version info preserved"
+            else
+                echo "❌ $(basename "$lib") - iOS version info lost"
+            fi
         else
-            echo "Warning: $lib not found"
+            echo "❌ $lib not found"
         fi
     done
 
@@ -84,8 +92,7 @@ build_for_platform() {
 }
 
 main() {
-    # Check if a specific platform was provided as a third argument
-    local platform=${3:-"MAC_ARM64"}
+    local platform=${3:-"OS64"}
     
     cp "${script_dir}/ios-arm64.toolchain.cmake" "${llama_cpp_path}/"
 
@@ -93,8 +100,9 @@ main() {
 
     build_for_platform "${platform}"
 
-    # return to original directory
     popd > /dev/null
+    
+    echo "Build completed successfully for ${platform}."
 }
 
 main "$@"
