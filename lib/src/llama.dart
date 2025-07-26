@@ -424,7 +424,14 @@ class Llama {
         if (n < 0) {
           throw LlamaException("Failed to convert token to piece");
         }
-        String piece = utf8.decode(buf.cast<Uint8>().asTypedList(n));
+        // String piece = utf8.decode(buf.cast<Uint8>().asTypedList(n));
+        String piece = '';
+        final bytes = buf.cast<Uint8>().asTypedList(n);
+        try {
+          piece = utf8.decode(bytes);
+        } catch (e) {
+          piece = utf8.decode(bytes, allowMalformed: true);
+        }
 
         batch.token[0] = newTokenId;
         batch.pos[0] = _nPos;
@@ -665,12 +672,12 @@ class Llama {
     if (_tokens != nullptr) malloc.free(_tokens);
     if (_tokenPtr != nullptr) malloc.free(_tokenPtr);
     if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
-    
+
     // Only access late fields if initialization was completed
     if (_isInitialized) {
       if (context.address != 0) lib.llama_free(context);
       if (model.address != 0) lib.llama_free_model(model);
-      
+
       // Free the batch only if it was initialized
       try {
         lib.llama_batch_free(batch);
@@ -678,7 +685,7 @@ class Llama {
         // Batch not initialized, ignore
       }
     }
-    
+
     // if (_mctx != nullptr) lib.mtmd_free(_mctx); // <- crash - double free
 
     lib.llama_backend_free();
