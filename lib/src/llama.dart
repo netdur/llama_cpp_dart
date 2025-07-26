@@ -58,6 +58,7 @@ class Llama {
   int _nPos = 0;
 
   bool _verbos = false;
+  bool _isInitialized = false; // Track if initialization is complete
 
   bool _isDisposed = false;
   LlamaStatus _status = LlamaStatus.uninitialized;
@@ -106,11 +107,12 @@ class Llama {
       _initializeLlama(modelPath, mmprojPath, modelParamsDart,
           contextParamsDart, samplerParams);
 
-      if (contextParamsDart != null) {
-        var contextParams = contextParamsDart.get();
-        batch = lib.llama_batch_init(contextParams.n_batch, 0, 1);
-      }
+      // Always initialize the batch, even if contextParamsDart is null
+      contextParamsDart ??= ContextParams();
+      var contextParams = contextParamsDart.get();
+      batch = lib.llama_batch_init(contextParams.n_batch, 0, 1);
 
+      _isInitialized = true; // Mark initialization as complete
       _status = LlamaStatus.ready;
     } catch (e) {
       _status = LlamaStatus.error;
@@ -663,11 +665,22 @@ class Llama {
     if (_tokens != nullptr) malloc.free(_tokens);
     if (_tokenPtr != nullptr) malloc.free(_tokenPtr);
     if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
-    if (context.address != 0) lib.llama_free(context);
-    if (model.address != 0) lib.llama_free_model(model);
+    
+    // Only access late fields if initialization was completed
+    if (_isInitialized) {
+      if (context.address != 0) lib.llama_free(context);
+      if (model.address != 0) lib.llama_free_model(model);
+      
+      // Free the batch only if it was initialized
+      try {
+        lib.llama_batch_free(batch);
+      } catch (e) {
+        // Batch not initialized, ignore
+      }
+    }
+    
     // if (_mctx != nullptr) lib.mtmd_free(_mctx); // <- crash - double free
 
-    lib.llama_batch_free(batch);
     lib.llama_backend_free();
 
     _isDisposed = true;
@@ -690,7 +703,7 @@ class Llama {
       _nPrompt = 0;
       _nPos = 0;
 
-      if (context.address != 0) {
+      if (_isInitialized && context.address != 0) {
         final mem = lib.llama_get_memory(context);
         lib.llama_memory_clear(mem, true);
       }
