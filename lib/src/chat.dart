@@ -91,10 +91,14 @@ class ChatHistory {
   String _exportChatML() {
     final buffer = StringBuffer();
 
-    for (final message in messages) {
+    for (int i = 0; i < messages.length; i++) {
+      final message = messages[i];
       buffer.writeln('<|im_start|>${message.role.value}');
       buffer.writeln(message.content);
-      buffer.writeln('<|im_end|>');
+      // buffer.writeln('<|im_end|>');
+      if (i < messages.length - 1) {
+        buffer.writeln('<|im_end|>');
+      }
     }
 
     return buffer.toString();
