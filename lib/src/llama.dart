@@ -958,6 +958,7 @@ class Llama {
   /// Ensures there is enough space in the context for a new batch of tokens.
   /// If the context is full, it removes older tokens to make space, preserving
   /// the first `_nKeep` tokens if specified.
+  // ignore: unused_element
   void _ensureContextHasSpace(int tokensInBatch, int keep) {
     final nCtx = _contextParams?.nCtx ?? 2048;
 

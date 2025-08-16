@@ -20,3 +20,7 @@ export 'src/chat.dart';
 export 'src/text_chunker.dart';
 
 export 'src/llama_input.dart';
+
+export 'src/mcp/mcp_server_tool.dart';
+export 'src/mcp/mcp_server.dart';
+export 'src/mcp/mcp_client.dart';

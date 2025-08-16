@@ -142,3 +142,7 @@ chmod +x "$LIB_DIR"/*.dylib
 echo "Rpath fixing and re-signing complete for ${PLATFORM}."
 
 exit 0
+
+
+# for f in bin/MAC_ARM64/*.dylib; do install_name_tool -delete_rpath @loader_path "$f" 2>/dev/null; install_name_tool -add_rpath @loader_path "$f"; done
+# codesign --force --sign - bin/MAC_ARM64/*.dylib

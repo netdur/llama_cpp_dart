@@ -1,5 +1,6 @@
 ## 0.1.1
 * State load / save
+* llama.cpp 25ff6f7659f6a5c47d6a73eada5813f0495331f0
 
 ## 0.1.0
 * Multimodal support - vision

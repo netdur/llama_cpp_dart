@@ -23,7 +23,7 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           :final modelParams,
           :final contextParams,
           :final samplingParams,
-          :final mmprojPath // Add this
+          :final mmprojPath
         ):
         _handleLoad(
             path, modelParams, contextParams, samplingParams, mmprojPath);
