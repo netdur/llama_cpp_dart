@@ -38,7 +38,8 @@ fix_rpaths() {
     done
 
     # Add only iOS-appropriate rpaths
-    install_name_tool -add_rpath "@loader_path/Frameworks" "$lib_file" 2>/dev/null || true
+    # install_name_tool -add_rpath "@loader_path/Frameworks" "$lib_file" 2>/dev/null || true
+    install_name_tool -add_rpath "@loader_path" "$lib_file" 2>/dev/null || true
     
   else
     echo "🖥️ macOS library detected - using standard rpath fixing"

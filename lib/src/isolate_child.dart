@@ -106,7 +106,7 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
 
       // Use different generation method based on whether images are provided
       if (images != null && images.isNotEmpty) {
-        final stream = llama!.generateWithMeda(prompt, inputs: images);
+        final stream = llama!.generateWithMedia(prompt, inputs: images);
 
         await for (final token in stream) {
           if (shouldStop) break;

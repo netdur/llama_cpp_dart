@@ -37,7 +37,7 @@ Your task is to identify the plant species and its health status from the image.
 <start_of_turn>model\n""";
 
   try {
-    final stream = llama.generateWithMeda(prompt, inputs: [image]);
+    final stream = llama.generateWithMedia(prompt, inputs: [image]);
 
     await for (final token in stream) {
       stdout.write(token);

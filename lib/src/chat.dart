@@ -2,7 +2,8 @@
 enum ChatFormat {
   chatml,
   alpaca,
-  gemini;
+  gemini,
+  harmony;
 
   String get value => name;
 }
@@ -84,6 +85,8 @@ class ChatHistory {
         return _exportAlpaca();
       case ChatFormat.gemini:
         return _exportGemini(leaveLastAssistantOpen: leaveLastAssistantOpen);
+      case ChatFormat.harmony:
+        return _exportHarmony(leaveLastAssistantOpen: leaveLastAssistantOpen);
     }
   }
 
@@ -161,6 +164,51 @@ class ChatHistory {
           buffer.writeln('<end_of_turn>');
         case Role.unknown:
           break;
+      }
+    }
+
+    return buffer.toString();
+  }
+
+  /// Exports chat history in Harmony format
+  /// Tokens used:
+  ///   <|system|>, <|user|>, <|assistant|>, and <|end|>
+  /// If leaveLastAssistantOpen is true and the last message is an assistant,
+  /// we omit the trailing <|end|> to let generation continue.
+  String _exportHarmony({bool leaveLastAssistantOpen = false}) {
+    final buffer = StringBuffer();
+
+    for (int i = 0; i < messages.length; i++) {
+      final msg = messages[i];
+      final isLast = i == messages.length - 1;
+
+      String roleTag;
+      switch (msg.role) {
+        case Role.system:
+          roleTag = '<|system|>\n';
+          break;
+        case Role.user:
+          roleTag = '<|user|>\n';
+          break;
+        case Role.assistant:
+          roleTag = '<|assistant|>\n';
+          break;
+        case Role.unknown:
+          // Skip unknowns in strict formats; you could also serialize as user.
+          continue;
+      }
+
+      buffer.write(roleTag);
+      buffer.write(msg.content);
+
+      final isAssistantAndOpen =
+          leaveLastAssistantOpen && isLast && msg.role == Role.assistant;
+
+      if (!isAssistantAndOpen) {
+        buffer.write('\n<|end|>\n');
+      } else {
+        // No <|end|> so the model can keep generating the assistant’s turn.
+        buffer.write('\n');
       }
     }
 

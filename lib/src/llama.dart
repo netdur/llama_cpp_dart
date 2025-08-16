@@ -102,33 +102,46 @@ class Llama {
       String? mmprojPath]) {
     try {
       _verbos = verbos ?? false;
-      // _verbos = true;
-      _validateConfiguration();
+      _status = LlamaStatus.loading;
+
+      // Initialize with proper cleanup on failure
       _initializeLlama(modelPath, mmprojPath, modelParamsDart,
           contextParamsDart, samplerParams);
 
-      // Always initialize the batch, even if contextParamsDart is null
+      // Initialize the batch with proper error handling
       contextParamsDart ??= ContextParams();
-      var contextParams = contextParamsDart.get();
-      batch = lib.llama_batch_init(contextParams.n_batch, 0, 1);
+      _contextParams = contextParamsDart;
+      _nPredict = contextParamsDart.nPredict;
 
-      _isInitialized = true; // Mark initialization as complete
+      // Validate after we have the actual value
+      _validateConfiguration();
+
+      var contextParams = contextParamsDart.get();
+      try {
+        batch = lib.llama_batch_init(contextParams.n_batch, 0, 1);
+      } catch (e) {
+        // Clean up already initialized resources
+        if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
+        if (context.address != 0) lib.llama_free(context);
+        if (model.address != 0) lib.llama_free_model(model);
+        if (_mctx != nullptr) lib.mtmd_free(_mctx);
+        throw LlamaException('Failed to initialize batch', e);
+      }
+
+      _isInitialized = true;
       _status = LlamaStatus.ready;
     } catch (e) {
       _status = LlamaStatus.error;
-      dispose(); // Dispose resources on initialization failure
+      _isDisposed = true; // Mark as disposed to prevent further operations
       throw LlamaException('Failed to initialize Llama', e);
     }
   }
 
   /// Validates the configuration parameters
   void _validateConfiguration() {
-    // Allow nPredict = -1 for unlimited generation,
-    // but disallow 0 or other negative values.
     if (_nPredict == 0 || _nPredict < -1) {
       throw ArgumentError('nPredict must be positive or -1 for unlimited');
     }
-    // No error if _nPredict > 0 or _nPredict == -1
   }
 
   static void llamaLogCallbackNull(
@@ -424,7 +437,8 @@ class Llama {
         if (n < 0) {
           throw LlamaException("Failed to convert token to piece");
         }
-        // String piece = utf8.decode(buf.cast<Uint8>().asTypedList(n));
+
+        // Improved UTF-8 handling
         String piece = '';
         final bytes = buf.cast<Uint8>().asTypedList(n);
         try {
@@ -481,7 +495,7 @@ class Llama {
   /// Generates a response based on a prompt that includes text and images.
   /// Generates a response from a prompt that combines text and one or more images.
   /// The prompt must contain a `<image>` placeholder for every image in `inputs`.
-  Stream<String> generateWithMeda(
+  Stream<String> generateWithMedia(
     String prompt, {
     required List<LlamaInput> inputs,
   }) async* {
@@ -510,12 +524,13 @@ class Llama {
     final bitmapRefs = <BitmapPointers>[];
     Pointer<Pointer<mtmd_bitmap>> bmpArr = nullptr;
 
+    // Track allocated seq_id pointers for cleanup
+    final allocatedSeqIds = <Pointer<llama_seq_id>>[];
+
     try {
       _status = LlamaStatus.generating;
 
       lib.llama_sampler_reset(_smpl);
-
-      // Clear KV cache and reset batch state for a clean run.
       clear();
 
       for (final img in images) {
@@ -569,7 +584,9 @@ class Llama {
           for (var k = 0; k < nTok; ++k) {
             b.pos[k] = nPast + k;
             b.n_seq_id[k] = 1;
-            b.seq_id[k] = calloc<llama_seq_id>()..value = 0; // <<< FIX
+            final seqId = calloc<llama_seq_id>()..value = 0;
+            b.seq_id[k] = seqId;
+            allocatedSeqIds.add(seqId); // Track for cleanup
             b.logits[k] = 0;
           }
           b.logits[nTok - 1] = 1;
@@ -579,11 +596,6 @@ class Llama {
             throw LlamaException('llama_decode image chunk #$i failed');
           }
           nPast += nTok;
-
-          for (var k = 0; k < nTok; ++k) {
-            calloc.free(b.seq_id[k]);
-            b.seq_id[k] = nullptr;
-          }
         } else {
           // Text chunk
           final nPtr = malloc<Size>();
@@ -599,7 +611,9 @@ class Llama {
             b.token[k] = tokPt[k];
             b.pos[k] = nPast + k;
             b.n_seq_id[k] = 1;
-            b.seq_id[k] = calloc<llama_seq_id>()..value = 0; // <<< FIX
+            final seqId = calloc<llama_seq_id>()..value = 0;
+            b.seq_id[k] = seqId;
+            allocatedSeqIds.add(seqId); // Track for cleanup
             b.logits[k] = 0;
           }
           b.logits[nTok - 1] = 1;
@@ -609,11 +623,6 @@ class Llama {
             throw LlamaException('llama_decode text chunk #$i failed');
           }
           nPast += nTok;
-
-          for (var k = 0; k < nTok; ++k) {
-            calloc.free(b.seq_id[k]);
-            b.seq_id[k] = nullptr;
-          }
         }
       }
 
@@ -631,7 +640,16 @@ class Llama {
         try {
           final n = lib.llama_token_to_piece(vocab, tok, buf, 128, 0, false);
           if (n < 0) throw LlamaException('token_to_piece failed ($tok)');
-          yield utf8.decode(buf.cast<Uint8>().asTypedList(n));
+
+          // Improved UTF-8 handling with logging
+          String piece;
+          final bytes = buf.cast<Uint8>().asTypedList(n);
+          try {
+            piece = utf8.decode(bytes);
+          } catch (e) {
+            piece = utf8.decode(bytes, allowMalformed: true);
+          }
+          yield piece;
         } finally {
           malloc.free(buf);
         }
@@ -640,7 +658,9 @@ class Llama {
         b.token[0] = tok;
         b.pos[0] = nPast;
         b.n_seq_id[0] = 1;
-        b.seq_id[0] = calloc<llama_seq_id>()..value = 0; // <<< FIX
+        final seqId = calloc<llama_seq_id>()..value = 0;
+        b.seq_id[0] = seqId;
+        allocatedSeqIds.add(seqId); // Track for cleanup
         b.logits[0] = 1;
         b.n_tokens = 1;
 
@@ -648,13 +668,26 @@ class Llama {
           throw LlamaException('llama_decode generated token failed');
         }
 
-        calloc.free(b.seq_id[0]);
-        b.seq_id[0] = nullptr;
-
         ++nPast;
         ++produced;
       }
     } finally {
+      // Comprehensive cleanup of all allocated seq_ids
+      for (final seqId in allocatedSeqIds) {
+        if (seqId != nullptr) {
+          calloc.free(seqId);
+        }
+      }
+
+      // Reset batch seq_id pointers to nullptr
+      if (batch.seq_id != nullptr) {
+        final batchCapacity = _contextParams?.nBatch ?? 512;
+        for (int i = 0; i < batchCapacity; ++i) {
+          batch.seq_id[i] = nullptr;
+        }
+      }
+
+      // Clean up other resources
       if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
       if (bmpArr != nullptr) malloc.free(bmpArr);
       for (final r in bitmapRefs) {
@@ -669,29 +702,63 @@ class Llama {
   /// Disposes of all resources held by this instance
   void dispose() {
     if (_isDisposed) return;
-    if (_tokens != nullptr) malloc.free(_tokens);
-    if (_tokenPtr != nullptr) malloc.free(_tokenPtr);
-    if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
 
-    // Only access late fields if initialization was completed
-    if (_isInitialized) {
-      if (context.address != 0) lib.llama_free(context);
-      if (model.address != 0) lib.llama_free_model(model);
-
-      // Free the batch only if it was initialized
-      try {
-        lib.llama_batch_free(batch);
-      } catch (e) {
-        // Batch not initialized, ignore
+    try {
+      if (_tokens != nullptr) {
+        malloc.free(_tokens);
+        _tokens = nullptr;
       }
+      if (_tokenPtr != nullptr) {
+        malloc.free(_tokenPtr);
+        _tokenPtr = nullptr;
+      }
+      if (_smpl != nullptr) {
+        lib.llama_sampler_free(_smpl);
+        _smpl = nullptr;
+      }
+
+      // Only access late fields if initialization was completed
+      if (_isInitialized) {
+        // Clean up any remaining seq_id allocations in batch
+        if (batch.seq_id != nullptr) {
+          final batchCapacity = _contextParams?.nBatch ?? 512;
+          for (int i = 0; i < batchCapacity; ++i) {
+            if (batch.seq_id[i] != nullptr) {
+              try {
+                calloc.free(batch.seq_id[i]);
+              } catch (e) {
+                // Ignore errors during cleanup
+              }
+              batch.seq_id[i] = nullptr;
+            }
+          }
+        }
+
+        if (context.address != 0) {
+          lib.llama_free(context);
+        }
+        if (model.address != 0) {
+          lib.llama_free_model(model);
+        }
+
+        try {
+          lib.llama_batch_free(batch);
+        } catch (e) {
+          // Batch not initialized, ignore
+        }
+      }
+
+      if (_mctx != nullptr) {
+        // Commented out due to double-free issue
+        // lib.mtmd_free(_mctx);
+        _mctx = nullptr;
+      }
+
+      lib.llama_backend_free();
+    } finally {
+      _isDisposed = true;
+      _status = LlamaStatus.disposed;
     }
-
-    // if (_mctx != nullptr) lib.mtmd_free(_mctx); // <- crash - double free
-
-    lib.llama_backend_free();
-
-    _isDisposed = true;
-    _status = LlamaStatus.disposed;
   }
 
   /// Clears the current state of the Llama instance
