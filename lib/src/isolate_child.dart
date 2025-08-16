@@ -23,10 +23,11 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           :final modelParams,
           :final contextParams,
           :final samplingParams,
+          :final verbose,
           :final mmprojPath
         ):
         _handleLoad(
-            path, modelParams, contextParams, samplingParams, mmprojPath);
+            path, modelParams, contextParams, samplingParams, verbose, mmprojPath);
 
       case LlamaPrompt(:final prompt, :final promptId, :final images):
         _handlePrompt(prompt, promptId, images);
@@ -63,15 +64,11 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       ModelParams modelParams,
       ContextParams contextParams,
       SamplerParams samplingParams,
+      bool verbose,
       String? mmprojPath) {
     try {
-      // Create Llama instance with optional mmproj path for VLM support
-      if (mmprojPath != null) {
-        llama = Llama(path, modelParams, contextParams, samplingParams, false,
-            mmprojPath);
-      } else {
-        llama = Llama(path, modelParams, contextParams, samplingParams);
-      }
+      // Create Llama instance with all parameters including verbose
+      llama = Llama(path, modelParams, contextParams, samplingParams, verbose, mmprojPath);
       sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));
     } catch (e) {
       sendToParent(LlamaResponse.error("Error loading model: $e"));

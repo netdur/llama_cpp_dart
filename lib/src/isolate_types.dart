@@ -77,6 +77,7 @@ class LlamaLoad extends LlamaCommand {
   final ContextParams contextParams;
   final SamplerParams samplingParams;
   final PromptFormat? format;
+  final bool verbose;
   final String? mmprojPath;
 
   LlamaLoad({
@@ -85,6 +86,7 @@ class LlamaLoad extends LlamaCommand {
     required this.contextParams,
     required this.samplingParams,
     this.format,
+    this.verbose = false,
     this.mmprojPath,
   });
 }
