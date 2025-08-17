@@ -32,7 +32,7 @@ void main(List<String> args) async {
 
     final contextParams = ContextParams()
       ..nPredict = 100
-      ..nCtx = 512
+      ..nCtx = 1024 * 4
       ..nBatch = 512;
 
     final samplerParams = SamplerParams()

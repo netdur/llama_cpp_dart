@@ -19,7 +19,7 @@ void main() async {
     samplerParams.penaltyRepeat = 1.1;
 
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
-    String modelPath = "/Users/adel/Workspace/gguf/Qwen3-30B-A3B-Q4_K_M.gguf";
+    String modelPath = "/Users/adel/Workspace/gguf/Qwen3-30B-A3B-Instruct-2507-Q4_K_S.gguf";
     Llama llama =
         Llama(modelPath, ModelParams(), contextParams, samplerParams, true);
 
