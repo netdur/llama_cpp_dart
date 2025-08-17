@@ -1,3 +1,5 @@
+import '../llama_cpp_dart.dart';
+
 /// Represents supported chat formats for export
 enum ChatFormat {
   chatml,
@@ -65,14 +67,68 @@ class Message {
 class ChatHistory {
   final List<Message> messages;
 
-  ChatHistory() : messages = [];
+  /// Full conversation history (preserved even when trimming context)
+  final List<Message> fullHistory;
+
+  /// Number of recent message pairs (user+assistant) to keep when trimming
+  final int keepRecentPairs;
+
+  ChatHistory({this.keepRecentPairs = 2})
+      : messages = [],
+        fullHistory = [];
 
   /// Adds a new message to the chat history
   void addMessage({
     required Role role,
     required String content,
   }) {
-    messages.add(Message(role: role, content: content));
+    final message = Message(role: role, content: content);
+    messages.add(message);
+    fullHistory.add(message);
+  }
+
+  /// Automatically trim context based on remaining space
+  /// Returns true if trimming occurred
+  bool autoTrimForSpace(Llama llama, {int reserveTokens = 100}) {
+    // Get remaining space from llama
+    int remainingSpace = llama.getRemainingContextSpace();
+
+    // If we have enough space, no need to trim
+    if (remainingSpace > reserveTokens) {
+      return false;
+    }
+
+    // Find system messages to preserve
+    List<Message> systemMessages =
+        messages.where((msg) => msg.role == Role.system).toList();
+
+    // Find recent messages to keep (last N pairs)
+    List<Message> recentMessages = [];
+    int pairsFound = 0;
+    for (int i = messages.length - 1;
+        i >= 0 && pairsFound < keepRecentPairs;
+        i--) {
+      recentMessages.insert(0, messages[i]);
+      if (messages[i].role == Role.user) {
+        pairsFound++;
+      }
+    }
+
+    // Rebuild messages list with only preserved content
+    messages.clear();
+    messages.addAll(systemMessages);
+    messages.addAll(recentMessages);
+
+    return true;
+  }
+
+  /// Checks if we should trim before adding a new message
+  bool shouldTrimBeforePrompt(Llama llama, String newPrompt) {
+    // Estimate tokens for the new prompt (rough estimate: 1 token per 4 chars)
+    int estimatedTokens = (newPrompt.length / 4).ceil() + 50; // Add buffer
+    int remainingSpace = llama.getRemainingContextSpace();
+    
+    return remainingSpace < estimatedTokens;
   }
 
   /// Exports chat history in the specified format

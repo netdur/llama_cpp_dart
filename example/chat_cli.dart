@@ -1,17 +1,16 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
-
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 void main() async {
   try {
-    print("Starting LLM CLI Chat App...");
+    print("Starting LLM CLI Chat App with Auto Context Management...");
 
     // Initialize model parameters
     ContextParams contextParams = ContextParams();
-    contextParams.nPredict = 8192;
-    contextParams.nCtx = 8192;
+    contextParams.nPredict = -1;
+    contextParams.nCtx = 256;
     contextParams.nBatch = 512;
 
     final samplerParams = SamplerParams();
@@ -28,8 +27,8 @@ void main() async {
         Llama(modelPath, ModelParams(), contextParams, samplerParams, false);
     print("Model loaded successfully! ${llama.status}");
 
-    // Initialize chat history with system prompt
-    ChatHistory chatHistory = ChatHistory();
+    // Initialize chat history with auto-trim capability
+    ChatHistory chatHistory = ChatHistory(keepRecentPairs: 2);
     chatHistory.addMessage(role: Role.system, content: """
 You are a helpful, concise assistant. Keep your answers informative but brief.""");
 
@@ -38,6 +37,12 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
     // Chat loop
     bool chatActive = true;
     while (chatActive) {
+      // Show remaining context space
+      int remaining = llama.getRemainingContextSpace();
+      if (remaining < 50) {
+        print("⚠️ Low context space: $remaining tokens remaining");
+      }
+
       // Get user input
       stdout.write("\nYou: ");
       String? userInput = stdin.readLineSync();
@@ -49,18 +54,72 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
         break;
       }
 
+      // Check if we need to trim BEFORE adding the message
+      if (chatHistory.shouldTrimBeforePrompt(llama, userInput)) {
+        print("📝 Auto-trimming old messages to make space...");
+        chatHistory.autoTrimForSpace(llama);
+        
+        // Clear llama context to match our trimmed history
+        llama.clear();
+        
+        // Re-set the context with trimmed history
+        String trimmedContext = chatHistory.exportFormat(ChatFormat.gemini);
+        try {
+          llama.setPrompt(trimmedContext);
+        } catch (e) {
+          print("Error resetting context: $e");
+          continue;
+        }
+      }
+
       // Add user message to history
       chatHistory.addMessage(role: Role.user, content: userInput);
 
-      // Add empty assistant message that will be filled by the model
+      // Add empty assistant message
       chatHistory.addMessage(role: Role.assistant, content: "");
 
       // Prepare prompt for the model
       String prompt = chatHistory.exportFormat(ChatFormat.gemini,
           leaveLastAssistantOpen: true);
 
-      // Send to model
-      llama.setPrompt(prompt);
+      try {
+        // Send to model
+        llama.setPrompt(prompt);
+      } catch (e) {
+        if (e.toString().contains("Context") || e.toString().contains("context")) {
+          // Auto-trim and retry
+          print("\n📝 Context full! Auto-trimming conversation history...");
+          
+          // Remove the messages we just added
+          chatHistory.messages.removeLast(); // Remove empty assistant
+          chatHistory.messages.removeLast(); // Remove user message
+          
+          // Trim the history
+          chatHistory.autoTrimForSpace(llama, reserveTokens: 150);
+          
+          // Clear and reset llama
+          llama.clear();
+          
+          // Re-add the user message after trimming
+          chatHistory.addMessage(role: Role.user, content: userInput);
+          chatHistory.addMessage(role: Role.assistant, content: "");
+          
+          // Try again with trimmed context
+          prompt = chatHistory.exportFormat(ChatFormat.gemini,
+              leaveLastAssistantOpen: true);
+          
+          try {
+            llama.setPrompt(prompt);
+          } catch (e2) {
+            print("Still failed after trimming: $e2");
+            chatHistory.messages.removeLast();
+            chatHistory.messages.removeLast();
+            continue;
+          }
+        } else {
+          rethrow;
+        }
+      }
 
       // Collect the response
       stdout.write("\nAssistant: ");
@@ -68,12 +127,15 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
       bool endOfTurnFound = false;
 
       while (!endOfTurnFound) {
-        var (token, done) = llama.getNext();
+        var (token, done, contextLimit) = llama.getNextWithStatus();
+        
+        if (contextLimit) {
+          print("\n\n⚠️ Hit context limit during generation!");
+          break;
+        }
 
-        // Check if we've found the end marker
         if (token.contains("<end_of_turn>")) {
           endOfTurnFound = true;
-          // Only print up to the end marker
           String cleanToken =
               token.substring(0, token.indexOf("<end_of_turn>"));
           if (cleanToken.isNotEmpty) {
@@ -83,20 +145,28 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
           break;
         }
 
-        // Print and collect the token
         stdout.write(token);
         responseBuffer.write(token);
 
-        // Break if the model is done
         if (done) break;
       }
 
-      // Update the last assistant message with the generated content
+      // Update the last assistant message
       String assistantResponse = responseBuffer.toString();
-      chatHistory.messages.last =
-          Message(role: Role.assistant, content: assistantResponse);
+      if (assistantResponse.isNotEmpty) {
+        chatHistory.messages.last =
+            Message(role: Role.assistant, content: assistantResponse);
+        chatHistory.fullHistory.last =
+            Message(role: Role.assistant, content: assistantResponse);
+      }
 
-      print(""); // Add a newline after the response
+      print(""); // Newline after response
+      
+      // Show history status
+      print(
+        "\n[History: ${chatHistory.messages.length} active / "
+        "${chatHistory.fullHistory.length} total messages]"
+      );
     }
 
     // Clean up

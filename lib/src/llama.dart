@@ -336,6 +336,13 @@ class Llama {
       throw StateError('Cannot set prompt on disposed instance');
     }
 
+    // Check if we have space for a new prompt
+    final nCtx = _contextParams?.nCtx ?? 2048;
+    if (_nPos >= nCtx - 10) {
+      throw LlamaException(
+          "Context is full (position: $_nPos, limit: $nCtx). Please create a new instance or call clear().");
+    }
+
     Pointer<Utf8>? promptUtf8Ptr;
 
     try {
@@ -359,6 +366,18 @@ class Llama {
       if (_nPrompt <= 0) {
         throw LlamaException(
             "Failed to estimate token count (returned $_nPrompt)");
+      }
+
+      // Check if prompt itself is too large
+      if (_nPrompt > nCtx - 10) {
+        throw LlamaException(
+            "Prompt is too large ($_nPrompt tokens) for context size ($nCtx). Maximum prompt size is ${nCtx - 10} tokens.");
+      }
+
+      // Check if adding prompt would exceed context
+      if (_nPos + _nPrompt >= nCtx) {
+        throw LlamaException(
+            "Adding this prompt would exceed context limit. Current position: $_nPos, prompt size: $_nPrompt, context limit: $nCtx");
       }
 
       if (_tokens != nullptr) {
@@ -388,7 +407,10 @@ class Llama {
         batch.token[i] = _tokens[i];
         batch.pos[i] = _nPos + i;
         batch.n_seq_id[i] = 1;
-        batch.seq_id[i] = calloc<llama_seq_id>()..value = 0;
+        if (batch.seq_id[i] == nullptr) {
+          batch.seq_id[i] = calloc<llama_seq_id>();
+        }
+        batch.seq_id[i].value = 0;
         batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
       }
       batch.n_tokens = _nPrompt;
@@ -406,29 +428,60 @@ class Llama {
     }
   }
 
+  /// Generates the next token in the sequence (backward compatible).
+  /// Returns (text, isDone)
+  (String, bool) getNext() {
+    final result = getNextWithStatus();
+    return (result.$1, result.$2);
+  }
+
   /// Generates the next token in the sequence.
   ///
   /// Returns a tuple containing the generated text and a boolean indicating if generation is complete.
   /// Throws [LlamaException] if generation fails.
-  (String, bool) getNext() {
+  (String, bool, bool) getNextWithStatus() {
     if (_isDisposed) {
       throw StateError('Cannot generate text on disposed instance');
     }
 
     try {
-      final nGenerated = _nPos > _nPrompt ? _nPos - _nPrompt : 0;
-      if (_nPredict > 0 && nGenerated >= _nPredict) {
-        return ("", true);
+      // Check if we've hit context limit FIRST
+      final nCtx = _contextParams?.nCtx ?? 2048;
+
+      if (_nPos >= nCtx - 2) {
+        // Return with context limit flag
+        return (
+          "\n\n[Context limit reached. Please start a new conversation.]",
+          true,
+          true
+        );
       }
 
+      final nGenerated = _nPos > _nPrompt ? _nPos - _nPrompt : 0;
+      if (_nPredict > 0 && nGenerated >= _nPredict) {
+        return ("", true, false);
+      }
+
+      // Decode the current batch
       if (lib.llama_decode(context, batch) != 0) {
+        // Check if it's because of context limit
+        if (_nPos >= nCtx - 10) {
+          return ("\n\n[Context limit reached during decode.]", true, true);
+        }
         throw LlamaException("Failed to eval");
       }
+
       _nPos += batch.n_tokens;
+
+      // Check again after incrementing position
+      if (_nPos >= nCtx - 2) {
+        return ("\n\n[Context limit reached.]", true, true);
+      }
+
       int newTokenId = lib.llama_sampler_sample(_smpl, context, -1);
 
       if (lib.llama_token_is_eog(vocab, newTokenId)) {
-        return ("", true);
+        return ("", true, false);
       }
 
       final buf = malloc<Char>(128);
@@ -438,7 +491,6 @@ class Llama {
           throw LlamaException("Failed to convert token to piece");
         }
 
-        // Improved UTF-8 handling
         String piece = '';
         final bytes = buf.cast<Uint8>().asTypedList(n);
         try {
@@ -447,15 +499,19 @@ class Llama {
           piece = utf8.decode(bytes, allowMalformed: true);
         }
 
+        // Prepare batch for next iteration
         batch.token[0] = newTokenId;
         batch.pos[0] = _nPos;
         batch.n_seq_id[0] = 1;
+        if (batch.seq_id[0] == nullptr) {
+          batch.seq_id[0] = calloc<llama_seq_id>();
+        }
         batch.seq_id[0].value = 0;
         batch.logits[0] = 1;
         batch.n_tokens = 1;
 
         bool isEos = newTokenId == lib.llama_token_eos(vocab);
-        return (piece, isEos);
+        return (piece, isEos, false);
       } finally {
         malloc.free(buf);
       }
@@ -473,7 +529,15 @@ class Llama {
 
     try {
       while (true) {
-        final (text, isDone) = getNext();
+        final (text, isDone, contextLimitReached) = getNextWithStatus();
+
+        // If context limit reached, yield a final message and stop
+        if (contextLimitReached) {
+          yield text; // This will be the "[Context limit reached...]" message
+          _status = LlamaStatus.ready; // Reset status
+          break;
+        }
+
         if (isDone) break;
         yield text;
       }
@@ -481,6 +545,53 @@ class Llama {
       _status = LlamaStatus.error;
       throw LlamaException('Error in text generation stream', e);
     }
+  }
+
+  /// Generate complete text (convenience method)
+  Future<String> generateCompleteText({int? maxTokens}) async {
+    if (_isDisposed) {
+      throw StateError('Cannot generate text on disposed instance');
+    }
+
+    final buffer = StringBuffer();
+    int tokenCount = 0;
+    final limit = maxTokens ?? _nPredict;
+
+    try {
+      while (true) {
+        final (text, isDone, contextLimitReached) = getNextWithStatus();
+
+        buffer.write(text);
+        tokenCount++;
+
+        if (contextLimitReached) {
+          // Optionally append a marker or handle differently
+          _status = LlamaStatus.ready;
+          break;
+        }
+
+        if (isDone || (limit > 0 && tokenCount >= limit)) {
+          break;
+        }
+      }
+
+      return buffer.toString();
+    } catch (e) {
+      _status = LlamaStatus.error;
+      throw LlamaException('Error generating complete text', e);
+    }
+  }
+
+  /// Check if context limit was reached in last generation
+  bool wasContextLimitReached() {
+    final nCtx = _contextParams?.nCtx ?? 2048;
+    return _nPos >= nCtx - 2;
+  }
+
+  /// Get remaining context space
+  int getRemainingContextSpace() {
+    final nCtx = _contextParams?.nCtx ?? 2048;
+    return nCtx - _nPos;
   }
 
   /// This is the primary method for multimodal generation. It is a stateless
@@ -1020,28 +1131,5 @@ class Llama {
 
     File(path).writeAsBytesSync(out.toBytes(), flush: true);
     malloc.free(buf);
-  }
-
-  /// Ensures there is enough space in the context for a new batch of tokens.
-  /// If the context is full, it removes older tokens to make space, preserving
-  /// the first `_nKeep` tokens if specified.
-  // ignore: unused_element
-  void _ensureContextHasSpace(int tokensInBatch, int keep) {
-    final nCtx = _contextParams?.nCtx ?? 2048;
-
-    if (_nPos + tokensInBatch > nCtx) {
-      final tokensToRemove = (_nPos + tokensInBatch) - nCtx;
-
-      if (tokensToRemove <= 0) {
-        return;
-      }
-
-      final removalStartPos = keep;
-      final removalEndPos = keep + tokensToRemove;
-      lib.llama_kv_self_seq_rm(context, 0, removalStartPos, removalEndPos);
-      lib.llama_kv_self_seq_add(
-          context, 0, removalEndPos, _nPos, -tokensToRemove);
-      _nPos -= tokensToRemove;
-    }
   }
 }
