@@ -9,6 +9,12 @@ class LlamaStop extends LlamaCommand {}
 /// Command to clear the model context
 class LlamaClear extends LlamaCommand {}
 
+class LlamaEmbedd extends LlamaCommand {
+  final String prompt;
+
+  LlamaEmbedd(this.prompt);
+}
+
 /// Command to initialize the Llama library
 class LlamaInit extends LlamaCommand {
   final String? libraryPath;
@@ -37,6 +43,7 @@ class LlamaResponse {
   final String? promptId;
   final String? errorDetails;
   final bool isConfirmation;
+  final List<double>? embeddings;
 
   LlamaResponse({
     required this.text,
@@ -45,6 +52,7 @@ class LlamaResponse {
     this.promptId,
     this.errorDetails,
     this.isConfirmation = false,
+    this.embeddings,
   });
 
   /// Create a confirmation response
