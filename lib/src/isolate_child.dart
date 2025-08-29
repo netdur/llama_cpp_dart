@@ -26,14 +26,17 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           :final verbose,
           :final mmprojPath
         ):
-        _handleLoad(
-            path, modelParams, contextParams, samplingParams, verbose, mmprojPath);
+        _handleLoad(path, modelParams, contextParams, samplingParams, verbose,
+            mmprojPath);
 
       case LlamaPrompt(:final prompt, :final promptId, :final images):
         _handlePrompt(prompt, promptId, images);
 
       case LlamaInit(:final libraryPath):
         _handleInit(libraryPath);
+
+      case LlamaEmbedd(:final prompt):
+        _handleEmbedding(prompt);
     }
   }
 
@@ -68,7 +71,8 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       String? mmprojPath) {
     try {
       // Create Llama instance with all parameters including verbose
-      llama = Llama(path, modelParams, contextParams, samplingParams, verbose, mmprojPath);
+      llama = Llama(path, modelParams, contextParams, samplingParams, verbose,
+          mmprojPath);
       sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));
     } catch (e) {
       sendToParent(LlamaResponse.error("Error loading model: $e"));
@@ -79,6 +83,19 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   void _handlePrompt(String prompt, String promptId, List<LlamaImage>? images) {
     shouldStop = false;
     _sendPrompt(prompt, promptId, images);
+  }
+
+  void _handleEmbedding(String prompt) {
+    shouldStop = false;
+
+    final embeddings = llama?.getEmbeddings(prompt);
+
+    sendToParent(LlamaResponse(
+      text: "",
+      isDone: true,
+      embeddings: embeddings,
+      status: LlamaStatus.ready,
+    ));
   }
 
   /// Handle init command
