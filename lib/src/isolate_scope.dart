@@ -62,4 +62,11 @@ class LlamaScope {
     _promptIds.add(promptId);
     return promptId;
   }
+
+  /// Stop generation for this scope only.
+  /// - If this scope owns the active prompt, it will be stopped.
+  /// - Any queued prompts from this scope are removed.
+  Future<void> stop({bool alsoCancelQueued = true}) {
+    return _parent.cancelScope(this, cancelInFlight: true, cancelQueued: alsoCancelQueued);
+  }
 }

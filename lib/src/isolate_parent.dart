@@ -71,6 +71,29 @@ class LlamaParent {
   final List<_QueuedPrompt> _promptQueue = [];
   bool _isProcessingQueue = false;
 
+  Object? _currentScope;
+  bool isScopeActive(Object scope) =>
+      identical(_currentScope, scope) && _isGenerating;
+
+  // Cancel prompts tied to a specific scope
+  Future<void> cancelScope(Object scope,
+      {bool cancelInFlight = true, bool cancelQueued = true}) async {
+    if (cancelQueued) {
+      final toRemove =
+          _promptQueue.where((p) => identical(p.scope, scope)).toList();
+      for (final p in toRemove) {
+        if (!p.idCompleter.isCompleted) {
+          p.idCompleter.completeError(StateError("Prompt canceled by scope"));
+        }
+        _promptQueue.remove(p);
+      }
+    }
+
+    if (cancelInFlight && identical(_currentScope, scope) && _isGenerating) {
+      await _stopGeneration();
+    }
+  }
+
   /// Create a new LlamaParent
   ///
   /// [loadCommand] specifies the model to load
@@ -136,6 +159,8 @@ class LlamaParent {
       for (final scope in _scopes) {
         scope.handleCompletion(event);
       }
+
+      _currentScope = null;
     }
   }
 
@@ -263,6 +288,8 @@ class LlamaParent {
 
     // Complete the ID completer so the caller gets the ID
     nextPrompt.idCompleter.complete(_currentPromptId);
+
+    _currentScope = nextPrompt.scope;
 
     // Store the scope (if any) for this prompt ID
     if (nextPrompt.scope != null) {
