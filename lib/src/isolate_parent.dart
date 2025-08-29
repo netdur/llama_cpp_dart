@@ -47,6 +47,7 @@ class LlamaParent {
 
   Completer<void>? _readyCompleter;
   Completer<void>? _operationCompleter;
+  Completer<List<double>>? _embeddingsCompleter;
 
   /// Maps prompt IDs to completers for operation tracking
   final Map<String, Completer<void>> _promptCompleters = {};
@@ -102,6 +103,12 @@ class LlamaParent {
 
   /// Handle responses from the child isolate
   void _onData(LlamaResponse data) {
+    if (data.embeddings != null) {
+      if (_embeddingsCompleter != null && !_embeddingsCompleter!.isCompleted) {
+        _embeddingsCompleter!.complete(data.embeddings);
+        _embeddingsCompleter = null;
+      }
+    }
     // Update status if provided
     if (data.status != null) {
       _status = data.status!;
@@ -392,6 +399,11 @@ class LlamaParent {
     // Allow time for clear command to be processed
     await Future.delayed(const Duration(milliseconds: 100));
 
+    if (_embeddingsCompleter != null && !_embeddingsCompleter!.isCompleted) {
+      _embeddingsCompleter!.completeError(StateError("Parent disposed"));
+      _embeddingsCompleter = null;
+    }
+
     _parent.dispose();
   }
 
@@ -420,5 +432,17 @@ class LlamaParent {
 
     // Return a Future that completes when this prompt gets an ID
     return queuedPrompt.idCompleter.future;
+  }
+
+  Future<List<double>> getEmbeddings(String prompt) async {
+    if (!loadCommand.contextParams.embeddings) {
+      throw StateError(
+          "This LlamaParent instance is not configured for embeddings and can only generate text.");
+    }
+
+    _embeddingsCompleter = Completer();
+    _parent.sendToChild(id: 1, data: LlamaEmbedd(prompt));
+
+    return _embeddingsCompleter!.future;
   }
 }
