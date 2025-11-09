@@ -1,3 +1,4 @@
 [submodule "src/llama.cpp"]
 	path = src/llama.cpp
 	url = https://github.com/ggml-org/llama.cpp
+	branch = master
