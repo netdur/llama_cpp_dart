@@ -206,86 +206,32 @@ class Llama {
     sparams.no_perf = false;
     _smpl = lib.llama_sampler_chain_init(sparams);
 
+    // sampler chain
+    // if greedy is requested do only greedy and skip probabilistic samplers
     if (samplerParams.greedy) {
       lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_greedy());
-    }
+    } else {
+      // decide if using mirostat v2 or v1 based on tau
+      final bool useMirostat2 = (samplerParams.mirostat2Tau != null &&
+          samplerParams.mirostat2Tau > 0.0);
+      final bool useMirostat1 = !useMirostat2 &&
+          (samplerParams.mirostatTau != null &&
+              samplerParams.mirostatTau > 0.0);
 
-    lib.llama_sampler_chain_add(
-        _smpl, lib.llama_sampler_init_dist(samplerParams.seed));
-
-    if (samplerParams.softmax) {
-      lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_softmax());
-    }
-
-    lib.llama_sampler_chain_add(
-        _smpl, lib.llama_sampler_init_top_k(samplerParams.topK));
-    lib.llama_sampler_chain_add(
-        _smpl,
-        lib.llama_sampler_init_top_p(
-            samplerParams.topP, samplerParams.topPKeep));
-    lib.llama_sampler_chain_add(
-        _smpl,
-        lib.llama_sampler_init_min_p(
-            samplerParams.minP, samplerParams.minPKeep));
-    lib.llama_sampler_chain_add(
-        _smpl,
-        lib.llama_sampler_init_typical(
-            samplerParams.typical, samplerParams.typicalKeep));
-    lib.llama_sampler_chain_add(
-        _smpl, lib.llama_sampler_init_temp(samplerParams.temp));
-    lib.llama_sampler_chain_add(
-        _smpl,
-        lib.llama_sampler_init_xtc(
-            samplerParams.xtcTemperature,
-            samplerParams.xtcStartValue,
-            samplerParams.xtcKeep,
-            samplerParams.xtcLength));
-
-    lib.llama_sampler_chain_add(
-        _smpl,
-        lib.llama_sampler_init_mirostat(
-            lib.llama_n_vocab(vocab),
-            samplerParams.seed,
-            samplerParams.mirostatTau,
-            samplerParams.mirostatEta,
-            samplerParams.mirostatM));
-
-    lib.llama_sampler_chain_add(
-        _smpl,
-        lib.llama_sampler_init_mirostat_v2(samplerParams.seed,
-            samplerParams.mirostat2Tau, samplerParams.mirostat2Eta));
-
-    final grammarStrPtr = samplerParams.grammarStr.toNativeUtf8().cast<Char>();
-    final grammarRootPtr =
-        samplerParams.grammarRoot.toNativeUtf8().cast<Char>();
-
-    final grammar =
-        lib.llama_sampler_init_grammar(vocab, grammarStrPtr, grammarRootPtr);
-    if (grammar != nullptr) {
-      lib.llama_sampler_chain_add(_smpl, grammar);
-    }
-
-    if (grammarStrPtr != nullptr) malloc.free(grammarStrPtr);
-    if (grammarRootPtr != nullptr) malloc.free(grammarRootPtr);
-
-    lib.llama_sampler_chain_add(
-        _smpl,
-        lib.llama_sampler_init_penalties(
-          samplerParams.penaltyLastTokens,
-          samplerParams.penaltyRepeat,
-          samplerParams.penaltyFreq,
-          samplerParams.penaltyPresent,
-        ));
-
-    final seqBreakers = samplerParams.dryBreakers;
-    final numBreakers = seqBreakers.length;
-    final seqBreakersPointer = calloc<Pointer<Char>>(numBreakers);
-
-    try {
-      for (var i = 0; i < numBreakers; i++) {
-        seqBreakersPointer[i] = seqBreakers[i].toNativeUtf8().cast<Char>();
+      // optional grammar first
+      final grammarStrPtr =
+          samplerParams.grammarStr.toNativeUtf8().cast<Char>();
+      final grammarRootPtr =
+          samplerParams.grammarRoot.toNativeUtf8().cast<Char>();
+      final grammar =
+          lib.llama_sampler_init_grammar(vocab, grammarStrPtr, grammarRootPtr);
+      if (grammar != nullptr) {
+        lib.llama_sampler_chain_add(_smpl, grammar);
       }
+      if (grammarStrPtr != nullptr) malloc.free(grammarStrPtr);
+      if (grammarRootPtr != nullptr) malloc.free(grammarRootPtr);
 
+      // repetition and presence penalties apply regardless of strategy
       lib.llama_sampler_chain_add(
           _smpl,
           lib.llama_sampler_init_penalties(
@@ -294,12 +240,56 @@ class Llama {
             samplerParams.penaltyFreq,
             samplerParams.penaltyPresent,
           ));
-    } finally {
-      for (var i = 0; i < numBreakers; i++) {
-        malloc.free(seqBreakersPointer[i]);
+
+      if (useMirostat2) {
+        lib.llama_sampler_chain_add(
+            _smpl,
+            lib.llama_sampler_init_mirostat_v2(samplerParams.seed,
+                samplerParams.mirostat2Tau, samplerParams.mirostat2Eta));
+      } else if (useMirostat1) {
+        lib.llama_sampler_chain_add(
+            _smpl,
+            lib.llama_sampler_init_mirostat(
+                lib.llama_n_vocab(vocab),
+                samplerParams.seed,
+                samplerParams.mirostatTau,
+                samplerParams.mirostatEta,
+                samplerParams.mirostatM));
+      } else {
+        // classic filter stack when not using mirostat
+        lib.llama_sampler_chain_add(
+            _smpl, lib.llama_sampler_init_top_k(samplerParams.topK));
+        lib.llama_sampler_chain_add(
+            _smpl,
+            lib.llama_sampler_init_top_p(
+                samplerParams.topP, samplerParams.topPKeep));
+        lib.llama_sampler_chain_add(
+            _smpl,
+            lib.llama_sampler_init_min_p(
+                samplerParams.minP, samplerParams.minPKeep));
+        lib.llama_sampler_chain_add(
+            _smpl,
+            lib.llama_sampler_init_typical(
+                samplerParams.typical, samplerParams.typicalKeep));
+        lib.llama_sampler_chain_add(
+            _smpl, lib.llama_sampler_init_temp(samplerParams.temp));
+        lib.llama_sampler_chain_add(
+            _smpl,
+            lib.llama_sampler_init_xtc(
+                samplerParams.xtcTemperature,
+                samplerParams.xtcStartValue,
+                samplerParams.xtcKeep,
+                samplerParams.xtcLength));
       }
-      calloc.free(seqBreakersPointer);
+
+      // dist must be last because it applies softmax and draws a sample
+      lib.llama_sampler_chain_add(
+          _smpl, lib.llama_sampler_init_dist(samplerParams.seed));
     }
+
+    // the old softmax sampler was removed so nothing to add here
+
+    // removed the duplicate penalties block that was previously inside seqBreakers
 
     if (mmprojPath != null && mmprojPath.isNotEmpty) {
       final mprojPathPtr = mmprojPath.toNativeUtf8().cast<Char>();
@@ -352,6 +342,10 @@ class Llama {
         if (context.address != 0) {
           final mem = lib.llama_get_memory(context);
           lib.llama_memory_clear(mem, true);
+        }
+        // reset sampler at the start of a fresh prompt
+        if (_smpl != nullptr) {
+          lib.llama_sampler_reset(_smpl);
         }
         batch.n_tokens = 0;
       }

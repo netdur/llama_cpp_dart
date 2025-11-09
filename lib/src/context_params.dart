@@ -102,9 +102,6 @@ class ContextParams {
   /// Whether to offload the KQV ops (including the KV cache) to GPU
   bool offloadKqv = true;
 
-  /// Whether to use flash attention [EXPERIMENTAL]
-  bool flashAttn = false;
-
   /// Whether to measure performance timings
   bool noPerfTimings = false;
 
@@ -134,7 +131,6 @@ class ContextParams {
     // contextParams.logits_all = logitsAll;
     contextParams.embeddings = embeddings;
     contextParams.offload_kqv = offloadKqv;
-    contextParams.flash_attn = flashAttn;
     contextParams.no_perf = noPerfTimings;
 
     return contextParams;
@@ -166,7 +162,6 @@ class ContextParams {
       // ..logitsAll = json['logitsAll'] ?? false
       ..embeddings = json['embeddings'] ?? false
       ..offloadKqv = json['offloadKqv'] ?? true
-      ..flashAttn = json['flashAttn'] ?? false
       ..noPerfTimings = json['noPerfTimings'] ?? false;
   }
 
@@ -192,7 +187,6 @@ class ContextParams {
         // 'logitsAll': logitsAll,
         'embeddings': embeddings,
         'offloadKqv': offloadKqv,
-        'flashAttn': flashAttn,
         'noPerfTimings': noPerfTimings,
       };
 

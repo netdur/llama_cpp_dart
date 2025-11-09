@@ -25,7 +25,7 @@ Future<void> main() async {
       false,
       "/Users/adel/Workspace/gguf/mmproj-model-f16-4B.gguf");
 
-  final image = LlamaImage.fromFile(File("/Users/adel/Downloads/ChatGPT Image Aug 14, 2025, 06_16_50 PM.png"));
+  final image = LlamaImage.fromFile(File("/Users/adel/Downloads/test-1.jpeg"));
   final prompt = """
 <start_of_turn>user\n
 <image>\n
