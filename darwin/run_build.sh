@@ -72,6 +72,32 @@ build_for_platform() {
             
             # Only set the install name, don't modify rpaths
             install_name_tool -id "@rpath/$(basename "$lib")" "$output_lib"
+
+            # Fix all versioned dependencies (.X.dylib -> .dylib)
+            # First, get actual dependencies from the library
+            if otool -L "$output_lib" 2>/dev/null | grep -q "@rpath/"; then
+                echo "  Fixing dependencies for $(basename "$output_lib")..."
+                
+                # Extract actual versioned dependencies and fix them
+                otool -L "$output_lib" | grep "@rpath/" | awk '{print $1}' | while read -r dep_path; do
+                    # Extract the dependency name (e.g., "@rpath/libllama.0.dylib")
+                    dep_name=$(basename "$dep_path")
+                    
+                    # Check if it's a versioned dylib (e.g., libllama.0.dylib, libggml.1.dylib, etc.)
+                    if [[ "$dep_name" =~ ^(.+)\.[0-9]+\.dylib$ ]]; then
+                        base_name="${BASH_REMATCH[1]}.dylib"
+                        
+                        echo "    Changing: $dep_name -> $base_name"
+                        if install_name_tool -change "@rpath/${dep_name}" "@rpath/${base_name}" "$output_lib" 2>&1; then
+                            echo "    ✅ Successfully changed $dep_name"
+                        else
+                            echo "    ⚠️  Warning: Could not change $dep_name"
+                        fi
+                    fi
+                done
+            else
+                echo "  No @rpath dependencies found in $(basename "$output_lib")"
+            fi
             
             # Minimal signing to preserve iOS load commands
             codesign --remove-signature "$output_lib" 2>/dev/null || true
