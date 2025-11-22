@@ -80,7 +80,7 @@ Future<void> main() async {
       ..topK = 40
       ..topP = 0.9;
 
-    const chatFormat = ChatFormat.gemini;
+    const chatFormat = ChatFormat.gemma;
     const int maxChunkLength = 500;
 
     llama = Llama(

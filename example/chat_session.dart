@@ -61,7 +61,7 @@ void main(List<String> args) async {
       }
 
       llama.setPrompt(
-          history.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true));
+          history.exportFormat(ChatFormat.gemma, leaveLastAssistantOpen: true));
 
       print("AI:");
       await for (final token in llama.generateText()) {

@@ -125,7 +125,7 @@ void main() async {
     if (userInput == null || userInput.toLowerCase() == 'exit') {
       chatActive = false;
       print("\nExiting chat. bye!");
-      print(chatHistory.exportFormat(ChatFormat.gemini));
+      print(chatHistory.exportFormat(ChatFormat.gemma));
       break;
     }
 
@@ -139,7 +139,7 @@ void main() async {
     completionDone = Completer<void>();
 
     // Prepare prompt for the model
-    String prompt = chatHistory.exportFormat(ChatFormat.gemini,
+    String prompt = chatHistory.exportFormat(ChatFormat.gemma,
         leaveLastAssistantOpen: true);
 
     await llamaParent.sendPrompt(prompt);

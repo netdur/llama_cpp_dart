@@ -68,7 +68,7 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
         llama.clear();
         
         // Re-set the context with trimmed history
-        String trimmedContext = chatHistory.exportFormat(ChatFormat.gemini);
+        String trimmedContext = chatHistory.exportFormat(ChatFormat.gemma);
         try {
           llama.setPrompt(trimmedContext);
         } catch (e) {
@@ -84,7 +84,7 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
       chatHistory.addMessage(role: Role.assistant, content: "");
 
       // Prepare prompt for the model
-      String prompt = chatHistory.exportFormat(ChatFormat.gemini,
+      String prompt = chatHistory.exportFormat(ChatFormat.gemma,
           leaveLastAssistantOpen: true);
 
       try {
@@ -110,7 +110,7 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
           chatHistory.addMessage(role: Role.assistant, content: "");
           
           // Try again with trimmed context
-          prompt = chatHistory.exportFormat(ChatFormat.gemini,
+          prompt = chatHistory.exportFormat(ChatFormat.gemma,
               leaveLastAssistantOpen: true);
           
           try {

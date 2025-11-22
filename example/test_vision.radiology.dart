@@ -33,7 +33,7 @@ Future<void> main() async {
   chat.addMessage(role: Role.user, content: """<image>
       You are an expert radiographer. Describe accurately what you see in this image.""");
   final prompt =
-      chat.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true);
+      chat.exportFormat(ChatFormat.gemma, leaveLastAssistantOpen: true);
 
   final sw = Stopwatch()..start();
   try {

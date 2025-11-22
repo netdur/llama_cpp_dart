@@ -119,7 +119,7 @@ JSON:''';
       ..addMessage(role: Role.assistant, content: "");
     
     llama.setPrompt(
-      tempHistory.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true)
+      tempHistory.exportFormat(ChatFormat.gemma, leaveLastAssistantOpen: true)
     );
     
     // Generate decision
@@ -187,7 +187,7 @@ Provide a helpful, natural response:''';
       ..addMessage(role: Role.assistant, content: "");
     
     llama.setPrompt(
-      tempHistory.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true)
+      tempHistory.exportFormat(ChatFormat.gemma, leaveLastAssistantOpen: true)
     );
     
     final response = await _generateTextWithStreaming();
@@ -211,7 +211,7 @@ Assistant:''';
       ..addMessage(role: Role.assistant, content: "");
     
     llama.setPrompt(
-      tempHistory.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true)
+      tempHistory.exportFormat(ChatFormat.gemma, leaveLastAssistantOpen: true)
     );
     
     final response = await _generateTextWithStreaming();

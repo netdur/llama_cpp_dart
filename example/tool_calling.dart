@@ -120,7 +120,7 @@ Future<void> main() async {
         ..addMessage(role: Role.user, content: userInput)
         ..addMessage(role: Role.assistant, content: '');
 
-      llama.setPrompt(history.exportFormat(ChatFormat.gemini,
+      llama.setPrompt(history.exportFormat(ChatFormat.gemma,
           leaveLastAssistantOpen: true));
 
       final responseBuffer = StringBuffer();

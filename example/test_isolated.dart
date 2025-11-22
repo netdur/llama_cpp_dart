@@ -66,5 +66,5 @@ String getPrompt(String content) {
   ChatHistory history = ChatHistory()
     ..addMessage(role: Role.user, content: content)
     ..addMessage(role: Role.assistant, content: "");
-  return history.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true);
+  return history.exportFormat(ChatFormat.gemma, leaveLastAssistantOpen: true);
 }
