@@ -97,8 +97,13 @@ Future<void> main() async {
       ..nCtx = 4096;
     final samplerParams = SamplerParams()..temp = 0.1;
 
-    final llama =
-        Llama(modelPath, modelParams, contextParams, samplerParams, false);
+    final llama = Llama(
+      modelPath,
+      modelParams: modelParams,
+      contextParams: contextParams,
+      samplerParams: samplerParams,
+      verbose: false,
+    );
 
     while (true) {
       stdout.write("\nAsk me something (or type 'exit'): ");
@@ -119,10 +124,8 @@ Future<void> main() async {
           leaveLastAssistantOpen: true));
 
       final responseBuffer = StringBuffer();
-      while (true) {
-        final (token, done) = llama.getNext();
+      await for (final token in llama.generateText()) {
         responseBuffer.write(token);
-        if (done) break;
       }
       final llmResponse = responseBuffer.toString().trim();
 

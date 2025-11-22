@@ -23,8 +23,13 @@ void main() async {
     print("Loading model, please wait...");
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
-    Llama llama =
-        Llama(modelPath, ModelParams(), contextParams, samplerParams, false);
+    Llama llama = Llama(
+      modelPath,
+      modelParams: ModelParams(),
+      contextParams: contextParams,
+      samplerParams: samplerParams,
+      verbose: false,
+    );
     print("Model loaded successfully! ${llama.status}");
 
     // Initialize chat history with auto-trim capability
@@ -126,29 +131,28 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
       StringBuffer responseBuffer = StringBuffer();
       bool endOfTurnFound = false;
 
-      while (!endOfTurnFound) {
-        var (token, done, contextLimit) = llama.getNextWithStatus();
-        
-        if (contextLimit) {
-          print("\n\n⚠️ Hit context limit during generation!");
-          break;
-        }
+      await for (final token in llama.generateText()) {
+        final incoming = responseBuffer.toString() + token;
 
-        if (token.contains("<end_of_turn>")) {
+        if (incoming.contains("<end_of_turn>")) {
           endOfTurnFound = true;
-          String cleanToken =
-              token.substring(0, token.indexOf("<end_of_turn>"));
-          if (cleanToken.isNotEmpty) {
-            stdout.write(cleanToken);
-            responseBuffer.write(cleanToken);
+          final clean = incoming.split("<end_of_turn>").first;
+          final newSegment = clean.substring(responseBuffer.length);
+          if (newSegment.isNotEmpty) {
+            stdout.write(newSegment);
           }
+          responseBuffer
+            ..clear()
+            ..write(clean);
           break;
         }
 
         stdout.write(token);
         responseBuffer.write(token);
+      }
 
-        if (done) break;
+      if (!endOfTurnFound && llama.wasContextLimitReached()) {
+        print("\n\n⚠️ Hit context limit during generation!");
       }
 
       // Update the last assistant message

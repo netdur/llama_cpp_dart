@@ -19,13 +19,14 @@ Future<void> main() async {
     ..penaltyRepeat = 1.1;
 
   final llama = Llama(
-      // "/Users/adel/Downloads/gemma-3n-E2B-it-plantvillage-model.gguf",
-      "/Users/adel/Downloads/gemma-3-4B-it-plantvillage-model-Q4_K_M.gguf",
-      modelParams,
-      contextParams,
-      samplerParams,
-      true,
-      "/Users/adel/Downloads/gemma-3-4B-it-plantvillage-mmproj.gguf");
+    // "/Users/adel/Downloads/gemma-3n-E2B-it-plantvillage-model.gguf",
+    "/Users/adel/Downloads/gemma-3-4B-it-plantvillage-model-Q4_K_M.gguf",
+    modelParams: modelParams,
+    contextParams: contextParams,
+    samplerParams: samplerParams,
+    verbose: true,
+    mmprojPath: "/Users/adel/Downloads/gemma-3-4B-it-plantvillage-mmproj.gguf",
+  );
 
   final image =
       LlamaImage.fromFile(File("/Users/adel/Downloads/plantvillage-test.png"));

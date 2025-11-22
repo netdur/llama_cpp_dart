@@ -92,9 +92,9 @@ Future<List<List<double>>> createEmbeddings(List<String> chunks) async {
     ..nCtx = Config.contextSize;
   final embedModel = Llama(
     Config.embeddingModelPath,
-    modelParams,
-    contextParams,
-    SamplerParams(),
+    modelParams: modelParams,
+    contextParams: contextParams,
+    samplerParams: SamplerParams(),
   );
 
   print("Creating embeddings for ${chunks.length} chunks...");
@@ -136,9 +136,9 @@ List<String> findRelevantChunks(
     ..nCtx = Config.contextSize;
   final model = Llama(
     Config.embeddingModelPath,
-    modelParams,
-    contextParams,
-    SamplerParams(),
+    modelParams: modelParams,
+    contextParams: contextParams,
+    samplerParams: SamplerParams(),
   );
 
   // Get query embedding
@@ -176,9 +176,9 @@ Future<void> generateAnswer(String query, List<String> relevantChunks) async {
 
   final llm = Llama(
     Config.llmModelPath,
-    modelParams,
-    contextParams,
-    samplerParams,
+    modelParams: modelParams,
+    contextParams: contextParams,
+    samplerParams: samplerParams,
   );
 
   // Create prompt
@@ -198,10 +198,8 @@ Please answer this question based on the context provided: $query
 
   // Generate response
   try {
-    while (true) {
-      var (token, done) = llm.getNext();
+    await for (final token in llm.generateText()) {
       stdout.write(token);
-      if (done) break;
     }
   } catch (e) {
     print("Error during generation: $e");

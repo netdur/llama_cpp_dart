@@ -22,17 +22,17 @@ class SimpleAgent {
     
     llama = Llama(
       modelPath,
-      ModelParams()..nGpuLayers = 99,
-      ContextParams()
+      modelParams: ModelParams()..nGpuLayers = 99,
+      contextParams: ContextParams()
         ..nPredict = -1
         ..nCtx = 8192
         ..nBatch = 8192,
-      SamplerParams()
+      samplerParams: SamplerParams()
         ..temp = 0.7
         ..topK = 40
         ..topP = 0.95
         ..penaltyRepeat = 1.1,
-      false,
+      verbose: false,
     );
     
     mcp = MCPClient();
@@ -127,11 +127,10 @@ JSON:''';
     int tokenCount = 0;
     const maxTokens = 100;
     
-    while (tokenCount < maxTokens) {
-      var (token, done) = llama.getNext();
+    await for (final token in llama.generateText()) {
       decision += token;
       tokenCount++;
-      if (done) break;
+      if (tokenCount >= maxTokens) break;
     }
     
     _debugPrint('║ Router Output: ${decision.replaceAll('\n', ' ').trim()}');
@@ -225,11 +224,9 @@ Assistant:''';
     String response = '';
     bool firstToken = true;
     
-    while (true) {
-      var (token, done) = llama.getNext();
+    await for (final token in llama.generateText()) {
       response += token;
-      
-      // Stream tokens to stdout if enabled and not in debug mode
+
       if (streamingMode && !debugMode) {
         if (firstToken) {
           stdout.write('AI: ');
@@ -237,8 +234,6 @@ Assistant:''';
         }
         stdout.write(token);
       }
-      
-      if (done) break;
     }
     
     // Add newline after streaming

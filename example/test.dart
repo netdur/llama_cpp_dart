@@ -14,7 +14,7 @@ void main() async {
       ..addMessage(role: Role.user, content: prompt)
       ..addMessage(role: Role.assistant, content: "");
 
-    final modelParams = ModelParams()..nGpuLayers = 99;
+    final modelParams = ModelParams()..nGpuLayers = -1;
 
     final contextParams = ContextParams()
       ..nPredict = -1
@@ -27,15 +27,19 @@ void main() async {
       ..topP = 0.95
       ..penaltyRepeat = 1.1;
 
-    Llama llama =
-        Llama(modelPath, modelParams, contextParams, samplerParams, false);
+    Llama llama = Llama(
+      modelPath,
+      modelParams: modelParams,
+      contextParams: contextParams,
+      samplerParams: samplerParams,
+      verbose: false,
+    );
 
-    llama.setPrompt(
-        history.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true));
-    while (true) {
-      var (token, done) = llama.getNext();
+    prompt = history.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true);
+    print("Prompt:\n$prompt\n---\n");
+    llama.setPrompt(prompt);
+    await for (final token in llama.generateText()) {
       stdout.write(token);
-      if (done) break;
     }
     stdout.write("\n");
 

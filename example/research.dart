@@ -8,8 +8,8 @@ import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 import 'notes.dart';
 
-String generateLlmResponseSync(
-    Llama llama, String userPrompt, ChatFormat format) {
+Future<String> generateLlmResponse(
+    Llama llama, String userPrompt, ChatFormat format) async {
   final history = ChatHistory()
     ..addMessage(role: Role.user, content: userPrompt)
     ..addMessage(role: Role.assistant, content: "");
@@ -19,12 +19,9 @@ String generateLlmResponseSync(
 
   llama.setPrompt(formattedPrompt);
   final buffer = StringBuffer();
-  while (true) {
-    var (token, done) = llama.getNext();
+  await for (final token in llama.generateText()) {
     buffer.write(token);
-    if (done) break;
   }
-
   return buffer.toString().trim();
 }
 
@@ -61,7 +58,7 @@ String cleanLlmArtifacts(String text) {
       .trim();
 }
 
-void main() {
+Future<void> main() async {
   List<String> researchTopics = [
     "Information about the Quadratic Formula",
     "Details on the function of Mitochondria",
@@ -86,7 +83,12 @@ void main() {
     const chatFormat = ChatFormat.gemini;
     const int maxChunkLength = 500;
 
-    llama = Llama(modelPath, modelParams, contextParams, samplerParams);
+    llama = Llama(
+      modelPath,
+      modelParams: modelParams,
+      contextParams: contextParams,
+      samplerParams: samplerParams,
+    );
 
     for (String topic in researchTopics) {
       print("\n--------------------------------------------------");
@@ -123,8 +125,8 @@ If no part of the text is relevant to the topic, respond with the single word: N
 """;
 
           // Run extraction prompt through LLM (now quiet)
-          String extractionResult =
-              generateLlmResponseSync(llama, extractionPrompt, chatFormat);
+          final extractionResult =
+              await generateLlmResponse(llama, extractionPrompt, chatFormat);
 
           String cleanedResult = extractionResult.trim().toUpperCase();
           bool isNone = cleanedResult == "NONE" ||
@@ -187,7 +189,7 @@ Synthesize the findings into a coherent paragraph or two. Do not add any informa
 
         // print("\n--- Generating Final Synthesis Report ---"); // Removed
         String finalReportRaw =
-            generateLlmResponseSync(llama, synthesisPrompt, chatFormat);
+            await generateLlmResponse(llama, synthesisPrompt, chatFormat);
         String finalReportClean = cleanLlmArtifacts(finalReportRaw);
 
         // Print the final report

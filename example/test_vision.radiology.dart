@@ -18,12 +18,13 @@ Future<void> main() async {
     ..penaltyRepeat = 1.1;
 
   final llama = Llama(
-      "/Users/adel/Workspace/gguf/model-radiology-Q4_K_M.gguf",
-      modelParams,
-      contextParams,
-      samplerParams,
-      false,
-      "/Users/adel/Workspace/gguf/mmproj-radiology.gguf");
+    "/Users/adel/Workspace/gguf/model-radiology-Q4_K_M.gguf",
+    modelParams: modelParams,
+    contextParams: contextParams,
+    samplerParams: samplerParams,
+    verbose: false,
+    mmprojPath: "/Users/adel/Workspace/gguf/mmproj-radiology.gguf",
+  );
 
   final image =
       LlamaImage.fromFile(File("/Users/adel/Downloads/radiology.png"));

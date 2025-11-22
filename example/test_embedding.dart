@@ -13,7 +13,11 @@ void main() async {
     ModelParams modelParams = ModelParams();
     ContextParams contextParams = ContextParams();
     contextParams.embeddings = true;
-    Llama llama = Llama(modelPath, modelParams, contextParams);
+    Llama llama = Llama(
+      modelPath,
+      modelParams: modelParams,
+      contextParams: contextParams,
+    );
 
     List<double> embeddings = llama.getEmbeddings("2 * 2 = ?");
     stdout.write(embeddings);

@@ -15,12 +15,11 @@ Future<void> main() async {
 
   // Create load command with mmproj path
   final loadCommand = LlamaLoad(
-    path: "/Users/adel/Workspace/gguf/SmolVLM-500M-Instruct-Q8_0.gguf",
+    path: "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf",
     modelParams: modelParams,
     contextParams: contextParams,
     samplingParams: samplerParams,
-    mmprojPath:
-        "/Users/adel/Workspace/gguf/mmproj-SmolVLM-500M-Instruct-Q8_0.gguf",
+    mmprojPath: "/Users/adel/Workspace/gguf/mmproj-model-f16-4B.gguf",
   );
 
   // Create parent and initialize
@@ -28,7 +27,7 @@ Future<void> main() async {
   await parent.init();
 
   // Load image
-  final image = LlamaImage.fromFile(File("/Users/adel/Downloads/test.jpg"));
+  final image = LlamaImage.fromFile(File("/Users/adel/Downloads/test-1.jpeg"));
 
   // Format prompt
   var prompt = """

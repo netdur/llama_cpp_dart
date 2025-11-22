@@ -41,32 +41,38 @@ void main(List<String> args) async {
       ..topP = 0.95
       ..penaltyRepeat = 1.1;
 
-    Llama llama =
-        Llama(modelPath, modelParams, contextParams, samplerParams, false);
+    Llama? llama;
+    try {
+      llama = Llama(
+        modelPath,
+        modelParams: modelParams,
+        contextParams: contextParams,
+        samplerParams: samplerParams,
+        verbose: false,
+      );
 
-    if (File(sessionPath).existsSync()) {
-      try {
-        llama.loadSession(sessionPath);
-        print("+");
-      } catch (e) {
-        print("!");
+      if (File(sessionPath).existsSync()) {
+        try {
+          llama.loadSession(sessionPath);
+          print("+");
+        } catch (e) {
+          print("!");
+        }
       }
+
+      llama.setPrompt(
+          history.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true));
+
+      print("AI:");
+      await for (final token in llama.generateText()) {
+        stdout.write(token);
+      }
+      stdout.write("\n");
+
+      llama.saveSession(sessionPath);
+    } finally {
+      llama?.dispose();
     }
-
-    llama.setPrompt(
-        history.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true));
-
-    print("AI:");
-    while (true) {
-      var (token, done) = llama.getNext();
-      stdout.write(token);
-      if (done) break;
-    }
-    stdout.write("\n");
-
-    llama.saveSession(sessionPath);
-
-    llama.dispose();
   } catch (e) {
     print("\nError: ${e.toString()}");
   }

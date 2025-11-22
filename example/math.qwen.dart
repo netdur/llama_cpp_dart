@@ -20,18 +20,21 @@ void main() async {
 
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     String modelPath = "/Users/adel/Workspace/gguf/Qwen3-30B-A3B-Instruct-2507-Q4_K_S.gguf";
-    Llama llama =
-        Llama(modelPath, ModelParams(), contextParams, samplerParams, true);
+    Llama llama = Llama(
+      modelPath,
+      modelParams: ModelParams(),
+      contextParams: contextParams,
+      samplerParams: samplerParams,
+      verbose: true,
+    );
 
     llama.setPrompt("""<|im_start|>system
 You are a helpful assistant.<|im_end|>
 <|im_start|>user
 what is 2 * 2?<|im_end|>
 <|im_start|>assistant""");
-    while (true) {
-      var (token, done) = llama.getNext();
+    await for (final token in llama.generateText()) {
       stdout.write(token);
-      if (done) break;
     }
     stdout.write("\n");
 

@@ -3,30 +3,22 @@ import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 /// Base class for commands sent to the LlamaChild isolate
 sealed class LlamaCommand {}
 
-/// Command to stop ongoing generation
 class LlamaStop extends LlamaCommand {}
 
-/// Command to clear the model context
 class LlamaClear extends LlamaCommand {}
+
+class LlamaDispose extends LlamaCommand {}
 
 class LlamaEmbedd extends LlamaCommand {
   final String prompt;
-
   LlamaEmbedd(this.prompt);
 }
 
-/// Command to initialize the Llama library
 class LlamaInit extends LlamaCommand {
   final String? libraryPath;
-  final ModelParams modelParams;
-  final ContextParams contextParams;
-  final SamplerParams samplingParams;
-
-  LlamaInit(this.libraryPath, this.modelParams, this.contextParams,
-      this.samplingParams);
+  LlamaInit(this.libraryPath);
 }
 
-/// Command to send a prompt for generation
 class LlamaPrompt extends LlamaCommand {
   final String prompt;
   final String promptId;
@@ -35,7 +27,24 @@ class LlamaPrompt extends LlamaCommand {
   LlamaPrompt(this.prompt, this.promptId, {this.images});
 }
 
-/// Response from the LlamaChild isolate
+class LlamaLoad extends LlamaCommand {
+  final String path;
+  final ModelParams modelParams;
+  final ContextParams contextParams;
+  final SamplerParams samplingParams;
+  final bool verbose;
+  final String? mmprojPath;
+
+  LlamaLoad({
+    required this.path,
+    required this.modelParams,
+    required this.contextParams,
+    required this.samplingParams,
+    this.verbose = false,
+    this.mmprojPath,
+  });
+}
+
 class LlamaResponse {
   final String text;
   final bool isDone;
@@ -55,7 +64,6 @@ class LlamaResponse {
     this.embeddings,
   });
 
-  /// Create a confirmation response
   factory LlamaResponse.confirmation(LlamaStatus status, [String? promptId]) {
     return LlamaResponse(
       text: "",
@@ -66,7 +74,6 @@ class LlamaResponse {
     );
   }
 
-  /// Create an error response
   factory LlamaResponse.error(String errorMessage, [String? promptId]) {
     return LlamaResponse(
       text: "",
@@ -76,25 +83,4 @@ class LlamaResponse {
       errorDetails: errorMessage,
     );
   }
-}
-
-/// Command to load a model
-class LlamaLoad extends LlamaCommand {
-  final String path;
-  final ModelParams modelParams;
-  final ContextParams contextParams;
-  final SamplerParams samplingParams;
-  final PromptFormat? format;
-  final bool verbose;
-  final String? mmprojPath;
-
-  LlamaLoad({
-    required this.path,
-    required this.modelParams,
-    required this.contextParams,
-    required this.samplingParams,
-    this.format,
-    this.verbose = false,
-    this.mmprojPath,
-  });
 }

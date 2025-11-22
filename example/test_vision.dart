@@ -18,12 +18,13 @@ Future<void> main() async {
     ..penaltyRepeat = 1.1;
 
   final llama = Llama(
-      "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf",
-      modelParams,
-      contextParams,
-      samplerParams,
-      false,
-      "/Users/adel/Workspace/gguf/mmproj-model-f16-4B.gguf");
+    "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf",
+    modelParams: modelParams,
+    contextParams: contextParams,
+    samplerParams: samplerParams,
+    verbose: false,
+    mmprojPath: "/Users/adel/Workspace/gguf/mmproj-model-f16-4B.gguf",
+  );
 
   final image = LlamaImage.fromFile(File("/Users/adel/Downloads/test-1.jpeg"));
   final prompt = """
