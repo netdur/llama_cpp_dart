@@ -25,3 +25,8 @@ Thumbs.db
 src/llama.cpp/
 src/llama.cpp/models/*
 src/llama.cpp/examples/*
+
+src/llama.cpp/build-xcframework.sh
+src/llama.cpp/docs/build-riscv64-spacemit.md
+src/llama.cpp/docs/build-s390x.md
+src/llama.cpp/examples/llama.swiftui/llama.swiftui.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist

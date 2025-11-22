@@ -212,11 +212,9 @@ class Llama {
       lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_greedy());
     } else {
       // decide if using mirostat v2 or v1 based on tau
-      final bool useMirostat2 = (samplerParams.mirostat2Tau != null &&
-          samplerParams.mirostat2Tau > 0.0);
+      final bool useMirostat2 = (samplerParams.mirostat2Tau > 0.0);
       final bool useMirostat1 = !useMirostat2 &&
-          (samplerParams.mirostatTau != null &&
-              samplerParams.mirostatTau > 0.0);
+          (samplerParams.mirostatTau > 0.0);
 
       // optional grammar first
       final grammarStrPtr =

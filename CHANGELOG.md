@@ -1,3 +1,6 @@
+## 0.1.2+1
+* forgot to update version
+
 ## 0.1.2
 * removed flash_attn llama_context_default_params
 * removed softmax

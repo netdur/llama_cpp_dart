@@ -89,7 +89,7 @@ Your response:
 Future<void> main() async {
   try {
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
-    String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
+    String modelPath = "/Users/adel/Workspace/gguf/Qwen3VL-8B-Instruct-Q8_0.gguf";
 
     final modelParams = ModelParams()..nGpuLayers = -1;
     final contextParams = ContextParams()
