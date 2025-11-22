@@ -40,13 +40,11 @@ enum LlamaStatus {
 }
 
 /// A Dart wrapper for llama.cpp functionality.
-/// Provides text generation capabilities using the llama model.
 class Llama {
   static llama_cpp? _lib;
 
   // Core Llama.cpp pointers
   late Pointer<llama_model> model;
-  late Pointer<llama_context> context;
   late Pointer<llama_vocab> vocab;
   late llama_batch batch;
 
@@ -56,17 +54,15 @@ class Llama {
   Pointer<llama_token> _tokenPtr = nullptr;
   Pointer<mtmd_context> _mctx = nullptr;
 
-  // FIXED: Pre-allocated pool of sequence IDs to prevent memory leaks.
-  // These are allocated once during initialization and freed on dispose.
+  // Memory Management: Pre-allocated pool of sequence IDs
   final List<Pointer<llama_seq_id>> _batchSeqIds = [];
 
-  // FIXED: Buffer for accumulating partial UTF-8 bytes (handling split emojis/characters)
-  final List<int> _pendingBytes = [];
+  // Slot-based state for multi-tenant contexts
+  final Map<String, _LlamaSlot> _slots = {};
+  String _currentSlotId = "default";
 
   // State variables
-  int _nPrompt = 0;
   int _nPredict = 32;
-  int _nPos = 0;
 
   bool _verbose = false;
   bool _isInitialized = false;
@@ -76,10 +72,7 @@ class Llama {
 
   static String? libraryPath = Platform.isAndroid ? "libllama.so" : null;
 
-  /// Gets the current status of the Llama instance
   LlamaStatus get status => _status;
-
-  /// Checks if the instance has been disposed
   bool get isDisposed => _isDisposed;
 
   ContextParams? _contextParams;
@@ -95,20 +88,20 @@ class Llama {
     return _lib!;
   }
 
-  llama_cpp getLib() {
-    return _lib!;
-  }
+  llama_cpp getLib() => _lib!;
 
-  /// Creates a new Llama instance with the specified model path.
-  ///
-  /// Uses named parameters for optional configuration.
-  ///
-  /// [modelPath] - Path to the GGUF model file.
-  /// [mmprojPath] - (Optional) Path to the multimodal projector file (e.g., mmproj-model-f16.gguf).
-  /// [modelParams] - (Optional) Hardware configuration (GPU layers, etc).
-  /// [contextParams] - (Optional) Context window size, batch size, etc.
-  /// [samplerParams] - (Optional) Sampling strategy (temperature, top_k, etc).
-  /// [verbose] - (Optional) Enable verbose logging.
+  // ---- Slot helpers ----
+  Pointer<llama_context> get context => _slots[_currentSlotId]!.context;
+
+  int get _nPos => _slots[_currentSlotId]!.nPos;
+  set _nPos(int v) => _slots[_currentSlotId]!.nPos = v;
+
+  int get _nPrompt => _slots[_currentSlotId]!.nPrompt;
+  set _nPrompt(int v) => _slots[_currentSlotId]!.nPrompt = v;
+
+  List<int> get _pendingBytes => _slots[_currentSlotId]!.pendingBytes;
+
+  /// Creates a new Llama instance.
   Llama(
     String modelPath, {
     String? mmprojPath,
@@ -121,11 +114,9 @@ class Llama {
       _verbose = verbose;
       _status = LlamaStatus.loading;
 
-      // Initialize core Llama backend and load model/context
       _initializeLlama(
           modelPath, mmprojPath, modelParams, contextParams, samplerParams);
 
-      // Save params for later reference
       contextParams ??= ContextParams();
       _contextParams = contextParams;
       _nPredict = contextParams.nPredict;
@@ -134,24 +125,21 @@ class Llama {
 
       var nativeContextParams = contextParams.get();
       try {
-        // Initialize the batch with the configured batch size
         batch = lib.llama_batch_init(nativeContextParams.n_batch, 0, 1);
 
-        // FIXED: Pre-allocate sequence ID pointers corresponding to the batch size.
-        // We do this ONCE here, instead of doing malloc/calloc inside every generation loop.
+        // Pre-allocate sequence ID pointers
         for (int i = 0; i < nativeContextParams.n_batch; i++) {
           final seqIdPtr = calloc<llama_seq_id>();
           seqIdPtr.value = 0;
           _batchSeqIds.add(seqIdPtr);
         }
       } catch (e) {
-        // If batch init fails, we must clean up what we already loaded
+        // Cleanup on batch init failure
         if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
         if (context.address != 0) lib.llama_free(context);
         if (model.address != 0) lib.llama_free_model(model);
         if (_mctx != nullptr) lib.mtmd_free(_mctx);
 
-        // Clean up any seq_ids that might have been partially allocated
         for (final ptr in _batchSeqIds) {
           calloc.free(ptr);
         }
@@ -164,8 +152,52 @@ class Llama {
       _status = LlamaStatus.ready;
     } catch (e) {
       _status = LlamaStatus.error;
-      _isDisposed = true;
+      _isDisposed = true; 
       throw LlamaException('Failed to initialize Llama', e);
+    }
+  }
+
+  /// Creates a new slot (context) in VRAM for a specific user/session.
+  /// [slotId] - Unique identifier for the user.
+  void createSlot(String slotId) {
+    if (_isDisposed) throw StateError('Disposed');
+    if (_slots.containsKey(slotId)) return;
+
+    final paramsNative = _contextParams!.get();
+    final newCtx = lib.llama_new_context_with_model(model, paramsNative);
+    if (newCtx == nullptr) {
+      throw LlamaException("Failed to allocate VRAM for slot: $slotId");
+    }
+
+    _slots[slotId] = _LlamaSlot(newCtx);
+  }
+
+  /// Switches the active "brain" to the specified user.
+  void setSlot(String slotId) {
+    if (!_slots.containsKey(slotId)) {
+      throw ArgumentError("Slot $slotId does not exist. Call createSlot first.");
+    }
+
+    // Clear shared batch tokens for cleanliness
+    batch.n_tokens = 0;
+
+    _currentSlotId = slotId;
+
+    if (_smpl != nullptr) {
+      lib.llama_sampler_reset(_smpl);
+    }
+  }
+
+  /// Frees a specific slot from VRAM.
+  void freeSlot(String slotId) {
+    if (!_slots.containsKey(slotId)) return;
+    if (slotId == _currentSlotId) {
+      throw StateError("Cannot free the currently active slot. Switch first.");
+    }
+
+    final slot = _slots.remove(slotId)!;
+    if (slot.context.address != 0) {
+      lib.llama_free(slot.context);
     }
   }
 
@@ -221,19 +253,16 @@ class Llama {
         lib.llama_free_model(model);
         throw LlamaException("Could not create context!");
       }
-      context = loadedContext;
+      _slots["default"] = _LlamaSlot(loadedContext);
+      _currentSlotId = "default";
     } catch (e) {
-      if (loadedContext != nullptr) {
-        lib.llama_free(loadedContext);
-      }
+      if (loadedContext != nullptr) lib.llama_free(loadedContext);
       lib.llama_free_model(model);
       rethrow;
     }
 
-    // Initialize Samplers
     _initializeSampler(samplerParams);
 
-    // Initialize Multimodal (Vision) if path provided
     if (mmprojPath != null && mmprojPath.isNotEmpty) {
       final mprojPathPtr = mmprojPath.toNativeUtf8().cast<Char>();
       try {
@@ -267,7 +296,6 @@ class Llama {
       final bool useMirostat1 =
           !useMirostat2 && (samplerParams.mirostatTau > 0.0);
 
-      // Grammar
       final grammarStrPtr =
           samplerParams.grammarStr.toNativeUtf8().cast<Char>();
       final grammarRootPtr =
@@ -277,18 +305,16 @@ class Llama {
       if (grammar != nullptr) {
         lib.llama_sampler_chain_add(_smpl, grammar);
       }
-      if (grammarStrPtr != nullptr) malloc.free(grammarStrPtr);
-      if (grammarRootPtr != nullptr) malloc.free(grammarRootPtr);
+      malloc.free(grammarStrPtr);
+      malloc.free(grammarRootPtr);
 
-      // Penalties
       lib.llama_sampler_chain_add(
           _smpl,
           lib.llama_sampler_init_penalties(
-            samplerParams.penaltyLastTokens,
-            samplerParams.penaltyRepeat,
-            samplerParams.penaltyFreq,
-            samplerParams.penaltyPresent,
-          ));
+              samplerParams.penaltyLastTokens,
+              samplerParams.penaltyRepeat,
+              samplerParams.penaltyFreq,
+              samplerParams.penaltyPresent));
 
       if (useMirostat2) {
         lib.llama_sampler_chain_add(
@@ -335,27 +361,20 @@ class Llama {
     }
   }
 
-  /// Sets the prompt for text generation.
   void setPrompt(String prompt,
       {void Function(int current, int total)? onProgress}) {
-    if (prompt.isEmpty) {
-      throw ArgumentError('Prompt cannot be empty');
-    }
-    if (_isDisposed) {
-      throw StateError('Cannot set prompt on disposed instance');
-    }
+    if (prompt.isEmpty) throw ArgumentError('Prompt cannot be empty');
+    if (_isDisposed) throw StateError('Disposed');
 
     final nCtx = _contextParams?.nCtx ?? 2048;
     if (_nPos >= nCtx - 10) {
-      throw LlamaException(
-          "Context is full (position: $_nPos, limit: $nCtx). Please create a new instance or call clear().");
+      throw LlamaException("Context full (pos: $_nPos, limit: $nCtx)");
     }
 
     Pointer<Utf8>? promptUtf8Ptr;
 
     try {
       _status = LlamaStatus.generating;
-      // FIXED: Clear pending bytes when starting a new prompt to avoid pollution
       _pendingBytes.clear();
 
       if (_nPos == 0) {
@@ -363,9 +382,7 @@ class Llama {
           final mem = lib.llama_get_memory(context);
           lib.llama_memory_clear(mem, true);
         }
-        if (_smpl != nullptr) {
-          lib.llama_sampler_reset(_smpl);
-        }
+        if (_smpl != nullptr) lib.llama_sampler_reset(_smpl);
         batch.n_tokens = 0;
       }
 
@@ -376,54 +393,32 @@ class Llama {
       _nPrompt = -lib.llama_tokenize(
           vocab, promptCharPtr, promptBytes, nullptr, 0, true, true);
 
-      if (_nPrompt <= 0) {
-        throw LlamaException(
-            "Failed to estimate token count (returned $_nPrompt)");
-      }
+      if (_nPrompt <= 0) throw LlamaException("Token estimate failed");
+      if (_nPrompt > nCtx - 10) throw LlamaException("Prompt too large");
+      if (_nPos + _nPrompt >= nCtx)
+        throw LlamaException("Context limit exceeded");
 
-      if (_nPrompt > nCtx - 10) {
-        throw LlamaException(
-            "Prompt is too large ($_nPrompt tokens) for context size ($nCtx). Maximum prompt size is ${nCtx - 10} tokens.");
-      }
-
-      if (_nPos + _nPrompt >= nCtx) {
-        throw LlamaException(
-            "Adding this prompt would exceed context limit. Current position: $_nPos, prompt size: $_nPrompt, context limit: $nCtx");
-      }
-
-      if (_tokens != nullptr) {
-        malloc.free(_tokens);
-      }
+      if (_tokens != nullptr) malloc.free(_tokens);
       _tokens = malloc<llama_token>(_nPrompt);
+
       final int actualTokens = lib.llama_tokenize(
           vocab, promptCharPtr, promptBytes, _tokens, _nPrompt, true, true);
 
-      if (actualTokens < 0) {
-        malloc.free(_tokens);
-        _tokens = nullptr;
-        throw LlamaException(
-            "Failed to tokenize prompt (returned $actualTokens)");
-      }
+      if (actualTokens < 0) throw LlamaException("Tokenization failed");
       _nPrompt = actualTokens;
 
       int batchCapacity = _contextParams?.nBatch ?? 512;
       if (_nPrompt > batchCapacity) {
-        malloc.free(_tokens);
-        _tokens = nullptr;
         throw LlamaException(
-            "Prompt token count ($_nPrompt) exceeds batch capacity ($batchCapacity)");
+            "Prompt tokens ($_nPrompt) > batch capacity ($batchCapacity)");
       }
 
-      // Fill batch using pre-allocated seq_ids
       for (int i = 0; i < _nPrompt; i++) {
         batch.token[i] = _tokens[i];
         batch.pos[i] = _nPos + i;
         batch.n_seq_id[i] = 1;
-
-        // FIXED: Use the pre-allocated pointer from our list
-        batch.seq_id[i] = _batchSeqIds[i];
+        batch.seq_id[i] = _batchSeqIds[i]; // Reuse pointer
         batch.seq_id[i].value = 0;
-
         batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
       }
       batch.n_tokens = _nPrompt;
@@ -435,18 +430,13 @@ class Llama {
       }
       rethrow;
     } finally {
-      if (promptUtf8Ptr != null) {
-        malloc.free(promptUtf8Ptr);
-      }
+      if (promptUtf8Ptr != null) malloc.free(promptUtf8Ptr);
     }
   }
 
-  /// Internal helper to decode tokens while handling split UTF-8 characters
   String _decodeToken(int tokenId) {
     final buf = malloc<Char>(256);
     try {
-      // special=true allows other special tokens (like newlines) to render,
-      // but we handled EOS specifically in getNextWithStatus so it won't be printed.
       int n = lib.llama_token_to_piece(vocab, tokenId, buf, 256, 0, true);
       if (n < 0) return "";
 
@@ -454,12 +444,10 @@ class Llama {
       _pendingBytes.addAll(newBytes);
 
       try {
-        // Attempt strict decoding. If it fails (split emoji), bytes remain in buffer.
         String piece = utf8.decode(_pendingBytes);
         _pendingBytes.clear();
         return piece;
       } catch (e) {
-        // Wait for next token to complete the character
         return "";
       }
     } finally {
@@ -467,27 +455,18 @@ class Llama {
     }
   }
 
-  /// Generates the next token in the sequence (backward compatible).
   (String, bool) getNext() {
     final result = getNextWithStatus();
     return (result.$1, result.$2);
   }
 
-  /// Generates the next token in the sequence.
   (String, bool, bool) getNextWithStatus() {
-    if (_isDisposed) {
-      throw StateError('Cannot generate text on disposed instance');
-    }
+    if (_isDisposed) throw StateError('Disposed');
 
     try {
       final nCtx = _contextParams?.nCtx ?? 2048;
-
       if (_nPos >= nCtx - 2) {
-        return (
-          "\n\n[Context limit reached. Please start a new conversation.]",
-          true,
-          true
-        );
+        return ("\n\n[Context limit reached]", true, true);
       }
 
       final nGenerated = _nPos > _nPrompt ? _nPos - _nPrompt : 0;
@@ -496,9 +475,7 @@ class Llama {
       }
 
       if (lib.llama_decode(context, batch) != 0) {
-        if (_nPos >= nCtx - 10) {
-          return ("\n\n[Context limit reached during decode.]", true, true);
-        }
+        if (_nPos >= nCtx - 10) return ("\n\n[Context limit]", true, true);
         throw LlamaException("Failed to eval");
       }
 
@@ -508,10 +485,7 @@ class Llama {
       bool isEos = lib.llama_token_is_eog(vocab, newTokenId);
 
       String piece;
-
       if (isEos) {
-        // FIX: If it is EOS, DO NOT decode the token itself (which would be "<end_of_turn>").
-        // Instead, just flush any pending partial UTF-8 bytes from previous tokens.
         if (_pendingBytes.isNotEmpty) {
           piece = utf8.decode(_pendingBytes, allowMalformed: true);
           _pendingBytes.clear();
@@ -519,19 +493,14 @@ class Llama {
           piece = "";
         }
       } else {
-        // Normal decoding for non-EOS tokens
         piece = _decodeToken(newTokenId);
       }
 
-      // Prepare batch for next iteration
       batch.token[0] = newTokenId;
       batch.pos[0] = _nPos;
       batch.n_seq_id[0] = 1;
-
-      // Use pre-allocated pointer
       batch.seq_id[0] = _batchSeqIds[0];
       batch.seq_id[0].value = 0;
-
       batch.logits[0] = 1;
       batch.n_tokens = 1;
 
@@ -543,21 +512,15 @@ class Llama {
   }
 
   Stream<String> generateText() async* {
-    if (_isDisposed) {
-      throw StateError('Cannot generate text on disposed instance');
-    }
-
+    if (_isDisposed) throw StateError('Disposed');
     try {
       while (true) {
         final (text, isDone, contextLimitReached) = getNextWithStatus();
-
         if (text.isNotEmpty) yield text;
-
         if (contextLimitReached) {
           _status = LlamaStatus.ready;
           break;
         }
-
         if (isDone) break;
       }
     } catch (e) {
@@ -567,10 +530,7 @@ class Llama {
   }
 
   Future<String> generateCompleteText({int? maxTokens}) async {
-    if (_isDisposed) {
-      throw StateError('Cannot generate text on disposed instance');
-    }
-
+    if (_isDisposed) throw StateError('Disposed');
     final buffer = StringBuffer();
     int tokenCount = 0;
     final limit = maxTokens ?? _nPredict;
@@ -578,20 +538,14 @@ class Llama {
     try {
       while (true) {
         final (text, isDone, contextLimitReached) = getNextWithStatus();
-
         buffer.write(text);
         tokenCount++;
-
         if (contextLimitReached) {
           _status = LlamaStatus.ready;
           break;
         }
-
-        if (isDone || (limit > 0 && tokenCount >= limit)) {
-          break;
-        }
+        if (isDone || (limit > 0 && tokenCount >= limit)) break;
       }
-
       return buffer.toString();
     } catch (e) {
       _status = LlamaStatus.error;
@@ -609,21 +563,15 @@ class Llama {
     return nCtx - _nPos;
   }
 
-  /// Multimodal generation.
   Stream<String> generateWithMedia(
     String prompt, {
     required List<LlamaInput> inputs,
   }) async* {
-    if (_isDisposed) {
-      throw StateError('Instance disposed');
-    }
+    if (_isDisposed) throw StateError('Disposed');
     if (!_isVisionEnabled || _mctx == nullptr) {
-      throw LlamaException(
-          'Vision disabled – construct Llama with mmprojPath.');
+      throw LlamaException('Vision disabled – construct with mmprojPath.');
     }
-    if (inputs.isEmpty) {
-      throw ArgumentError('No images given; for text only use setPrompt().');
-    }
+    if (inputs.isEmpty) throw ArgumentError('No images given');
 
     final images = inputs.whereType<LlamaImage>().toList();
     const marker = '<image>';
@@ -641,9 +589,8 @@ class Llama {
 
     try {
       _status = LlamaStatus.generating;
-
       lib.llama_sampler_reset(_smpl);
-      clear(); // Resets batch tokens and pending bytes
+      clear();
 
       for (final img in images) {
         bitmapRefs.add(img.toBitmap(lib, malloc));
@@ -684,79 +631,61 @@ class Llama {
 
         if (type == mtmd_input_chunk_type.MTMD_INPUT_CHUNK_TYPE_IMAGE) {
           if (lib.mtmd_encode_chunk(_mctx, chunk) != 0) {
-            throw LlamaException('encode image chunk #$i failed');
+            throw LlamaException('encode image failed');
           }
-
           final embd = lib.mtmd_get_output_embd(_mctx);
           final nTok = lib.mtmd_input_chunk_get_n_tokens(chunk);
 
-          if (nTok > batchCapacity) {
-            throw LlamaException(
-                'Image chunk size ($nTok) exceeds batch capacity ($batchCapacity)');
-          }
+          if (nTok > batchCapacity) throw LlamaException('Image chunk > batch');
           if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
 
           b.token = nullptr;
           b.embd = embd;
-
           for (var k = 0; k < nTok; ++k) {
             b.pos[k] = nPast + k;
             b.n_seq_id[k] = 1;
-
-            // FIXED: Use pre-allocated pointers
             b.seq_id[k] = _batchSeqIds[k];
             b.seq_id[k].value = 0;
-
             b.logits[k] = 0;
           }
           b.logits[nTok - 1] = 1;
           b.n_tokens = nTok;
 
           if (lib.llama_decode(context, b) != 0) {
-            throw LlamaException('llama_decode image chunk #$i failed');
+            throw LlamaException('decode image failed');
           }
           nPast += nTok;
         } else {
-          // Text chunk
           final nPtr = malloc<Size>();
           final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
           final nTok = nPtr.value;
           malloc.free(nPtr);
 
-          if (nTok > batchCapacity) {
-            throw LlamaException(
-                'Text chunk size ($nTok) exceeds batch capacity ($batchCapacity)');
-          }
+          if (nTok > batchCapacity) throw LlamaException('Text chunk > batch');
           if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
 
           b.token = originalTokenPtr;
           b.embd = nullptr;
-
           for (var k = 0; k < nTok; ++k) {
             b.token[k] = tokPt[k];
             b.pos[k] = nPast + k;
             b.n_seq_id[k] = 1;
-
-            // FIXED: Use pre-allocated pointers
             b.seq_id[k] = _batchSeqIds[k];
             b.seq_id[k].value = 0;
-
             b.logits[k] = 0;
           }
           b.logits[nTok - 1] = 1;
           b.n_tokens = nTok;
 
           if (lib.llama_decode(context, b) != 0) {
-            throw LlamaException('llama_decode text chunk #$i failed');
+            throw LlamaException('decode text failed');
           }
           nPast += nTok;
         }
       }
-
-      _nPos = nPast; // Sync global position
+      _nPos = nPast;
 
       var produced = 0;
-      // Loop to generate response tokens
       while (nPast < nCtx && (_nPredict == -1 || produced < _nPredict)) {
         b.token = originalTokenPtr;
         b.embd = nullptr;
@@ -765,7 +694,6 @@ class Llama {
         bool isEos = lib.llama_token_is_eog(vocab, tok);
 
         String piece;
-
         if (isEos) {
           if (_pendingBytes.isNotEmpty) {
             piece = utf8.decode(_pendingBytes, allowMalformed: true);
@@ -777,39 +705,29 @@ class Llama {
           piece = _decodeToken(tok);
         }
         if (piece.isNotEmpty) yield piece;
-
         if (isEos) break;
 
         b.n_tokens = 0;
         b.token[0] = tok;
         b.pos[0] = nPast;
         b.n_seq_id[0] = 1;
-
-        // FIXED: Use pre-allocated pointer
         b.seq_id[0] = _batchSeqIds[0];
         b.seq_id[0].value = 0;
-
         b.logits[0] = 1;
         b.n_tokens = 1;
 
         if (lib.llama_decode(context, b) != 0) {
-          throw LlamaException('llama_decode generated token failed');
+          throw LlamaException('decode token failed');
         }
-
         ++nPast;
         ++produced;
         _nPos = nPast;
       }
     } finally {
-      // Safety reset of batch pointers (optional but good practice)
       if (batch.seq_id != nullptr) {
         final batchCapacity = _contextParams?.nBatch ?? 512;
-        for (int i = 0; i < batchCapacity; ++i) {
-          batch.seq_id[i] = nullptr;
-        }
+        for (int i = 0; i < batchCapacity; ++i) batch.seq_id[i] = nullptr;
       }
-
-      // Clean up only the locally allocated resources
       if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
       if (bmpArr != nullptr) malloc.free(bmpArr);
       for (final r in bitmapRefs) {
@@ -821,13 +739,9 @@ class Llama {
     }
   }
 
-  /// Disposes of all resources held by this instance
-  /// Disposes of all resources held by this instance
   void dispose() {
     if (_isDisposed) return;
-
     try {
-      // 1. Free temporary buffers
       if (_tokens != nullptr) {
         malloc.free(_tokens);
         _tokens = nullptr;
@@ -836,53 +750,34 @@ class Llama {
         malloc.free(_tokenPtr);
         _tokenPtr = nullptr;
       }
-
-      // 2. Free Sampler Chain
       if (_smpl != nullptr) {
         lib.llama_sampler_free(_smpl);
         _smpl = nullptr;
       }
 
       if (_isInitialized) {
-        // 3. Free Context and Model first (standard order)
-        if (context.address != 0) {
-          lib.llama_free(context);
+        for (final slot in _slots.values) {
+          if (slot.context.address != 0) lib.llama_free(slot.context);
         }
-        if (model.address != 0) {
-          lib.llama_free_model(model);
-        }
+        _slots.clear();
+        if (model.address != 0) lib.llama_free_model(model);
 
-        // 4. SAFE BATCH CLEANUP
-        // We must detach our custom seq_id pointers from the C struct
-        // BEFORE freeing the batch, to prevent llama_batch_free from
-        // seeing potentially invalid pointers if we freed them first.
         try {
+          // Safe detachment before free
           if (batch.seq_id != nullptr) {
             final batchCapacity = _contextParams?.nBatch ?? 512;
             for (int i = 0; i < batchCapacity; ++i) {
-              // Set the pointer in C memory to NULL so llama_batch_free ignores it
               batch.seq_id[i] = nullptr;
             }
           }
-
-          // Now it's safe to let llama.cpp free the batch arrays
           lib.llama_batch_free(batch);
-        } catch (e) {
-          // Ignore errors during batch free to ensure we continue cleanup
-        }
+        } catch (_) {}
 
-        // 5. NOW we free our custom sequence ID pointers
-        for (final ptr in _batchSeqIds) {
-          calloc.free(ptr);
-        }
+        for (final ptr in _batchSeqIds) calloc.free(ptr);
         _batchSeqIds.clear();
       }
 
-      if (_mctx != nullptr) {
-        // lib.mtmd_free(_mctx);
-        _mctx = nullptr;
-      }
-
+      if (_mctx != nullptr) _mctx = nullptr;
       lib.llama_backend_free();
     } finally {
       _isDisposed = true;
@@ -890,12 +785,8 @@ class Llama {
     }
   }
 
-  /// Clears the current state of the Llama instance
   void clear() {
-    if (_isDisposed) {
-      throw StateError('Cannot clear disposed instance');
-    }
-
+    if (_isDisposed) throw StateError('Disposed');
     try {
       if (_tokens != nullptr) {
         malloc.free(_tokens);
@@ -903,239 +794,312 @@ class Llama {
       }
       _nPrompt = 0;
       _nPos = 0;
-      // FIXED: Clear pending UTF-8 bytes
       _pendingBytes.clear();
 
       if (_isInitialized && context.address != 0) {
         final mem = lib.llama_get_memory(context);
         lib.llama_memory_clear(mem, true);
       }
-
-      // Reset batch state (seq_id pointers are in _batchSeqIds and don't need freeing here)
       batch.n_tokens = 0;
-
       _status = LlamaStatus.ready;
     } catch (e) {
       _status = LlamaStatus.error;
-      throw LlamaException('Failed to clear Llama state', e);
+      throw LlamaException('Failed to clear', e);
     }
   }
 
-  /// Converts a text string to a list of token IDs
   List<int> tokenize(String text, bool addBos) {
-    if (_isDisposed) {
-      throw StateError('Cannot tokenize with disposed instance');
-    }
-
-    if (text.isEmpty) {
-      throw ArgumentError('Text cannot be empty');
-    }
-
+    if (_isDisposed) throw StateError('Disposed');
+    if (text.isEmpty) throw ArgumentError('Empty text');
+    final textPtr = text.toNativeUtf8().cast<Char>();
     try {
-      final textPtr = text.toNativeUtf8().cast<Char>();
-
+      int nTokens = -lib.llama_tokenize(
+          vocab, textPtr, text.length, nullptr, 0, addBos, true);
+      final tokens = malloc<llama_token>(nTokens);
       try {
-        int nTokens = -lib.llama_tokenize(
-            vocab, textPtr, text.length, nullptr, 0, addBos, true);
-
-        if (nTokens <= 0) {
-          throw LlamaException('Failed to determine token count');
-        }
-
-        final tokens = malloc<llama_token>(nTokens);
-
-        try {
-          int actualTokens = lib.llama_tokenize(
-              vocab, textPtr, text.length, tokens, nTokens, addBos, true);
-
-          if (actualTokens < 0) {
-            throw LlamaException('Tokenization failed');
-          }
-          return List<int>.generate(actualTokens, (i) => tokens[i]);
-        } finally {
-          malloc.free(tokens);
-        }
+        int actual = lib.llama_tokenize(
+            vocab, textPtr, text.length, tokens, nTokens, addBos, true);
+        return List<int>.generate(actual, (i) => tokens[i]);
       } finally {
-        malloc.free(textPtr);
+        malloc.free(tokens);
       }
-    } catch (e) {
-      throw LlamaException('Error during tokenization', e);
+    } finally {
+      malloc.free(textPtr);
     }
   }
 
-  /// Generates embeddings for the given prompt.
-List<double> getEmbeddings(String prompt,
+  List<double> getEmbeddings(String prompt,
       {bool addBos = true, bool normalize = true}) {
-    if (_isDisposed) {
-      throw StateError('Cannot generate embeddings on disposed instance');
-    }
-
-    if (prompt.isEmpty) {
-      throw ArgumentError('Prompt cannot be empty');
-    }
+    if (_isDisposed) throw StateError('Disposed');
+    if (prompt.isEmpty) throw ArgumentError('Empty prompt');
 
     llama_batch? promptBatch;
-    // Track temporary seq_ids specifically for this method
     final List<Pointer<llama_seq_id>> tempSeqIds = [];
-    // Track batch size for cleanup
     int batchCapacity = 0;
 
     try {
-      // Tokenize the input text
       List<int> tokens = tokenize(prompt, addBos);
       int nTokens = tokens.length;
-
-      // Check if token count exceeds global batch size preference
       int maxBatch = _contextParams?.nBatch ?? 512;
       if (nTokens > maxBatch) {
         tokens = tokens.sublist(0, maxBatch - 1);
         nTokens = tokens.length;
       }
 
-      // Create a batch for the tokens
       promptBatch = lib.llama_batch_init(nTokens, 0, 1);
       batchCapacity = nTokens;
 
-      // Setup the batch with the tokens
       for (int i = 0; i < nTokens; i++) {
         promptBatch.token[i] = tokens[i];
-        promptBatch.pos[i] = i; 
+        promptBatch.pos[i] = i;
         promptBatch.n_seq_id[i] = 1;
-        
-        // Allocate specific seq_ids for this embedding batch
-        final seqId = calloc<llama_seq_id>();
-        seqId.value = 0;
+        final seqId = calloc<llama_seq_id>()..value = 0;
         tempSeqIds.add(seqId);
-        
-        // Assign to batch
         promptBatch.seq_id[i] = seqId;
-        
-        promptBatch.logits[i] = i == nTokens - 1 ? 1 : 0; 
+        promptBatch.logits[i] = i == nTokens - 1 ? 1 : 0;
       }
       promptBatch.n_tokens = nTokens;
 
       final mem = lib.llama_get_memory(context);
       lib.llama_memory_clear(mem, true);
 
-      // Process the batch
-      bool isEncoderOnly = false;
-      isEncoderOnly = lib.llama_model_has_encoder(model) &&
+      bool isEncoderOnly = lib.llama_model_has_encoder(model) &&
           !lib.llama_model_has_decoder(model);
 
       if (isEncoderOnly) {
         if (lib.llama_encode(context, promptBatch) != 0) {
-          throw LlamaException("Failed to encode prompt for embeddings");
+          throw LlamaException("Encode failed");
         }
       } else {
         if (lib.llama_decode(context, promptBatch) != 0) {
-          throw LlamaException("Failed to decode prompt for embeddings");
+          throw LlamaException("Decode failed");
         }
       }
 
-      // Get the embeddings
       final int nEmbd = lib.llama_n_embd(model);
       Pointer<Float> embeddingsPtr;
-
       try {
-        // First try sequence embeddings
         embeddingsPtr = lib.llama_get_embeddings_seq(context, 0);
       } catch (e) {
         try {
-          // Then try last token embeddings
           embeddingsPtr = lib.llama_get_embeddings_ith(context, nTokens - 1);
         } catch (e) {
-          // Finally fall back to default embeddings
           embeddingsPtr = lib.llama_get_embeddings(context);
         }
       }
+      if (embeddingsPtr == nullptr) throw LlamaException("No embeddings");
 
-      if (embeddingsPtr == nullptr) {
-        throw LlamaException("Failed to get embeddings");
-      }
-
-      // Convert to Dart list
       final List<double> embeddings = List<double>.filled(nEmbd, 0.0);
       for (int i = 0; i < nEmbd; i++) {
         embeddings[i] = embeddingsPtr[i].toDouble();
       }
 
-      // Normalize if requested
       if (normalize) {
         double sum = 0.0;
-        for (int i = 0; i < nEmbd; i++) {
-          sum += embeddings[i] * embeddings[i];
-        }
+        for (int i = 0; i < nEmbd; i++) sum += embeddings[i] * embeddings[i];
         final double norm = sqrt(sum);
         if (norm > 0) {
-          for (int i = 0; i < nEmbd; i++) {
-            embeddings[i] = embeddings[i] / norm;
-          }
+          for (int i = 0; i < nEmbd; i++) embeddings[i] /= norm;
         }
       }
-
       return embeddings;
     } catch (e) {
       _status = LlamaStatus.error;
       throw LlamaException('Error generating embeddings', e);
     } finally {
       if (promptBatch != null) {
-        // 1. CRITICAL FIX: Detach our pointers from the batch C-struct
-        // before the library tries to free the batch arrays.
+        // Detach pointers first
         if (promptBatch.seq_id != nullptr) {
           for (int i = 0; i < batchCapacity; i++) {
             promptBatch.seq_id[i] = nullptr;
           }
         }
-        
-        // 2. Now safe to free the batch structure
         lib.llama_batch_free(promptBatch);
       }
-      
-      // 3. Finally, free the actual sequence ID memory we allocated
-      for (final ptr in tempSeqIds) {
-        calloc.free(ptr);
-      }
+      for (final ptr in tempSeqIds) calloc.free(ptr);
     }
   }
 
-  /// Loads a saved session state
-  bool loadSession(String path) {
-    final bytes = File(path).readAsBytesSync();
-    final hdr = ByteData.sublistView(bytes, 0, 12);
-    final magic = hdr.getUint32(0, Endian.little);
-    final version = hdr.getUint32(4, Endian.little);
-    if (magic != 0x4C4C5346 || version != 1) {
-      throw LlamaException('Bad session header');
-    }
-    _nPos = hdr.getUint32(8, Endian.little);
-
-    final stateBytes = bytes.sublist(12);
-    final ptr = malloc<Uint8>(stateBytes.length)
-      ..asTypedList(stateBytes.length).setAll(0, stateBytes);
-
-    lib.llama_set_state_data(context, ptr);
-    malloc.free(ptr);
-    return true;
-  }
-
-  /// Saves the current session state
+  /// Saves session to disk.
+  /// Optimized to stream directly from C-memory to Disk to avoid RAM spikes.
   void saveSession(String path) {
-    final size = lib.llama_get_state_size(context);
-    final buf = malloc<Uint8>(size);
-    lib.llama_copy_state_data(context, buf);
+    if (_isDisposed) throw StateError('Disposed');
 
-    final bytes = buf.asTypedList(size);
+    final int stateSize = lib.llama_get_state_size(context);
+    final ptr = malloc<Uint8>(stateSize);
 
-    final header = ByteData(12)
-      ..setUint32(0, 0x4C4C5346, Endian.little) // "F S L L" magic
-      ..setUint32(4, 1, Endian.little) // version
-      ..setUint32(8, _nPos, Endian.little); // position
+    try {
+      // 1. Extract "Brain" to C Memory
+      lib.llama_copy_state_data(context, ptr);
 
-    final out = BytesBuilder()
-      ..add(header.buffer.asUint8List())
-      ..add(bytes);
+      // 2. Create Header
+      final header = ByteData(16)
+        ..setUint32(0, 0x4C4C5346, Endian.little)
+        ..setUint32(4, 1, Endian.little)
+        ..setUint32(8, _nPos, Endian.little)
+        ..setUint32(12, _nPrompt, Endian.little);
 
-    File(path).writeAsBytesSync(out.toBytes(), flush: true);
-    malloc.free(buf);
+      // 3. Write to disk using RandomAccessFile (Direct stream)
+      final file = File(path);
+      final raf = file.openSync(mode: FileMode.write);
+
+      try {
+        // Write Header
+        raf.writeFromSync(header.buffer.asUint8List());
+
+        // Write Body directly from C pointer (Zero-copy to Dart)
+        // asTypedList creates a view, not a copy
+        final externalView = ptr.asTypedList(stateSize);
+        raf.writeFromSync(externalView);
+
+        raf.flushSync();
+      } finally {
+        raf.closeSync();
+      }
+    } catch (e) {
+      throw LlamaException('Failed to save session', e);
+    } finally {
+      malloc.free(ptr);
+    }
   }
+
+  /// Loads session from disk.
+  /// Optimized to read directly from Disk to C-memory.
+  bool loadSession(String path) {
+    if (_isDisposed) throw StateError('Disposed');
+    final file = File(path);
+    if (!file.existsSync()) return false;
+
+    final int expectedStateSize = lib.llama_get_state_size(context);
+    final raf = file.openSync(mode: FileMode.read);
+    const int headerSize = 16;
+
+    try {
+      if (raf.lengthSync() < headerSize + expectedStateSize) {
+        throw LlamaException(
+            'Session file corrupted or model configuration changed');
+      }
+
+      // 1. Read Header
+      final headerBytes = raf.readSync(headerSize);
+      final header = ByteData.sublistView(headerBytes);
+
+      if (header.getUint32(0, Endian.little) != 0x4C4C5346 ||
+          header.getUint32(4, Endian.little) != 1) {
+        throw LlamaException('Invalid session header');
+      }
+
+      _nPos = header.getUint32(8, Endian.little);
+      _nPrompt = header.getUint32(12, Endian.little);
+
+      // 2. Allocate C Memory
+      final ptr = malloc<Uint8>(expectedStateSize);
+
+      try {
+        // 3. Read directly from file into C memory
+        // readIntoSync reads directly into the external pointer buffer
+        final externalView = ptr.asTypedList(expectedStateSize);
+        raf.readIntoSync(externalView);
+
+        // 4. Inject into llama.cpp
+        lib.llama_set_state_data(context, ptr);
+      } finally {
+        malloc.free(ptr);
+      }
+
+      return true;
+    } catch (e) {
+      throw LlamaException('Failed to load session', e);
+    } finally {
+      raf.closeSync();
+    }
+  }
+
+  /// Saves the current state to RAM (Heap) as a byte array.
+  /// Useful for fast context switching between users/chats without disk I/O.
+  Uint8List saveState() {
+    if (_isDisposed) throw StateError('Disposed');
+
+    final int stateSize = lib.llama_get_state_size(context);
+    const int headerSize = 16;
+    final int totalSize = stateSize + headerSize;
+
+    // Allocate temporary C memory for the full snapshot
+    final ptr = malloc<Uint8>(totalSize);
+
+    try {
+      // 1. Write Header (16 bytes)
+      // We treat the start of the pointer as a ByteData view for easy Int writing
+      final headerData = ptr.asTypedList(headerSize).buffer.asByteData();
+      headerData.setUint32(0, 0x4C4C5346, Endian.little); // Magic "LLSF"
+      headerData.setUint32(4, 1, Endian.little); // Version
+      headerData.setUint32(8, _nPos, Endian.little); // Current Position
+      headerData.setUint32(12, _nPrompt, Endian.little); // Prompt token count
+
+      // 2. Copy the "Brain" (KV Cache) from llama.cpp to C-memory
+      // We offset by 16 bytes to skip the header we just wrote
+      final dataPtr = Pointer<Uint8>.fromAddress(ptr.address + headerSize);
+      lib.llama_copy_state_data(context, dataPtr);
+
+      // 3. Copy from C-memory to Dart-memory (Uint8List)
+      // This creates a strictly managed Dart object we can return safely
+      return Uint8List.fromList(ptr.asTypedList(totalSize));
+    } finally {
+      malloc.free(ptr);
+    }
+  }
+
+  /// Restores state from a RAM byte array.
+  void loadState(Uint8List stateData) {
+    if (_isDisposed) throw StateError('Disposed');
+
+    const int headerSize = 16;
+    if (stateData.length < headerSize)
+      throw LlamaException('State data too short');
+
+    // 1. Read Header
+    final header = ByteData.sublistView(stateData, 0, headerSize);
+    final magic = header.getUint32(0, Endian.little);
+    final version = header.getUint32(4, Endian.little);
+
+    if (magic != 0x4C4C5346 || version != 1) {
+      throw LlamaException('Invalid state data header');
+    }
+
+    // 2. Restore context variables
+    _nPos = header.getUint32(8, Endian.little);
+    _nPrompt = header.getUint32(12, Endian.little);
+
+    // 3. Validate Size
+    final int expectedStateSize = lib.llama_get_state_size(context);
+    if (stateData.length - headerSize != expectedStateSize) {
+      // Warn but attempt to load (sometimes sizes vary slightly by architecture, but usually this implies mismatch)
+      print(
+          "Warning: State size mismatch. Expected $expectedStateSize, got ${stateData.length - headerSize}");
+    }
+
+    // 4. Allocate C memory
+    final ptr = malloc<Uint8>(expectedStateSize);
+
+    try {
+      // 5. Copy the data (skipping header) into C memory
+      final dataView = stateData.sublist(headerSize);
+      ptr.asTypedList(expectedStateSize).setAll(0, dataView);
+
+      // 6. Inject into llama.cpp
+      lib.llama_set_state_data(context, ptr);
+    } finally {
+      malloc.free(ptr);
+    }
+  }
+}
+
+/// Holds the state for a specific user/conversation slot
+class _LlamaSlot {
+  final Pointer<llama_context> context;
+  int nPos = 0;
+  int nPrompt = 0;
+  List<int> pendingBytes = [];
+
+  _LlamaSlot(this.context);
 }

@@ -3,48 +3,78 @@
 import 'dart:io';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
-String prompt = """what is 2 * 4?""";
-
 void main() async {
+  Llama? llama;
   try {
+    // 1. Setup
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
     String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
 
-    ChatHistory history = ChatHistory()
-      ..addMessage(role: Role.user, content: prompt)
-      ..addMessage(role: Role.assistant, content: "");
-
-    final modelParams = ModelParams()..nGpuLayers = -1;
-
     final contextParams = ContextParams()
-      ..nPredict = -1
-      ..nCtx = 8192
-      ..nBatch = 8192;
+      ..nCtx = 2048
+      ..nPredict = -1; // Unlimited generation
 
-    final samplerParams = SamplerParams()
-      ..temp = 0.7
-      ..topK = 64
-      ..topP = 0.95
-      ..penaltyRepeat = 1.1;
-
-    Llama llama = Llama(
+    // 2. Initialize Llama
+    llama = Llama(
       modelPath,
-      modelParams: modelParams,
+      modelParams: ModelParams(),
       contextParams: contextParams,
-      samplerParams: samplerParams,
       verbose: false,
     );
 
-    prompt = history.exportFormat(ChatFormat.gemini, leaveLastAssistantOpen: true);
-    print("Prompt:\n$prompt\n---\n");
-    llama.setPrompt(prompt);
-    await for (final token in llama.generateText()) {
-      stdout.write(token);
-    }
-    stdout.write("\n");
+    print("\n=== STEP 1: Introduction ===");
+    String prompt1 = _formatForGemma("Hello, I am Adel.");
+    
+    print("Sending: $prompt1");
+    llama.setPrompt(prompt1);
+    
+    // Generate Response
+    await _printResponse(llama);
+
+
+    // --- STEP 2: MEMORY CHECK (State preserved) ---
+    print("\n=== STEP 2: Memory Check (No Clear) ===");
+    String prompt2 = _formatForGemma("What is my name?");
+    
+    print("Sending: $prompt2");
+    llama.setPrompt(prompt2);
+    
+    // Generate Response
+    await _printResponse(llama);
+
+
+    // --- STEP 3: AMNESIA (Clear State) ---
+    print("\n=== STEP 3: Amnesia (Clear called) ===");
+    
+    llama.clear();
+    
+    print("State cleared.");
+    print("Sending: $prompt2");
+    
+    llama.setPrompt(prompt2);
+    
+    // Generate Response
+    await _printResponse(llama);
+
 
     llama.dispose();
   } catch (e) {
     print("\nError: ${e.toString()}");
+    llama?.dispose();
   }
+}
+
+/// Helper to print generation output
+Future<void> _printResponse(Llama llama) async {
+  stdout.write("AI: ");
+  await for (final token in llama.generateText()) {
+    if (token.contains("<end_of_turn>")) break; // Stop at EOS
+    stdout.write(token);
+  }
+  stdout.write("\n");
+}
+
+/// Helper to format prompt for Gemma
+String _formatForGemma(String userText) {
+  return "<start_of_turn>user\n$userText<end_of_turn><start_of_turn>model\n";
 }
