@@ -1,151 +1,173 @@
 class SamplerParams {
-  // Basic samplers
-  bool greedy = false;
-  int seed = 0; // For distribution sampler
-  bool softmax = true;
-
-  // Top-K sampling
-  /// @details Top-K sampling described in academic paper "The Curious Case of Neural Text Degeneration" https://arxiv.org/abs/1904.09751
-  int topK = 40;
-
-  // Top-P (nucleus) sampling
-  /// @details Nucleus sampling described in academic paper "The Curious Case of Neural Text Degeneration" https://arxiv.org/abs/1904.09751
-  double topP = 0.95;
-  int topPKeep = 1;
-
-  // Min-P sampling
-  /// @details Minimum P sampling as described in https://github.com/ggerganov/llama.cpp/pull/3841
-  double minP = 0.05;
-  int minPKeep = 1;
-
-  // Typical sampling
-  /// @details Locally Typical Sampling implementation described in the paper https://arxiv.org/abs/2202.00666
-  double typical = 1.00;
-  int typicalKeep = 1;
-
-  // Temperature
-  /// @details Updates the logits l_i` = l_i/t. When t <= 0.0f, the maximum logit is kept at it's original value, the rest are set to -inf
+  // --- Core Llama.cpp Samplers ---
+  
+  // 1. Temperature & Dynamic Temp
   double temp = 0.80;
+  double dynatempRange = 0.0;     // 0.0 = disabled
+  double dynatempExponent = 1.0;
 
-  // XTC sampling
-  /// @details XTC sampler as described in https://github.com/oobabooga/text-generation-webui/pull/6335
-  double xtcTemperature = 1.0;
-  double xtcStartValue = 0.1;
-  int xtcKeep = 1;
-  int xtcLength = 1;
+  // 2. Top-K & Top-P & Min-P
+  int topK = 40;
+  double topP = 0.95;
+  double minP = 0.05;
 
-  // Mirostat 1.0
-  /// @details Mirostat 1.0 algorithm described in the paper https://arxiv.org/abs/2007.14966. Uses tokens instead of words.
-  /// @param tau The target cross-entropy (or surprise) value you want to achieve for the generated text
-  /// @param eta The learning rate used to update `mu` based on the error between target and observed surprisal
-  /// @param m The number of tokens considered in the estimation of `s_hat`
+  // 3. Tail Free / Typical / Top-N Sigma
+  double typical = 1.00;
+  double topNSigma = -1.0;        // -1.0 = disabled
+
+  // 4. XTC (Exclude Top Choices)
+  // Replaces your custom xtcTemperature/xtcStartValue
+  double xtcProbability = 0.0;    // 0.0 = disabled
+  double xtcThreshold = 0.1;      // > 0.5 disables XTC usually
+  
+  // 5. Mirostat
+  // 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0
+  int mirostat = 0; 
   double mirostatTau = 5.00;
   double mirostatEta = 0.10;
   int mirostatM = 100;
 
-  // Mirostat 2.0
-  /// @details Mirostat 2.0 algorithm described in the paper https://arxiv.org/abs/2007.14966
-  double mirostat2Tau = 5.00;
-  double mirostat2Eta = 0.10;
+  // 6. Penalties
+  int penaltyLastTokens = 64;     // repeat_last_n
+  double penaltyRepeat = 1.00;    // repeat_penalty
+  double penaltyFreq = 0.00;      // frequency_penalty
+  double penaltyPresent = 0.00;   // presence_penalty
+  bool penaltyNewline = false;    // penalize_nl
+  bool ignoreEOS = false;         // ignore_eos
 
-  // Grammar
+  // 7. DRY (Do Not Repeat Yourself)
+  double dryMultiplier = 0.0;     // 0.0 = disabled
+  double dryBase = 1.75;          // exponential base
+  int dryAllowedLen = 2;          // allowed repetition length
+  int dryPenaltyLastN = -1;       // -1 = context size
+  List<String> dryBreakers = ["\n", ":", "\"", "*"]; // sequence breakers
+
+  // 8. Grammar
   String grammarStr = "";
   String grammarRoot = "";
 
-  // Penalties
-  /// @details Token penalties configuration
-  int penaltyLastTokens =
-      64; // last n tokens to penalize (0 = disable penalty, -1 = context size)
-  double penaltyRepeat = 1.00; // 1.0 = disabled
-  double penaltyFreq = 0.00; // 0.0 = disabled
-  double penaltyPresent = 0.00; // 0.0 = disabled
-  bool penaltyNewline = false; // consider newlines as repeatable token
-  bool ignoreEOS = false; // ignore end-of-sequence token
+  // --- App-Level / Non-Standard Extras ---
+  
+  // Greedy decoding (equivalent to topK = 1)
+  bool greedy = false; 
+  
+  // Softmax post-processing (Application level)
+  bool softmax = true;
+  
+  // Seed is often generation-level, but kept here for convenience
+  int seed = 0xFFFFFFFF; // -1 or maxint usually means random in llama.cpp
 
-  // DRY sampler
-  /// @details DRY sampler, designed by p-e-w, described in: https://github.com/oobabooga/text-generation-webui/pull/5677
-  double dryPenalty =
-      0.0; // DRY repetition penalty for tokens extending repetition
-  double dryMultiplier =
-      1.75; // multiplier * base ^ (length of sequence before token - allowed length)
-  int dryAllowedLen =
-      2; // tokens extending repetitions beyond this receive penalty
-  int dryLookback = -1; // how many tokens to scan (-1 = context size)
-  List<String> dryBreakers = ["\n", ":", "\"", "*"];
+  // Legacy / Non-Standard Keep parameters
+  // (These are likely from Oobabooga or other UIs, not core llama.cpp)
+  int topPKeep = 1;
+  int minPKeep = 1;
+  int typicalKeep = 1;
+  int xtcKeep = 1;
+  int xtcLength = 1; // Not standard XTC param
 
   SamplerParams();
 
   SamplerParams.fromJson(Map<String, dynamic> json) {
-    greedy = json['greedy'] ?? greedy;
-    seed = json['seed'] ?? seed;
-    softmax = json['softmax'] ?? softmax;
-    topK = json['topK'] ?? topK;
-    topP = json['topP'] ?? topP;
-    topPKeep = json['topPKeep'] ?? topPKeep;
-    minP = json['minP'] ?? minP;
-    minPKeep = json['minPKeep'] ?? minPKeep;
-    typical = json['typical'] ?? typical;
-    typicalKeep = json['typicalKeep'] ?? typicalKeep;
-    temp = json['temp'] ?? temp;
-    xtcTemperature = json['xtcTemperature'] ?? xtcTemperature;
-    xtcStartValue = json['xtcStartValue'] ?? xtcStartValue;
-    xtcKeep = json['xtcKeep'] ?? xtcKeep;
-    xtcLength = json['xtcLength'] ?? xtcLength;
-    mirostatTau = json['mirostatTau'] ?? mirostatTau;
-    mirostatEta = json['mirostatEta'] ?? mirostatEta;
-    mirostatM = json['mirostatM'] ?? mirostatM;
-    mirostat2Tau = json['mirostat2Tau'] ?? mirostat2Tau;
-    mirostat2Eta = json['mirostat2Eta'] ?? mirostat2Eta;
-    grammarStr = json['grammarStr'] ?? grammarStr;
-    grammarRoot = json['grammarRoot'] ?? grammarRoot;
-    penaltyLastTokens = json['penaltyLastTokens'] ?? penaltyLastTokens;
-    penaltyRepeat = json['penaltyRepeat'] ?? penaltyRepeat;
-    penaltyFreq = json['penaltyFreq'] ?? penaltyFreq;
-    penaltyPresent = json['penaltyPresent'] ?? penaltyPresent;
-    penaltyNewline = json['penaltyNewline'] ?? penaltyNewline;
-    ignoreEOS = json['ignoreEOS'] ?? ignoreEOS;
-    dryPenalty = json['dryPenalty'] ?? dryPenalty;
-    dryMultiplier = json['dryMultiplier'] ?? dryMultiplier;
-    dryAllowedLen = json['dryAllowedLen'] ?? dryAllowedLen;
-    dryLookback = json['dryLookback'] ?? dryLookback;
-    dryBreakers = List<String>.from(json['dryBreakers'] ?? dryBreakers);
+    temp = (json['temp'] ?? 0.8).toDouble();
+    dynatempRange = (json['dynatempRange'] ?? 0.0).toDouble();
+    dynatempExponent = (json['dynatempExponent'] ?? 1.0).toDouble();
+    
+    topK = json['topK'] ?? 40;
+    topP = (json['topP'] ?? 0.95).toDouble();
+    minP = (json['minP'] ?? 0.05).toDouble();
+    
+    typical = (json['typical'] ?? 1.0).toDouble();
+    topNSigma = (json['topNSigma'] ?? -1.0).toDouble();
+    
+    // Mapping old XTC fields if present to new standard ones
+    if (json['xtcTemperature'] != null) {
+      xtcProbability = json['xtcTemperature'];
+    } else {
+      xtcProbability = (json['xtcProbability'] ?? 0.0).toDouble();
+    }
+    
+    if (json['xtcStartValue'] != null) {
+      xtcThreshold = json['xtcStartValue'];
+    } else {
+      xtcThreshold = (json['xtcThreshold'] ?? 0.1).toDouble();
+    }
+    
+    mirostat = json['mirostat'] ?? 0;
+    // Map legacy mirostat2Tau to standard mirostatTau if set
+    if (json['mirostat2Tau'] != null && mirostat == 2) {
+       mirostatTau = json['mirostat2Tau'];
+    } else {
+       mirostatTau = (json['mirostatTau'] ?? 5.0).toDouble();
+    }
+    
+    if (json['mirostat2Eta'] != null && mirostat == 2) {
+       mirostatEta = json['mirostat2Eta'];
+    } else {
+       mirostatEta = (json['mirostatEta'] ?? 0.1).toDouble();
+    }
+    mirostatM = json['mirostatM'] ?? 100;
+    
+    penaltyLastTokens = json['penaltyLastTokens'] ?? 64;
+    penaltyRepeat = (json['penaltyRepeat'] ?? 1.0).toDouble();
+    penaltyFreq = (json['penaltyFreq'] ?? 0.0).toDouble();
+    penaltyPresent = (json['penaltyPresent'] ?? 0.0).toDouble();
+    penaltyNewline = json['penaltyNewline'] ?? false;
+    ignoreEOS = json['ignoreEOS'] ?? false;
+    
+    dryMultiplier = (json['dryMultiplier'] ?? 0.0).toDouble();
+    // Map legacy dryPenalty to dryBase if needed, or just load dryBase
+    if (json['dryPenalty'] != null && dryMultiplier > 0) {
+       // Heuristic mapping if using old format
+       dryBase = (json['dryPenalty'] ?? 1.75).toDouble(); 
+    } else {
+       dryBase = (json['dryBase'] ?? 1.75).toDouble();
+    }
+    dryAllowedLen = json['dryAllowedLen'] ?? 2;
+    dryPenaltyLastN = json['dryPenaltyLastN'] ?? (json['dryLookback'] ?? -1);
+    if (json['dryBreakers'] != null) {
+      dryBreakers = List<String>.from(json['dryBreakers']);
+    }
+
+    grammarStr = json['grammarStr'] ?? "";
+    grammarRoot = json['grammarRoot'] ?? "";
+    
+    greedy = json['greedy'] ?? false;
+    seed = json['seed'] ?? 0xFFFFFFFF;
+    
+    // Legacy fields
+    topPKeep = json['topPKeep'] ?? 1;
+    minPKeep = json['minPKeep'] ?? 1;
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'greedy': greedy,
-      'seed': seed,
-      'softmax': softmax,
-      'topK': topK,
-      'topP': topP,
-      'topPKeep': topPKeep,
-      'minP': minP,
-      'minPKeep': minPKeep,
-      'typical': typical,
-      'typicalKeep': typicalKeep,
-      'temp': temp,
-      'xtcTemperature': xtcTemperature,
-      'xtcStartValue': xtcStartValue,
-      'xtcKeep': xtcKeep,
-      'xtcLength': xtcLength,
-      'mirostatTau': mirostatTau,
-      'mirostatEta': mirostatEta,
-      'mirostatM': mirostatM,
-      'mirostat2Tau': mirostat2Tau,
-      'mirostat2Eta': mirostat2Eta,
-      'grammarStr': grammarStr,
-      'grammarRoot': grammarRoot,
-      'penaltyLastTokens': penaltyLastTokens,
-      'penaltyRepeat': penaltyRepeat,
-      'penaltyFreq': penaltyFreq,
-      'penaltyPresent': penaltyPresent,
-      'penaltyNewline': penaltyNewline,
-      'ignoreEOS': ignoreEOS,
-      'dryPenalty': dryPenalty,
-      'dryMultiplier': dryMultiplier,
-      'dryAllowedLen': dryAllowedLen,
-      'dryLookback': dryLookback,
-      'dryBreakers': dryBreakers,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    'temp': temp,
+    'dynatempRange': dynatempRange,
+    'dynatempExponent': dynatempExponent,
+    'topK': topK,
+    'topP': topP,
+    'minP': minP,
+    'typical': typical,
+    'topNSigma': topNSigma,
+    'xtcProbability': xtcProbability,
+    'xtcThreshold': xtcThreshold,
+    'mirostat': mirostat,
+    'mirostatTau': mirostatTau,
+    'mirostatEta': mirostatEta,
+    'mirostatM': mirostatM,
+    'penaltyLastTokens': penaltyLastTokens,
+    'penaltyRepeat': penaltyRepeat,
+    'penaltyFreq': penaltyFreq,
+    'penaltyPresent': penaltyPresent,
+    'penaltyNewline': penaltyNewline,
+    'ignoreEOS': ignoreEOS,
+    'dryMultiplier': dryMultiplier,
+    'dryBase': dryBase,
+    'dryAllowedLen': dryAllowedLen,
+    'dryPenaltyLastN': dryPenaltyLastN,
+    'dryBreakers': dryBreakers,
+    'grammarStr': grammarStr,
+    'grammarRoot': grammarRoot,
+    'greedy': greedy,
+    'seed': seed,
+  };
 }

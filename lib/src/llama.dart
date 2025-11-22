@@ -152,7 +152,7 @@ class Llama {
       _status = LlamaStatus.ready;
     } catch (e) {
       _status = LlamaStatus.error;
-      _isDisposed = true; 
+      _isDisposed = true;
       throw LlamaException('Failed to initialize Llama', e);
     }
   }
@@ -175,7 +175,8 @@ class Llama {
   /// Switches the active "brain" to the specified user.
   void setSlot(String slotId) {
     if (!_slots.containsKey(slotId)) {
-      throw ArgumentError("Slot $slotId does not exist. Call createSlot first.");
+      throw ArgumentError(
+          "Slot $slotId does not exist. Call createSlot first.");
     }
 
     // Clear shared batch tokens for cleanliness
@@ -284,81 +285,150 @@ class Llama {
 
   void _initializeSampler(SamplerParams? samplerParams) {
     samplerParams ??= SamplerParams();
+
+    // Initialize Chain
     llama_sampler_chain_params sparams =
         lib.llama_sampler_chain_default_params();
     sparams.no_perf = false;
     _smpl = lib.llama_sampler_chain_init(sparams);
 
+    // 1. Greedy (Exclusive)
     if (samplerParams.greedy) {
       lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_greedy());
-    } else {
-      final bool useMirostat2 = (samplerParams.mirostat2Tau > 0.0);
-      final bool useMirostat1 =
-          !useMirostat2 && (samplerParams.mirostatTau > 0.0);
+      return;
+    }
 
-      final grammarStrPtr =
-          samplerParams.grammarStr.toNativeUtf8().cast<Char>();
-      final grammarRootPtr =
-          samplerParams.grammarRoot.toNativeUtf8().cast<Char>();
+    // 2. Grammar
+    final grammarStrPtr = samplerParams.grammarStr.toNativeUtf8().cast<Char>();
+    final grammarRootPtr =
+        samplerParams.grammarRoot.toNativeUtf8().cast<Char>();
+
+    if (samplerParams.grammarStr.isNotEmpty) {
       final grammar =
           lib.llama_sampler_init_grammar(vocab, grammarStrPtr, grammarRootPtr);
       if (grammar != nullptr) {
         lib.llama_sampler_chain_add(_smpl, grammar);
       }
-      malloc.free(grammarStrPtr);
-      malloc.free(grammarRootPtr);
+    }
+    malloc.free(grammarStrPtr);
+    malloc.free(grammarRootPtr);
 
+    // 3. Penalties
+    lib.llama_sampler_chain_add(
+        _smpl,
+        lib.llama_sampler_init_penalties(
+          samplerParams.penaltyLastTokens,
+          samplerParams.penaltyRepeat,
+          samplerParams.penaltyFreq,
+          samplerParams.penaltyPresent,
+        ));
+
+    // 4. DRY (Do Not Repeat Yourself)
+    if (samplerParams.dryMultiplier > 0.0) {
+      try {
+        final breakers = samplerParams.dryBreakers;
+        final breakerCount = breakers.length;
+
+        final breakersPtr = malloc<Pointer<Char>>(breakerCount);
+        final allocatedStrings = <Pointer<Char>>[];
+
+        for (int i = 0; i < breakerCount; i++) {
+          final strPtr = breakers[i].toNativeUtf8().cast<Char>();
+          breakersPtr[i] = strPtr;
+          allocatedStrings.add(strPtr);
+        }
+
+        // FIXED: Retrieve n_ctx_train from the model
+        final int nCtxTrain = lib.llama_model_n_ctx_train(model);
+
+        lib.llama_sampler_chain_add(
+            _smpl,
+            lib.llama_sampler_init_dry(
+              vocab,
+              nCtxTrain, // 2. n_ctx_train (int)
+              samplerParams.dryMultiplier, // 3. multiplier (float)
+              samplerParams.dryBase, // 4. base (float)
+              samplerParams.dryAllowedLen, // 5. allowed_len (int)
+              samplerParams.dryPenaltyLastN, // 6. penalty_last_n (int)
+              breakersPtr, // 7. breakers (char**)
+              breakerCount, // 8. num_breakers (size_t)
+            ));
+
+        for (var ptr in allocatedStrings) {
+          malloc.free(ptr);
+        }
+        malloc.free(breakersPtr);
+      } catch (e) {
+        // ignore: avoid_print
+        // print("Warning: DRY sampler failed: $e");
+      }
+    }
+
+    // 5. Selection Strategy
+    if (samplerParams.mirostat == 2) {
       lib.llama_sampler_chain_add(
           _smpl,
-          lib.llama_sampler_init_penalties(
-              samplerParams.penaltyLastTokens,
-              samplerParams.penaltyRepeat,
-              samplerParams.penaltyFreq,
-              samplerParams.penaltyPresent));
-
-      if (useMirostat2) {
-        lib.llama_sampler_chain_add(
-            _smpl,
-            lib.llama_sampler_init_mirostat_v2(samplerParams.seed,
-                samplerParams.mirostat2Tau, samplerParams.mirostat2Eta));
-      } else if (useMirostat1) {
-        lib.llama_sampler_chain_add(
-            _smpl,
-            lib.llama_sampler_init_mirostat(
-                lib.llama_n_vocab(vocab),
-                samplerParams.seed,
-                samplerParams.mirostatTau,
-                samplerParams.mirostatEta,
-                samplerParams.mirostatM));
-      } else {
-        lib.llama_sampler_chain_add(
-            _smpl, lib.llama_sampler_init_top_k(samplerParams.topK));
-        lib.llama_sampler_chain_add(
-            _smpl,
-            lib.llama_sampler_init_top_p(
-                samplerParams.topP, samplerParams.topPKeep));
-        lib.llama_sampler_chain_add(
-            _smpl,
-            lib.llama_sampler_init_min_p(
-                samplerParams.minP, samplerParams.minPKeep));
-        lib.llama_sampler_chain_add(
-            _smpl,
-            lib.llama_sampler_init_typical(
-                samplerParams.typical, samplerParams.typicalKeep));
-        lib.llama_sampler_chain_add(
-            _smpl, lib.llama_sampler_init_temp(samplerParams.temp));
-        lib.llama_sampler_chain_add(
-            _smpl,
-            lib.llama_sampler_init_xtc(
-                samplerParams.xtcTemperature,
-                samplerParams.xtcStartValue,
-                samplerParams.xtcKeep,
-                samplerParams.xtcLength));
-      }
+          lib.llama_sampler_init_mirostat_v2(samplerParams.seed,
+              samplerParams.mirostatTau, samplerParams.mirostatEta));
+    } else if (samplerParams.mirostat == 1) {
+      lib.llama_sampler_chain_add(
+          _smpl,
+          lib.llama_sampler_init_mirostat(
+              lib.llama_n_vocab(vocab),
+              samplerParams.seed,
+              samplerParams.mirostatTau,
+              samplerParams.mirostatEta,
+              samplerParams.mirostatM));
+    } else {
+      // Standard Stack
+      lib.llama_sampler_chain_add(
+          _smpl, lib.llama_sampler_init_top_k(samplerParams.topK));
 
       lib.llama_sampler_chain_add(
-          _smpl, lib.llama_sampler_init_dist(samplerParams.seed));
+          _smpl, lib.llama_sampler_init_top_p(samplerParams.topP, 1));
+
+      lib.llama_sampler_chain_add(
+          _smpl, lib.llama_sampler_init_min_p(samplerParams.minP, 1));
+
+      lib.llama_sampler_chain_add(
+          _smpl, lib.llama_sampler_init_typical(samplerParams.typical, 1));
+
+      // Temperature
+      if (samplerParams.dynatempRange > 0.0) {
+        try {
+          lib.llama_sampler_chain_add(
+              _smpl,
+              lib.llama_sampler_init_temp_ext(samplerParams.temp,
+                  samplerParams.dynatempRange, samplerParams.dynatempExponent));
+        } catch (_) {
+          lib.llama_sampler_chain_add(
+              _smpl, lib.llama_sampler_init_temp(samplerParams.temp));
+        }
+      } else {
+        lib.llama_sampler_chain_add(
+            _smpl, lib.llama_sampler_init_temp(samplerParams.temp));
+      }
+
+      // XTC
+      if (samplerParams.xtcProbability > 0.0) {
+        try {
+          lib.llama_sampler_chain_add(
+              _smpl,
+              lib.llama_sampler_init_xtc(
+                  samplerParams.xtcProbability,
+                  samplerParams.xtcThreshold,
+                  1, // min_keep
+                  samplerParams.seed));
+        } catch (_) {
+          // ignore: avoid_print
+          // print("Warning: XTC init failed");
+        }
+      }
     }
+
+    // 6. Distribution
+    lib.llama_sampler_chain_add(
+        _smpl, lib.llama_sampler_init_dist(samplerParams.seed));
   }
 
   void setPrompt(String prompt,
@@ -395,8 +465,9 @@ class Llama {
 
       if (_nPrompt <= 0) throw LlamaException("Token estimate failed");
       if (_nPrompt > nCtx - 10) throw LlamaException("Prompt too large");
-      if (_nPos + _nPrompt >= nCtx)
+      if (_nPos + _nPrompt >= nCtx) {
         throw LlamaException("Context limit exceeded");
+      }
 
       if (_tokens != nullptr) malloc.free(_tokens);
       _tokens = malloc<llama_token>(_nPrompt);
@@ -726,7 +797,9 @@ class Llama {
     } finally {
       if (batch.seq_id != nullptr) {
         final batchCapacity = _contextParams?.nBatch ?? 512;
-        for (int i = 0; i < batchCapacity; ++i) batch.seq_id[i] = nullptr;
+        for (int i = 0; i < batchCapacity; ++i) {
+          batch.seq_id[i] = nullptr;
+        }
       }
       if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
       if (bmpArr != nullptr) malloc.free(bmpArr);
@@ -773,7 +846,9 @@ class Llama {
           lib.llama_batch_free(batch);
         } catch (_) {}
 
-        for (final ptr in _batchSeqIds) calloc.free(ptr);
+        for (final ptr in _batchSeqIds) {
+          calloc.free(ptr);
+        }
         _batchSeqIds.clear();
       }
 
@@ -896,10 +971,14 @@ class Llama {
 
       if (normalize) {
         double sum = 0.0;
-        for (int i = 0; i < nEmbd; i++) sum += embeddings[i] * embeddings[i];
+        for (int i = 0; i < nEmbd; i++) {
+          sum += embeddings[i] * embeddings[i];
+        }
         final double norm = sqrt(sum);
         if (norm > 0) {
-          for (int i = 0; i < nEmbd; i++) embeddings[i] /= norm;
+          for (int i = 0; i < nEmbd; i++) {
+            embeddings[i] /= norm;
+          }
         }
       }
       return embeddings;
@@ -916,7 +995,9 @@ class Llama {
         }
         lib.llama_batch_free(promptBatch);
       }
-      for (final ptr in tempSeqIds) calloc.free(ptr);
+      for (final ptr in tempSeqIds) {
+        calloc.free(ptr);
+      }
     }
   }
 
@@ -1054,8 +1135,9 @@ class Llama {
     if (_isDisposed) throw StateError('Disposed');
 
     const int headerSize = 16;
-    if (stateData.length < headerSize)
+    if (stateData.length < headerSize) {
       throw LlamaException('State data too short');
+    }
 
     // 1. Read Header
     final header = ByteData.sublistView(stateData, 0, headerSize);
@@ -1074,6 +1156,7 @@ class Llama {
     final int expectedStateSize = lib.llama_get_state_size(context);
     if (stateData.length - headerSize != expectedStateSize) {
       // Warn but attempt to load (sometimes sizes vary slightly by architecture, but usually this implies mismatch)
+      // ignore: avoid_print
       print(
           "Warning: State size mismatch. Expected $expectedStateSize, got ${stateData.length - headerSize}");
     }

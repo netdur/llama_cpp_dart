@@ -2,19 +2,41 @@ import 'dart:convert';
 import '../llama_cpp_dart.dart';
 import 'llama_cpp.dart';
 
-/// RoPE scaling types
+/// GGML Types for KV Cache Quantization (ggml_type)
+enum LlamaKvCacheType {
+  f32(0),
+  f16(1),  // Standard
+  q4_0(2), // Compressed
+  q4_1(3),
+  q5_0(6),
+  q5_1(7),
+  q8_0(8); // Balanced
+
+  final int value;
+  const LlamaKvCacheType(this.value);
+}
+
+/// Flash Attention Type (llama_flash_attn_type)
+enum LlamaFlashAttnType {
+  disabled(0),
+  enabled(1);
+
+  final int value;
+  const LlamaFlashAttnType(this.value);
+}
+
 enum LlamaRopeScalingType {
   unspecified(-1),
   none(0),
   linear(1),
   yarn(2),
-  maxValue(2);
+  longrope(3), // Updated to match C header
+  maxValue(3);
 
   final int value;
   const LlamaRopeScalingType(this.value);
 }
 
-/// Pooling types for embeddings
 enum LlamaPoolingType {
   unspecified(-1),
   none(0),
@@ -27,7 +49,6 @@ enum LlamaPoolingType {
   const LlamaPoolingType(this.value);
 }
 
-/// Attention types for embeddings
 enum LlamaAttentionType {
   unspecified(-1),
   causal(0),
@@ -37,120 +58,124 @@ enum LlamaAttentionType {
   const LlamaAttentionType(this.value);
 }
 
-/// ContextParams holds configuration settings for the Llama model context
 class ContextParams {
-  /// Maximum number of tokens to predict/generate in response
-  int nPredict = 32;
+  /// Generation Config (App level)
+  int nPredict = -1;
 
-  /// Text context size. 0 = from model
+  // --- C Struct Fields ---
   int nCtx = 512;
-
-  /// Logical maximum batch size that can be submitted to llama_decode
   int nBatch = 512;
-
-  /// Physical maximum batch size
   int nUbatch = 512;
-
-  /// Max number of sequences (i.e. distinct states for recurrent models)
   int nSeqMax = 1;
-
-  /// Number of threads to use for generation
   int nThreads = 8;
-
-  /// Number of threads to use for batch processing
   int nThreadsBatch = 8;
 
-  /// RoPE scaling type
   LlamaRopeScalingType ropeScalingType = LlamaRopeScalingType.unspecified;
-
-  /// Pooling type for embeddings
   LlamaPoolingType poolingType = LlamaPoolingType.unspecified;
-
-  /// Attention type to use for embeddings
   LlamaAttentionType attentionType = LlamaAttentionType.unspecified;
+  
+  // FIX: Flash Attention is now an Enum in your binding, not a bool
+  LlamaFlashAttnType flashAttention = LlamaFlashAttnType.disabled;
 
-  /// RoPE base frequency, 0 = from model
-  double ropeFreqBase = 0.0;
+  // --- KV Cache Quantization ---
+  LlamaKvCacheType typeK = LlamaKvCacheType.f16;
+  LlamaKvCacheType typeV = LlamaKvCacheType.f16;
 
-  /// RoPE frequency scaling factor, 0 = from model
-  double ropeFreqScale = 0.0;
-
-  /// YaRN extrapolation mix factor, negative = from model
-  double yarnExtFactor = -1.0;
-
-  /// YaRN magnitude scaling factor
-  double yarnAttnFactor = 1.0;
-
-  /// YaRN low correction dim
-  double yarnBetaFast = 32.0;
-
-  /// YaRN high correction dim
-  double yarnBetaSlow = 1.0;
-
-  /// YaRN original context size
-  int yarnOrigCtx = 0;
-
-  /// Defragment the KV cache if holes/size > thold, < 0 disabled
-  double defragThold = -1.0;
-
-  /// The llama_decode() call computes all logits, not just the last one
-  // bool logitsAll = false;
-
-  /// If true, extract embeddings (together with logits)
+  // --- Booleans ---
   bool embeddings = false;
-
-  /// Whether to offload the KQV ops (including the KV cache) to GPU
   bool offloadKqv = true;
-
-  /// Whether to measure performance timings
   bool noPerfTimings = false;
+  
+  // New booleans found in your binding
+  bool opOffload = true;  // offload host tensor operations
+  bool swaFull = false;   // use full-size SWA cache
+  bool kvUnified = false; // unified buffer (disable for n_seq_max > 1)
+
+  // --- Advanced Math ---
+  double ropeFreqBase = 0.0;
+  double ropeFreqScale = 0.0;
+  double yarnExtFactor = -1.0;
+  double yarnAttnFactor = 1.0;
+  double yarnBetaFast = 32.0;
+  double yarnBetaSlow = 1.0;
+  int yarnOrigCtx = 0;
+  double defragThold = -1.0;
 
   ContextParams();
 
-  /// Constructs and returns a `llama_context_params` object
   llama_context_params get() {
-    final contextParams = Llama.lib.llama_context_default_params();
+    final params = Llama.lib.llama_context_default_params();
 
-    contextParams.n_ctx = nCtx;
-    contextParams.n_batch = nBatch;
-    contextParams.n_ubatch = nUbatch;
-    contextParams.n_seq_max = nSeqMax;
-    contextParams.n_threads = nThreads;
-    contextParams.n_threads_batch = nThreadsBatch;
-    contextParams.rope_scaling_typeAsInt = ropeScalingType.value;
-    contextParams.pooling_typeAsInt = poolingType.value;
-    contextParams.attention_typeAsInt = attentionType.value;
-    contextParams.rope_freq_base = ropeFreqBase;
-    contextParams.rope_freq_scale = ropeFreqScale;
-    contextParams.yarn_ext_factor = yarnExtFactor;
-    contextParams.yarn_attn_factor = yarnAttnFactor;
-    contextParams.yarn_beta_fast = yarnBetaFast;
-    contextParams.yarn_beta_slow = yarnBetaSlow;
-    contextParams.yarn_orig_ctx = yarnOrigCtx;
-    contextParams.defrag_thold = defragThold;
-    // contextParams.logits_all = logitsAll;
-    contextParams.embeddings = embeddings;
-    contextParams.offload_kqv = offloadKqv;
-    contextParams.no_perf = noPerfTimings;
+    params.n_ctx = nCtx;
+    params.n_batch = nBatch;
+    params.n_ubatch = nUbatch;
+    params.n_seq_max = nSeqMax;
+    params.n_threads = nThreads;
+    params.n_threads_batch = nThreadsBatch;
 
-    return contextParams;
+    params.rope_scaling_typeAsInt = ropeScalingType.value;
+    params.pooling_typeAsInt = poolingType.value;
+    params.attention_typeAsInt = attentionType.value;
+    
+    // FIX: Map Enum to Int
+    params.flash_attn_typeAsInt = flashAttention.value;
+
+    params.rope_freq_base = ropeFreqBase;
+    params.rope_freq_scale = ropeFreqScale;
+    params.yarn_ext_factor = yarnExtFactor;
+    params.yarn_attn_factor = yarnAttnFactor;
+    params.yarn_beta_fast = yarnBetaFast;
+    params.yarn_beta_slow = yarnBetaSlow;
+    params.yarn_orig_ctx = yarnOrigCtx;
+    params.defrag_thold = defragThold;
+
+    params.embeddings = embeddings;
+    params.offload_kqv = offloadKqv;
+    params.no_perf = noPerfTimings;
+    
+    // New boolean mappings
+    params.op_offload = opOffload;
+    params.swa_full = swaFull;
+    params.kv_unified = kvUnified;
+
+    // FIX: Map KV Cache Enums to Ints
+    params.type_kAsInt = typeK.value;
+    params.type_vAsInt = typeV.value;
+
+    return params;
   }
 
-  /// Creates a ContextParams instance from JSON
   factory ContextParams.fromJson(Map<String, dynamic> json) {
     return ContextParams()
+      ..nPredict = json['nPredict'] ?? -1
       ..nCtx = json['nCtx'] ?? 512
       ..nBatch = json['nBatch'] ?? 512
       ..nUbatch = json['nUbatch'] ?? 512
       ..nSeqMax = json['nSeqMax'] ?? 1
       ..nThreads = json['nThreads'] ?? 8
       ..nThreadsBatch = json['nThreadsBatch'] ?? 8
-      ..ropeScalingType = LlamaRopeScalingType.values[
-          json['ropeScalingType'] ?? LlamaRopeScalingType.unspecified.value + 1]
-      ..poolingType = LlamaPoolingType
-          .values[json['poolingType'] ?? LlamaPoolingType.unspecified.value + 1]
-      ..attentionType = LlamaAttentionType.values[
-          json['attentionType'] ?? LlamaAttentionType.unspecified.value + 1]
+      
+      ..ropeScalingType = LlamaRopeScalingType.values.firstWhere(
+          (e) => e.value == (json['ropeScalingType'] ?? -1),
+          orElse: () => LlamaRopeScalingType.unspecified)
+      ..poolingType = LlamaPoolingType.values.firstWhere(
+          (e) => e.value == (json['poolingType'] ?? -1),
+          orElse: () => LlamaPoolingType.unspecified)
+      ..attentionType = LlamaAttentionType.values.firstWhere(
+          (e) => e.value == (json['attentionType'] ?? -1),
+          orElse: () => LlamaAttentionType.unspecified)
+      
+      // New Enum Mappings
+      ..flashAttention = LlamaFlashAttnType.values.firstWhere(
+          (e) => e.value == (json['flashAttention'] ?? 0),
+          orElse: () => LlamaFlashAttnType.disabled)
+      ..typeK = LlamaKvCacheType.values.firstWhere(
+          (e) => e.value == (json['typeK'] ?? 1),
+          orElse: () => LlamaKvCacheType.f16)
+      ..typeV = LlamaKvCacheType.values.firstWhere(
+          (e) => e.value == (json['typeV'] ?? 1),
+          orElse: () => LlamaKvCacheType.f16)
+
       ..ropeFreqBase = json['ropeFreqBase']?.toDouble() ?? 0.0
       ..ropeFreqScale = json['ropeFreqScale']?.toDouble() ?? 0.0
       ..yarnExtFactor = json['yarnExtFactor']?.toDouble() ?? -1.0
@@ -159,23 +184,35 @@ class ContextParams {
       ..yarnBetaSlow = json['yarnBetaSlow']?.toDouble() ?? 1.0
       ..yarnOrigCtx = json['yarnOrigCtx'] ?? 0
       ..defragThold = json['defragThold']?.toDouble() ?? -1.0
-      // ..logitsAll = json['logitsAll'] ?? false
+      
       ..embeddings = json['embeddings'] ?? false
       ..offloadKqv = json['offloadKqv'] ?? true
-      ..noPerfTimings = json['noPerfTimings'] ?? false;
+      ..noPerfTimings = json['noPerfTimings'] ?? false
+      ..opOffload = json['opOffload'] ?? true
+      ..swaFull = json['swaFull'] ?? false
+      ..kvUnified = json['kvUnified'] ?? false;
   }
 
-  /// Converts to JSON
   Map<String, dynamic> toJson() => {
+        'nPredict': nPredict,
         'nCtx': nCtx,
         'nBatch': nBatch,
         'nUbatch': nUbatch,
         'nSeqMax': nSeqMax,
         'nThreads': nThreads,
         'nThreadsBatch': nThreadsBatch,
-        'ropeScalingType': ropeScalingType.value + 1,
-        'poolingType': poolingType.value + 1,
-        'attentionType': attentionType.value + 1,
+        'ropeScalingType': ropeScalingType.value,
+        'poolingType': poolingType.value,
+        'attentionType': attentionType.value,
+        
+        // New Fields
+        'flashAttention': flashAttention.value,
+        'typeK': typeK.value,
+        'typeV': typeV.value,
+        'opOffload': opOffload,
+        'swaFull': swaFull,
+        'kvUnified': kvUnified,
+        
         'ropeFreqBase': ropeFreqBase,
         'ropeFreqScale': ropeFreqScale,
         'yarnExtFactor': yarnExtFactor,
@@ -184,7 +221,6 @@ class ContextParams {
         'yarnBetaSlow': yarnBetaSlow,
         'yarnOrigCtx': yarnOrigCtx,
         'defragThold': defragThold,
-        // 'logitsAll': logitsAll,
         'embeddings': embeddings,
         'offloadKqv': offloadKqv,
         'noPerfTimings': noPerfTimings,

@@ -1,3 +1,16 @@
+## 0.2
+* Memory Safety: No more pointer being freed was not allocated crashes.
+* UTF-8 Safety: Emojis and foreign languages won't break generation.
+* Context Management: You can Append, Clear, or Save the brain.
+* Multi-Tenancy: You can handle multiple users (Slots) if you need to.
+* breakign changes:
+    Old: Llama(path, modelParams, contextParams, samplerParams, verbose)
+    New: Llama(path, modelParams: ..., contextParams: ..., samplerParams: ..., verbose: ...)
+* Parameter Serialization: ContextParams and ModelParams JSON serialization has changed. Enums (like LlamaRopeScalingType) now store their specific C-API integer values instead of Dart list indices. Old JSON configs may need migration.
+* Sampler Standardization: SamplerParams has been refactored to strictly match llama.cpp. Non-standard fields (e.g., xtcTemperature, topPKeep) have been renamed or removed.
+* RPC Removed: Removed rpcServers from ModelParams as it is no longer supported in the core struct.
+
+
 ## 0.1.2+1
 * forgot to update version
 
