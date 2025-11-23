@@ -23,8 +23,9 @@ class LlamaPrompt extends LlamaCommand {
   final String prompt;
   final String promptId;
   final List<LlamaImage>? images;
+  final String? slotId;
 
-  LlamaPrompt(this.prompt, this.promptId, {this.images});
+  LlamaPrompt(this.prompt, this.promptId, {this.images, this.slotId});
 }
 
 class LlamaLoad extends LlamaCommand {

@@ -4,6 +4,7 @@ import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 /// A scope that filters responses from LlamaParent for specific prompt IDs
 class LlamaScope {
   final LlamaParent _parent;
+  final String id = "scope_${DateTime.now().microsecondsSinceEpoch}";
   final Set<String> _promptIds = {};
   final StreamController<String> _streamController =
       StreamController<String>.broadcast();

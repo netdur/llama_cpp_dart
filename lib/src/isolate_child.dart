@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:typed_isolate/typed_isolate.dart';
-import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+import '../llama_cpp_dart.dart';
 
+/// Child isolate that handles Llama model operations
 class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   LlamaChild() : super(id: 1);
 
@@ -13,8 +14,10 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     switch (data) {
       case LlamaStop():
         _handleStop();
+
       case LlamaClear():
         _handleClear();
+
       case LlamaLoad(
           :final path,
           :final modelParams,
@@ -23,26 +26,44 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           :final verbose,
           :final mmprojPath
         ):
-        _handleLoad(path, modelParams, contextParams, samplingParams, verbose, mmprojPath);
-      case LlamaPrompt(:final prompt, :final promptId, :final images):
-        _handlePrompt(prompt, promptId, images);
+        _handleLoad(path, modelParams, contextParams, samplingParams, verbose,
+            mmprojPath);
+
+      case LlamaPrompt(:final prompt, :final promptId, :final images, :final slotId):
+        _handlePrompt(prompt, promptId, images, slotId);
+
       case LlamaInit(:final libraryPath):
         _handleInit(libraryPath);
+
       case LlamaEmbedd(:final prompt):
         _handleEmbedding(prompt);
+
+      // FIX: Handle the Dispose command to satisfy exhaustiveness
       case LlamaDispose():
         _handleDispose();
     }
   }
 
+  void _handleDispose() {
+    shouldStop = true;
+    if (llama != null) {
+      llama!.dispose();
+      llama = null;
+    }
+    // The isolate usually dies shortly after this, but explicit disposal 
+    // ensures C pointers are freed immediately.
+  }
+
+  /// Handle stop command
   void _handleStop() {
     shouldStop = true;
-    // We don't send confirmation here immediately; 
+    // We don't send confirmation here immediately;
     // the generation loop will detect 'shouldStop', break, and send the final status.
   }
 
+  /// Handle clear command
   void _handleClear() {
-    shouldStop = true; // Stop any ongoing generation first
+    shouldStop = true;
     if (llama != null) {
       try {
         llama!.clear();
@@ -55,6 +76,7 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     }
   }
 
+  /// Handle load command
   void _handleLoad(
       String path,
       ModelParams modelParams,
@@ -63,7 +85,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       bool verbose,
       String? mmprojPath) {
     try {
-      // FIX: Use Named Parameters matching the new Llama class
       llama = Llama(
         path,
         modelParams: modelParams,
@@ -78,10 +99,10 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     }
   }
 
-  void _handlePrompt(String prompt, String promptId, List<LlamaImage>? images) {
-    // Reset stop flag for new prompt
-    shouldStop = false; 
-    _sendPrompt(prompt, promptId, images);
+  /// Handle prompt command
+  void _handlePrompt(String prompt, String promptId, List<LlamaImage>? images, String? slotId) {
+    shouldStop = false;
+    _sendPrompt(prompt, promptId, images, slotId);
   }
 
   void _handleEmbedding(String prompt) {
@@ -103,39 +124,42 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     }
   }
 
+  /// Handle init command
   void _handleInit(String? libraryPath) {
     try {
       Llama.libraryPath = libraryPath;
-      final _ = Llama.lib; 
+      // Force load to verify path
+      final _ = Llama.lib;
       sendToParent(LlamaResponse.confirmation(LlamaStatus.uninitialized));
     } catch (e) {
-      sendToParent(LlamaResponse.error("Failed to open library at $libraryPath: $e"));
+      sendToParent(LlamaResponse.error("Failed to open library: $e"));
     }
   }
 
-  void _handleDispose() {
-    shouldStop = true;
-    if (llama != null) {
-      try {
-        llama!.dispose();
-        llama = null;
-        sendToParent(LlamaResponse.confirmation(LlamaStatus.disposed));
-      } catch (e) {
-        sendToParent(LlamaResponse.error("Error disposing model: $e"));
-      }
-    } else {
-      sendToParent(LlamaResponse.confirmation(LlamaStatus.disposed));
-    }
-  }
-
-  Future<void> _sendPrompt(String prompt, String promptId, List<LlamaImage>? images) async {
+  /// Process a prompt and send responses
+  Future<void> _sendPrompt(String prompt, String promptId, List<LlamaImage>? images, String? slotId) async {
     if (llama == null) {
-      sendToParent(LlamaResponse.error("Cannot generate: model not initialized", promptId));
+      sendToParent(LlamaResponse.error("Model not initialized", promptId));
       return;
     }
 
     try {
-      // 1. Send "Generating" status
+      // --- Slot Management ---
+      if (slotId != null) {
+        try {
+          // Ensure slot exists and switch to it
+          llama!.createSlot(slotId);
+          llama!.setSlot(slotId);
+        } catch (e) {
+          sendToParent(LlamaResponse.error("Slot allocation failed: $e", promptId));
+          return;
+        }
+      } else {
+        // Fallback to default
+        llama!.setSlot("default");
+      }
+      // -----------------------
+
       sendToParent(LlamaResponse(
           text: "",
           isDone: false,
@@ -144,37 +168,30 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
 
       Stream<String> tokenStream;
 
-      // 2. Select Stream source
       if (images != null && images.isNotEmpty) {
         tokenStream = llama!.generateWithMedia(prompt, inputs: images);
       } else {
-        // For text-only, we must set the prompt first
         llama!.setPrompt(prompt);
         tokenStream = llama!.generateText();
       }
 
-      // 3. Consume Stream
       await for (final token in tokenStream) {
-        if (shouldStop) {
-          break; // Break the loop, finally block will handle cleanup
-        }
-        
+        if (shouldStop) break;
         sendToParent(LlamaResponse(
             text: token,
-            isDone: false, // Still going
+            isDone: false,
             status: LlamaStatus.generating,
             promptId: promptId));
       }
 
-      // 4. Send Completion
       sendToParent(LlamaResponse(
-          text: "", // No text in final message
+          text: "",
           isDone: true,
-          status: LlamaStatus.ready, // Back to ready
+          status: LlamaStatus.ready,
           promptId: promptId));
-
     } catch (e) {
-      sendToParent(LlamaResponse.error("Generation error: ${e.toString()}", promptId));
+      sendToParent(
+          LlamaResponse.error("Generation error: ${e.toString()}", promptId));
     }
   }
 }
