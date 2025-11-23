@@ -60,7 +60,9 @@ class TextChunker {
             
             // Recalculate size for the new start
             currentSize = 0;
-            for (var s in currentSentences) currentSize += _lengthFunction(s);
+            for (var s in currentSentences) {
+              currentSize += _lengthFunction(s);
+            }
             
             // Add a space cost approximation if we are counting characters
             if (currentSentences.isNotEmpty) {

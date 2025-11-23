@@ -1,83 +1,64 @@
 # SamplerParams Class Documentation
 
-A class that manages various sampling parameters and strategies for text generation models. This class provides comprehensive control over different sampling methods, penalties, and configurations that affect the text generation process.
+A class that manages sampling strategies for text generation. It controls how the model selects the next token from the predicted probabilities. This class is strictly aligned with the `llama.cpp` C-API to ensure consistent behavior.
 
-## Basic Sampling Parameters
+## Basic Sampling
 
-### Greedy and Basic Settings
-- `greedy` (`bool`, default: false): Enables greedy sampling
-- `seed` (`int`, default: 0): Seed for random number generation in distribution sampling
-- `softmax` (`bool`, default: true): Whether to use softmax for token distribution
+### Temperature & Entropy
+- `temp` (`double`, default: 0.80): Controls randomness. Lower values (e.g., 0.1) make the model deterministic; higher values (e.g., 1.0) make it creative.
+- `dynatempRange` (`double`, default: 0.0): Dynamic Temperature range. If > 0, temperature varies based on the entropy of the distribution.
+- `dynatempExponent` (`double`, default: 1.0): Controls the curve of the dynamic temperature adjustment.
 
-### Temperature Sampling
-- `temp` (`double`, default: 0.80): Controls randomness in sampling
-  - When t ≤ 0.0, keeps maximum logit at original value, sets others to -inf
-  - Higher values increase randomness, lower values make sampling more deterministic
+### Top-K & Nucleus
+- `topK` (`int`, default: 40): Keeps only the K most likely tokens.
+- `topP` (`double`, default: 0.95): Nucleus sampling. Keeps the top tokens whose cumulative probability adds up to P.
+- `minP` (`double`, default: 0.05): Minimum P sampling. Discards tokens with probability smaller than `minP * probability_of_most_likely_token`.
 
-## Advanced Sampling Methods
+### Advanced / Tail Free
+- `typical` (`double`, default: 1.00): Locally Typical Sampling.
+- `topNSigma` (`double`, default: -1.0): Top-n-sigma sampling. -1 disables it.
 
-### Top-K Sampling
-- `topK` (`int`, default: 40): Limits sampling to K most likely tokens
-- Reference: "The Curious Case of Neural Text Degeneration" (https://arxiv.org/abs/1904.09751)
+## Specialized Samplers
 
-### Top-P (Nucleus) Sampling
-- `topP` (`double`, default: 0.95): Cumulative probability threshold
-- `topPKeep` (`int`, default: 1): Number of tokens to keep in Top-P sampling
-- Reference: Same paper as Top-K sampling
+### XTC (Exclude Top Choices)
+Removes "cliché" tokens (the absolute top choices) to force the model to be more creative, while keeping the rest of the distribution.
+- `xtcProbability` (`double`, default: 0.0): Chance to trigger XTC (0.0 = disabled).
+- `xtcThreshold` (`double`, default: 0.1): Probability threshold. If a token is > 0.5 (usually), XTC is disabled to prevent ruining logic.
 
-### Min-P Sampling
-- `minP` (`double`, default: 0.05): Minimum probability threshold
-- `minPKeep` (`int`, default: 1): Number of tokens to keep
-- Reference: Implementation from llama.cpp (PR #3841)
+### DRY (Do Not Repeat Yourself)
+A modern repetition penalty that works better than standard penalties for long context.
+- `dryMultiplier` (`double`, default: 0.0): Penalty strength (0.0 = disabled).
+- `dryBase` (`double`, default: 1.75): Exponential base.
+- `dryAllowedLen` (`int`, default: 2): Allowed repetition length before penalty kicks in.
+- `dryPenaltyLastN` (`int`, default: -1): How far back to scan (-1 = full context).
+- `dryBreakers` (`List<String>`): List of characters that break a repetition sequence (defaults to newline, colon, quotes).
 
-### Typical Sampling
-- `typical` (`double`, default: 1.00): Typicality parameter
-- `typicalKeep` (`int`, default: 1): Number of tokens to keep
-- Reference: "Locally Typical Sampling" (https://arxiv.org/abs/2202.00666)
+### Mirostat
+An algorithm that actively maintains the "surprise" value of text at a target level.
+- `mirostat` (`int`, default: 0): Mode flag.
+  - `0`: Disabled.
+  - `1`: Mirostat v1.
+  - `2`: Mirostat v2 (Recommended).
+- `mirostatTau` (`double`, default: 5.00): Target entropy (surprise).
+- `mirostatEta` (`double`, default: 0.10): Learning rate.
+- `mirostatM` (`int`, default: 100): Token window size (v1 only).
 
-### XTC Sampling
-- `xtcTemperature` (`double`, default: 1.0): Temperature parameter for XTC
-- `xtcStartValue` (`double`, default: 0.1): Starting value
-- `xtcKeep` (`int`, default: 1): Number of tokens to keep
-- `xtcLength` (`int`, default: 1): Length parameter
-- Reference: Implementation from text-generation-webui (PR #6335)
+## Standard Penalties
+Legacy repetition penalties.
+- `penaltyLastTokens` (`int`, default: 64): Lookback window (`repeat_last_n`).
+- `penaltyRepeat` (`double`, default: 1.00): Strict repetition penalty.
+- `penaltyFreq` (`double`, default: 0.00): Frequency penalty (OpenAI style).
+- `penaltyPresent` (`double`, default: 0.00): Presence penalty (OpenAI style).
+- `penaltyNewline` (`bool`, default: false): If true, newlines are penalized.
+- `ignoreEOS` (`bool`, default: false): If true, the End-of-Sequence token is banned (forces generation to continue).
 
-## Mirostat Sampling
+## Grammar
+- `grammarStr` (`String`): GBNF grammar string to constrain output (e.g., force JSON).
+- `grammarRoot` (`String`): Root rule name.
 
-### Mirostat 1.0
-- `mirostatTau` (`double`, default: 5.00): Target cross-entropy
-- `mirostatEta` (`double`, default: 0.10): Learning rate
-- `mirostatM` (`int`, default: 100): Token window size
-- Reference: https://arxiv.org/abs/2007.14966
-
-### Mirostat 2.0
-- `mirostat2Tau` (`double`, default: 5.00): Target cross-entropy
-- `mirostat2Eta` (`double`, default: 0.10): Learning rate
-- Reference: Same paper as Mirostat 1.0
-
-## Grammar Control
-- `grammarStr` (`String`, default: ""): Grammar specification string
-- `grammarRoot` (`String`, default: ""): Root rule for grammar
-
-## Penalty Configuration
-
-### Token Penalties
-- `penaltyLastTokens` (`int`, default: 64): Number of last tokens to penalize
-  - 0: Disable penalty
-  - -1: Use full context size
-- `penaltyRepeat` (`double`, default: 1.00): Repetition penalty (1.0 = disabled)
-- `penaltyFreq` (`double`, default: 0.00): Frequency penalty (0.0 = disabled)
-- `penaltyPresent` (`double`, default: 0.00): Presence penalty (0.0 = disabled)
-- `penaltyNewline` (`bool`, default: false): Consider newlines as repeatable tokens
-- `ignoreEOS` (`bool`, default: false): Ignore end-of-sequence token
-
-### DRY Sampler
-- `dryPenalty` (`double`, default: 0.0): Penalty for repetition
-- `dryMultiplier` (`double`, default: 1.75): Base multiplier
-- `dryAllowedLen` (`int`, default: 2): Allowed repetition length
-- `dryLookback` (`int`, default: -1): Lookback window (-1 = context size)
-- `dryBreakers` (`List<String>`, default: ["\n", ":", "\"", "*"]): Tokens that break repetition
-- Reference: Implementation by p-e-w (text-generation-webui PR #5677)
+## App-Level Settings
+- `greedy` (`bool`, default: false): If true, disables all probabilistic sampling and selects the token with the highest logit.
+- `seed` (`int`, default: 0xFFFFFFFF): Random seed. -1 or MaxInt usually indicates random.
 
 ## Methods
 
@@ -85,7 +66,33 @@ A class that manages various sampling parameters and strategies for text generat
 Creates a new instance with default values.
 
 ### `SamplerParams.fromJson(Map<String, dynamic> json)`
-Creates an instance from a JSON map.
+Creates an instance from a JSON map. Automatically maps legacy fields (like `xtcTemperature`) to new standard names.
 
 ### `Map<String, dynamic> toJson()`
 Converts the instance to a JSON map.
+
+## Example Usage
+
+### Creative Writing (Story)
+```dart
+final params = SamplerParams()
+  ..temp = 0.9
+  ..minP = 0.05
+  ..xtcProbability = 0.5 // Remove clichés
+  ..xtcThreshold = 0.1;
+```
+
+### Logical / Coding (Strict)
+```dart
+final params = SamplerParams()
+  ..temp = 0.1
+  ..topK = 10
+  ..penaltyRepeat = 1.1; // Slight penalty to prevent loops
+```
+
+### Force JSON Output
+```dart
+final params = SamplerParams()
+  ..temp = 0.1
+  ..grammarStr = r'''root ::= object ...'''; // GBNF string
+```

@@ -1,25 +1,36 @@
-# ModelParams
+# ModelParams Class Documentation
 
-A class that manages parameters for loading and configuring LLaMA models. It provides functionality to control GPU utilization, memory management, and model splitting across multiple GPUs.
+A class that manages parameters for loading and configuring LLaMA models. It controls GPU offloading, multi-GPU splitting strategies, memory mapping, and tensor validation.
 
 ## Properties
 
-### Basic Configuration
-- `formatter` (`PromptFormat?`): Format handler for model prompts
-- `nGpuLayers` (`int`): Number of layers to store in VRAM (default: 99)
-- `splitMode` (`LlamaSplitMode`): Determines how to split the model across multiple GPUs
-- `mainGpu` (`int`): The GPU used for the entire model when split mode is none (default: 0)
-- `tensorSplit` (`List<double>`): Proportion of model layers/rows to offload to each GPU
-- `rpcServers` (`String`): Comma-separated list of RPC servers for offloading
+### GPU & Hardware Configuration
+- `nGpuLayers` (`int`, default: 99): Number of layers to offload to VRAM. Set to -1 or a high number to offload all layers.
+- `splitMode` (`LlamaSplitMode`, default: `none`): Strategy for splitting the model across multiple GPUs.
+- `mainGpu` (`int`, default: 0): The index of the GPU used for the entire model when split mode is `none`.
+- `tensorSplit` (`List<double>`): Proportion of model layers/rows to offload to each GPU (for multi-GPU setups).
 
-### Memory Management
-- `useMemorymap` (`bool`): Enable memory mapping when possible (default: true)
-- `useMemoryLock` (`bool`): Force system to keep model in RAM (default: false)
-- `vocabOnly` (`bool`): Load only the vocabulary, excluding weights (default: false)
-- `checkTensors` (`bool`): Enable validation of model tensor data (default: false)
+### Memory & Loading
+- `useMemorymap` (`bool`, default: true): Enable memory mapping (mmap). Faster loading, lower system RAM usage.
+- `useMemoryLock` (`bool`, default: false): Force the system to keep the model in RAM (prevent swapping).
+- `vocabOnly` (`bool`, default: false): Load only the vocabulary, excluding weights.
+- `checkTensors` (`bool`, default: false): Validate model tensor data on load (slow).
 
-### Additional Settings
-- `kvOverrides` (`Map<String, dynamic>`): Override key-value pairs of model metadata
+### Advanced Backend Settings (New in v0.2)
+- `useExtraBufts` (`bool`, default: false): Use extra buffer types (used for weight repacking).
+- `noHost` (`bool`, default: false): Bypass host buffer, allowing extra buffers to be used directly.
+
+### Metadata
+- `kvOverrides` (`Map<String, dynamic>`): Override key-value pairs of model metadata.
+- `formatter` (`PromptFormat?`): Optional format handler associated with this model configuration.
+
+## Enums
+
+### LlamaSplitMode
+Defines how the model is distributed across devices.
+- `none` (0): Single GPU usage.
+- `layer` (1): Split layers and KV cache across GPUs.
+- `row` (2): Split layers and KV across GPUs with tensor parallelism.
 
 ## Methods
 
@@ -33,42 +44,36 @@ Creates a ModelParams instance from a JSON map.
 Converts the instance to a JSON map.
 
 ### `llama_model_params get()`
-Constructs and returns a native `llama_model_params` object with current settings.
+Constructs and returns a native `llama_model_params` object (FFI) populated with current settings.
 
 ### `void dispose()`
-Frees allocated memory for tensor split and RPC server pointers.
+Frees native memory allocated for `tensorSplit`. **Must be called if tensorSplit is used.**
 
 ### `String toString()`
 Returns a JSON string representation of the instance.
 
-## Related Types
-
-### LlamaSplitMode
-Enum defining model splitting strategies:
-- `none`: Single GPU usage
-- `layer`: Split layers and KV across GPUs
-- `row`: Split layers and KV across GPUs with tensor parallelism support
-
 ## Example Usage
 
+### Standard GPU Load
 ```dart
 final params = ModelParams()
-  ..nGpuLayers = 50
-  ..splitMode = LlamaSplitMode.layer
-  ..mainGpu = 0
+  ..nGpuLayers = 99  // Offload everything
   ..useMemorymap = true;
+```
 
-// Convert to JSON
-final json = params.toJson();
+### Multi-GPU Load
+```dart
+final params = ModelParams()
+  ..nGpuLayers = 99
+  ..splitMode = LlamaSplitMode.row // Tensor parallelism
+  ..tensorSplit = [0.5, 0.5]; // Split evenly between 2 GPUs
 
-// Create from JSON
-final loadedParams = ModelParams.fromJson(json);
+// ... use params ...
 
-// Don't forget to dispose when done
-params.dispose();
+// Cleanup unmanaged pointers
+params.dispose(); 
 ```
 
 ## Notes
-- Remember to call `dispose()` when done to prevent memory leaks
-- The class handles automatic memory management for native pointers
-- Custom GPU configurations can be set through tensorSplit and rpcServers properties
+- **RPC Removed:** The `rpcServers` field was removed in v0.2 as it is no longer supported by the core library struct.
+- **Memory Safety:** If you populate `tensorSplit`, unmanaged memory is allocated. You must call `dispose()` when you are done with the parameters (usually immediately after loading the model).

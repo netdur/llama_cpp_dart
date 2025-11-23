@@ -1,6 +1,6 @@
 # Chat Communication Classes Documentation
 
-A set of classes and enums that manage chat conversations, message formatting, and chat history export functionality.
+A set of classes and enums that manage chat conversations, message formatting, context window management, and chat history export functionality.
 
 ## Enums
 
@@ -8,10 +8,12 @@ A set of classes and enums that manage chat conversations, message formatting, a
 ```dart
 enum ChatFormat {
   chatml,
-  alpaca
+  alpaca,
+  gemma,  // Replaces 'gemini', used for Google Gemma models
+  harmony // Used for models like Mistral/Miqu
 }
 ```
-Supported formats for chat history export.
+Supported formats for chat history export and prompting.
 
 ### Role
 ```dart
@@ -29,21 +31,23 @@ Different roles in a chat conversation.
 A class representing a single message in a chat conversation.
 
 ### Properties
-- `role` (`Role`): The role of the message sender
-- `content` (`String`): The message content
+- `role` (`Role`): The role of the message sender.
+- `content` (`String`): The message content.
 
 ### Methods
-- `Message.fromJson(Map<String, dynamic> json)`: Creates a message from JSON
-- `Map<String, dynamic> toJson()`: Converts message to JSON
-- `String toString()`: String representation of the message
+- `Message.fromJson(Map<String, dynamic> json)`: Creates a message from JSON.
+- `Map<String, dynamic> toJson()`: Converts message to JSON.
+- `String toString()`: String representation of the message.
 
 ## ChatHistory Class
 
-Manages a collection of chat messages with export capabilities.
+Manages a collection of chat messages with advanced capabilities for Context Management (trimming) and Stateful Generation (incremental export).
 
 ### Properties
-- `messages` (`List<Message>`): Collection of chat messages
-- `length` (`int`): Number of messages in history
+- `messages` (`List<Message>`): The current active context (may be trimmed).
+- `fullHistory` (`List<Message>`): The complete conversation history (never trimmed).
+- `length` (`int`): Number of messages in the active context.
+- `keepRecentPairs` (`int`): Number of user/assistant pairs to preserve when auto-trimming.
 
 ### Core Methods
 
@@ -54,18 +58,40 @@ void addMessage({
   required String content,
 })
 ```
-Adds a new message to the history.
+Adds a new message to both `messages` and `fullHistory`.
 
 ```dart
 void clear()
 ```
-Removes all messages from history.
+Removes all messages from the active context.
 
-#### Format Export
+#### Format Export (Stateful vs Stateless)
+
+**1. Incremental Export (Recommended for v0.2+)**
 ```dart
-String exportFormat(ChatFormat format)
+String getLatestTurn(ChatFormat format)
 ```
-Exports chat history in specified format.
+Exports **only** the most recent turn (User message + optional empty Assistant placeholder).
+*   **Use Case:** Appending to an existing stateful `Llama` context (`setPrompt` without `clear`).
+*   **Benefit:** Lightning-fast generation, zero re-processing of history.
+
+**2. Full Export (Classic)**
+```dart
+String exportFormat(ChatFormat format, {bool leaveLastAssistantOpen = false})
+```
+Exports the **entire** active history.
+*   **Use Case:** Initializing a new context, or re-loading after a `llama.clear()`.
+
+#### Context Management
+```dart
+bool autoTrimForSpace(Llama llama, {int reserveTokens = 100})
+```
+Checks the `Llama` instance's remaining context. If space is low, it removes old messages (preserving System prompt and recent pairs) to free up space. Returns `true` if trimming occurred.
+
+```dart
+bool shouldTrimBeforePrompt(Llama llama, String newPrompt)
+```
+Helper to check if adding `newPrompt` would exceed the context limit, allowing you to trim *before* sending data.
 
 ### Export Formats
 
@@ -76,12 +102,25 @@ content
 <|im_end|>
 ```
 
+#### Gemma Format (Google)
+```
+<start_of_turn>role
+content
+<end_of_turn>
+```
+
+#### Harmony Format
+```
+<|role|>
+content
+<|end|>
+```
+
 #### Alpaca Format
 ```
 ### Instruction/Input/Response:
 
 content
-
 ```
 
 ### Serialization
@@ -92,39 +131,41 @@ Map<String, dynamic> toJson()
 
 ## Example Usage
 
+### 1. Standard Stateful Chat (Best Performance)
 ```dart
-// Create a new chat history
 final chat = ChatHistory();
+final llama = Llama(...);
 
-// Add messages
-chat.addMessage(
-  role: Role.system,
-  content: "You are a helpful assistant"
-);
-chat.addMessage(
-  role: Role.user,
-  content: "Hello!"
-);
+// User sends a message
+chat.addMessage(role: Role.user, content: "Hello!");
 
-// Export in different formats
-String chatml = chat.exportFormat(ChatFormat.chatml);
-String alpaca = chat.exportFormat(ChatFormat.alpaca);
+// Get ONLY the new part
+String prompt = chat.getLatestTurn(ChatFormat.gemma);
 
-// Serialize
-Map<String, dynamic> json = chat.toJson();
-ChatHistory restored = ChatHistory.fromJson(json);
+// Append to VRAM (Stateful)
+llama.setPrompt(prompt);
+
+// Stream response...
 ```
 
-## Notes
-- Thread-safe for single instance use
-- Supports multiple export formats
-- JSON serialization support
-- Clear role-based message structure
-- Efficient string building for exports
+### 2. Context Overflow Handling
+```dart
+// Check if we are running out of memory
+if (chat.shouldTrimBeforePrompt(llama, userInput)) {
+  // 1. Trim internal list
+  chat.autoTrimForSpace(llama);
+  
+  // 2. Clear VRAM (Amnesia)
+  llama.clear();
+  
+  // 3. Re-ingest the trimmed history (The "Short Term Memory")
+  String refreshedContext = chat.exportFormat(ChatFormat.gemma);
+  llama.setPrompt(refreshedContext);
+}
+```
 
 ## Best Practices
-1. Use appropriate roles for messages
-2. Handle unknown roles gracefully
-3. Choose appropriate export format for target model
-4. Clear history when starting new conversations
-5. Validate message content before adding
+1.  **Prefer `getLatestTurn`**: Avoids re-processing thousands of tokens on every turn.
+2.  **Monitor Context**: Use `autoTrimForSpace` to prevent crashes on long conversations.
+3.  **Format Selection**: Ensure the `ChatFormat` matches your loaded model (e.g., use `gemma` for Gemma 2, `chatml` for Qwen/Yi).
+4.  **History Preservation**: `fullHistory` keeps the entire log even if `messages` is trimmed for the AI, allowing you to still show the full chat in your UI.

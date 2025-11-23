@@ -1,125 +1,161 @@
 # Llama Class Documentation
 
-A Dart wrapper for llama.cpp that provides text generation capabilities using LLaMA models. This class handles model loading, context management, text generation, and resource cleanup.
+A Dart wrapper for `llama.cpp` that provides high-performance text generation, embedding extraction, and multimodal capabilities using GGUF models.
 
 ## Core Components
 
-### Status and State
+### Status
 - `LlamaStatus`: Enum tracking instance state
   - `uninitialized`: Initial state
-  - `ready`: Ready for generation
-  - `generating`: Currently generating text
+  - `loading`: Model is loading from disk
+  - `ready`: Idle and ready for generation
+  - `generating`: Currently processing/generating text
   - `error`: Error state
-  - `disposed`: Instance disposed
+  - `disposed`: Resources freed
 
-### Initialization
+### Initialization (v0.2 Update)
+The constructor now uses **Named Parameters**.
+
 ```dart
-Llama(String modelPath, [
-  ModelParams? modelParamsDart,
-  ContextParams? contextParamsDart,
-  SamplerParams? samplerParams
-])
+Llama(
+  String modelPath, {
+  ModelParams? modelParams,
+  ContextParams? contextParams,
+  SamplerParams? samplerParams,
+  String? mmprojPath, // Path to multimodal projector (for vision)
+  bool verbose = false,
+})
 ```
-Creates a new Llama instance with specified parameters.
 
-## Main Methods
+## Core Methods
 
 ### Text Generation
+The class is **Stateful**. `setPrompt` appends tokens to the current context window in VRAM.
+
 ```dart
 void setPrompt(String prompt, {void Function(int current, int total)? onProgress})
 ```
-Sets the input prompt for text generation.
-
-```dart
-(String, bool) getNext()
-```
-Generates the next token, returns (generated text, is complete).
+Tokenizes and evaluates the prompt. Appends to existing context unless `clear()` is called.
 
 ```dart
 Stream<String> generateText()
 ```
-Provides a stream of generated text tokens.
+Returns a stream of generated tokens. Automatically handles UTF-8 decoding (including split emojis) and stops at EOS.
 
-### Text Processing
 ```dart
-List<int> tokenize(String text, bool addBos)
+Future<String> generateCompleteText({int? maxTokens})
 ```
-Converts text to token IDs.
+Convenience method to generate a full response as a single string.
 
-### State Management
+### Multimodal (Vision)
+```dart
+Stream<String> generateWithMedia(String prompt, {required List<LlamaInput> inputs})
+```
+Generates text based on an image + text prompt. Requires `mmprojPath` to be set during initialization.
+
+### Embeddings
+```dart
+List<double> getEmbeddings(String prompt, {bool normalize = true})
+```
+Calculates vector embeddings for the given text.
+*   *Note:* This temporarily uses the active context slot.
+
+## Advanced Features (New in v0.2)
+
+### Multi-Tenancy (Context Slots)
+Manage multiple independent conversations in VRAM using a single loaded model.
+
+```dart
+void createSlot(String slotId)
+```
+Allocates a new KV cache (context) in VRAM for a user.
+
+```dart
+void setSlot(String slotId)
+```
+Swaps the active "brain" to the specified slot. Instant switching (pointer swap).
+
+### State Management (Hot-Swap)
+Move conversations between VRAM and RAM/Disk.
+
+```dart
+Uint8List saveState()
+```
+Snapshots the current KV cache (Brain) to a RAM byte array.
+
+```dart
+void loadState(Uint8List stateData)
+```
+Restores the KV cache from a RAM byte array.
+
+### Session Persistence (Disk)
+Optimized for low memory usage (Direct Disk-to-C Streaming).
+
+```dart
+void saveSession(String path)
+bool loadSession(String path)
+```
+Saves/Loads the context to a file on disk.
+
+## Cleanup
 ```dart
 void clear()
 ```
-Resets the instance state for new generation.
+Wipes the current VRAM context (Amnesia). `_nPos` resets to 0.
 
 ```dart
 void dispose()
 ```
-Releases all resources.
-
-## Properties
-```dart
-LlamaStatus get status
-bool get isDisposed
-```
-
-## Error Handling
-
-### LlamaException
-Custom exception class for Llama-specific errors:
-```dart
-class LlamaException implements Exception {
-  final String message;
-  final dynamic originalError;
-}
-```
+Frees all native resources (Model, Contexts, Batch, Samplers). **Must be called.**
 
 ## Example Usage
 
+### 1. Standard Chat
 ```dart
-// Initialize Llama
 final llama = Llama(
-  'path/to/model.gguf',
-  ModelParams(),
-  ContextParams(),
-  SamplerParams()
+  'model.gguf',
+  contextParams: ContextParams()..nCtx = 2048,
+  verbose: true,
 );
 
-// Generate text
 try {
-  llama.setPrompt("Once upon a time");
-  
-  // Stream approach
-  await for (final text in llama.generateText()) {
-    print(text);
-  }
-  
-  // Or step-by-step
-  while (true) {
-    final (text, isDone) = llama.getNext();
-    if (isDone) break;
-    print(text);
-  }
+  // 1. User says hello
+  llama.setPrompt("Hello!");
+  await for (final text in llama.generateText()) stdout.write(text);
+
+  // 2. User asks follow-up (Appends to VRAM automatically)
+  llama.setPrompt("What did I just say?");
+  await for (final text in llama.generateText()) stdout.write(text);
+
 } finally {
   llama.dispose();
 }
 ```
 
-## Memory Management
-- Uses FFI for native library interaction
-- Automatically manages native pointers
-- Requires explicit `dispose()` call
-- Includes safeguards against using disposed instances
+### 2. Context Swapping (Multi-User)
+```dart
+// Setup
+llama.createSlot("user_1");
+llama.createSlot("user_2");
 
-## Notes
-- Supports both Android (.so) and native platform libraries
-- Handles model loading, tokenization, and text generation
-- Provides comprehensive sampling parameter configuration
-- Includes built-in error handling and status tracking
+// Handle User 1
+llama.setSlot("user_1");
+llama.setPrompt("My name is Alice");
+await llama.generateCompleteText();
+
+// Switch to User 2 (Instant)
+llama.setSlot("user_2");
+llama.setPrompt("My name is Bob");
+await llama.generateCompleteText();
+
+// Switch back to Alice (She is still in VRAM)
+llama.setSlot("user_1");
+llama.setPrompt("What is my name?"); 
+// Output: "Alice"
+```
 
 ## Best Practices
-1. Always dispose of instances when done
-2. Use try-finally blocks for proper cleanup
-3. Check instance status before operations
-4. Handle LlamaException in generation code
-5. Clear instance between different generation tasks
+1.  **Lifecycle:** Wrap usage in `try/finally` to ensure `dispose()` is called.
+2.  **UTF-8:** Do not manually decode tokens from `getNext()`. Use `generateText()` stream which handles multi-byte characters safely.
+3.  **Performance:** Use `saveSession` instead of keeping the app open if the user is inactive for long periods.
+4.  **Threads:** Set `ContextParams.nThreads` to match your CPU's physical performance cores (usually 4-8) for best speed.

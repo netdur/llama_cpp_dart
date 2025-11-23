@@ -34,7 +34,6 @@ class AlpacaFormat extends PromptFormat {
   @override
   String formatMessages(List<Map<String, dynamic>> messages) {
     final buffer = StringBuffer();
-    bool hasSystem = false;
 
     for (var message in messages) {
       final role = message['role'];
@@ -42,7 +41,6 @@ class AlpacaFormat extends PromptFormat {
 
       if (role == 'system') {
         buffer.write('$systemSequence$content\n\n');
-        hasSystem = true;
       } else if (role == 'user') {
         // If we haven't seen a system prompt yet, some might prefer injecting the default here.
         // However, strict formatting usually respects only what's in the list.
