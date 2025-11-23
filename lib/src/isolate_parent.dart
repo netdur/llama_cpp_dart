@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data'; // Needed for Uint8List
 import 'package:llama_cpp_dart/src/llama_input.dart';
 import 'package:typed_isolate/typed_isolate.dart';
 
@@ -27,8 +28,7 @@ class _QueuedPrompt {
 
 /// Parent class that manages communication with the LlamaChild isolate
 class LlamaParent {
-  final StreamController<String> _controller =
-      StreamController<String>.broadcast();
+  final StreamController<String> _controller = StreamController<String>.broadcast();
   final _parent = IsolateParent<LlamaCommand, LlamaResponse>();
 
   StreamSubscription<LlamaResponse>? _subscription;
@@ -45,6 +45,9 @@ class LlamaParent {
   Completer<void>? _readyCompleter;
   Completer<void>? _operationCompleter;
   Completer<List<double>>? _embeddingsCompleter;
+
+  // NEW: Completer specifically for the large binary state data
+  Completer<Uint8List>? _stateCompleter;
 
   /// Maps prompt IDs to completers for operation tracking
   final Map<String, Completer<void>> _promptCompleters = {};
@@ -65,10 +68,8 @@ class LlamaParent {
 
   Object? _currentScope;
 
-  /// Create a new LlamaParent
   LlamaParent(this.loadCommand, [this.formatter]);
 
-  /// Initialize the LlamaParent and load the model
   Future<void> init() async {
     _readyCompleter = Completer<void>();
     _isGenerating = false;
@@ -80,16 +81,27 @@ class LlamaParent {
 
     await _parent.spawn(LlamaChild());
 
+    // 1. Init Library
     await _sendCommand(LlamaInit(Llama.libraryPath), "library initialization");
 
+    // 2. Load Model
     _status = LlamaStatus.loading;
     await _sendCommand(loadCommand, "model loading");
 
     await _readyCompleter!.future;
   }
 
-  /// Handle responses from the child isolate
   void _onData(LlamaResponse data) {
+    // 1. Handle Binary State Data (Tier 2 Save)
+    if (data.stateData != null) {
+      if (_stateCompleter != null && !_stateCompleter!.isCompleted) {
+        _stateCompleter!.complete(data.stateData);
+        _stateCompleter = null;
+      }
+      return; 
+    }
+
+    // 2. Handle Embeddings
     if (data.embeddings != null) {
       if (_embeddingsCompleter != null && !_embeddingsCompleter!.isCompleted) {
         _embeddingsCompleter!.complete(data.embeddings);
@@ -98,13 +110,22 @@ class LlamaParent {
       return;
     }
 
+    // 3. Handle Errors during specific operations
     if (data.status == LlamaStatus.error && data.errorDetails != null) {
+      final ex = LlamaException(data.errorDetails!);
+      
       if (_operationCompleter != null && !_operationCompleter!.isCompleted) {
-        _operationCompleter!.completeError(LlamaException(data.errorDetails!));
+        _operationCompleter!.completeError(ex);
         _operationCompleter = null;
+      }
+      // Also fail state operations if they were pending
+      if (_stateCompleter != null && !_stateCompleter!.isCompleted) {
+        _stateCompleter!.completeError(ex);
+        _stateCompleter = null;
       }
     }
 
+    // 4. Update Status
     if (data.status != null) {
       _status = data.status!;
       if (data.status == LlamaStatus.ready &&
@@ -114,12 +135,14 @@ class LlamaParent {
       }
     }
 
+    // 5. Handle Confirmations (Stop, Clear, LoadState, etc.)
     if (data.isConfirmation) {
       if (_operationCompleter != null && !_operationCompleter!.isCompleted) {
         _operationCompleter!.complete();
       }
     }
 
+    // 6. Forward generated text
     if (data.text.isNotEmpty) {
       _controller.add(data.text);
       for (final scope in _scopes) {
@@ -127,7 +150,9 @@ class LlamaParent {
       }
     }
 
-    if (data.isDone) {
+    // 7. Handle Completion
+    // Ensure it's not a state response (which sets isDone=true)
+    if (data.isDone && data.stateData == null && data.embeddings == null && !data.isConfirmation) {
       _isGenerating = false;
       final promptId = data.promptId ?? _currentPromptId;
 
@@ -149,7 +174,40 @@ class LlamaParent {
     }
   }
 
-  /// Send a command to the child isolate and wait for confirmation
+  // --- NEW METHODS FOR SCOPE / SLOT MANAGEMENT (TIER 2/3) ---
+
+  /// Requests the child to save the VRAM state of a specific scope to RAM.
+  Future<Uint8List> saveState(LlamaScope scope) async {
+    _stateCompleter = Completer<Uint8List>();
+    _parent.sendToChild(id: 1, data: LlamaSaveState(scope.id));
+    
+    return _stateCompleter!.future.timeout(
+      const Duration(seconds: 30),
+      onTimeout: () {
+        _stateCompleter = null;
+        throw TimeoutException("Save state timed out");
+      }
+    );
+  }
+
+  /// Requests the child to load RAM state into a VRAM slot.
+  Future<void> loadState(LlamaScope scope, Uint8List data) async {
+    await _sendCommand(LlamaLoadState(scope.id, data), "load state");
+  }
+
+  /// Requests the child to load a Disk session into a VRAM slot.
+  Future<void> loadSession(LlamaScope scope, String path) async {
+    await _sendCommand(LlamaLoadSession(scope.id, path), "load session");
+  }
+
+  /// Requests the child to free the C++ slot associated with this scope.
+  Future<void> disposeScope(LlamaScope scope) async {
+    _scopes.remove(scope);
+    await _sendCommand(LlamaFreeSlot(scope.id), "free slot");
+  }
+
+  // ----------------------------------------------------------
+
   Future<void> _sendCommand(LlamaCommand command, String description) async {
     _operationCompleter = Completer<void>();
     _parent.sendToChild(data: command, id: 1);
@@ -157,12 +215,17 @@ class LlamaParent {
     return await _operationCompleter!.future.timeout(
       Duration(seconds: description == "model loading" ? 60 : 30),
       onTimeout: () {
+        // Don't throw immediately on stop timeout, just log, 
+        // as the isolate might be busy but will eventually stop.
+        if (command is LlamaStop) {
+           print("Warning: Stop command timed out, forcing state reset.");
+           return; 
+        }
         throw TimeoutException('Operation "$description" timed out');
       },
     );
   }
 
-  /// Send a prompt to the model for text generation
   Future<String> sendPrompt(String prompt, {Object? scope}) async {
     if (loadCommand.contextParams.embeddings) {
       throw StateError("Configured for embeddings only.");
@@ -173,9 +236,7 @@ class LlamaParent {
     return queuedPrompt.idCompleter.future;
   }
 
-  /// Send a prompt with images to the model for VLM generation
-  Future<String> sendPromptWithImages(String prompt, List<LlamaImage> images,
-      {Object? scope}) async {
+  Future<String> sendPromptWithImages(String prompt, List<LlamaImage> images, {Object? scope}) async {
     if (loadCommand.contextParams.embeddings) {
       throw StateError("Configured for embeddings only.");
     }
@@ -185,7 +246,6 @@ class LlamaParent {
     return queuedPrompt.idCompleter.future;
   }
 
-  /// Process the next prompt in the queue
   Future<void> _processNextPrompt() async {
     if (_promptQueue.isEmpty) {
       _isProcessingQueue = false;
@@ -195,9 +255,11 @@ class LlamaParent {
     _isProcessingQueue = true;
     final nextPrompt = _promptQueue.removeAt(0);
 
+    // Ensure previous generation is fully stopped before starting new one
     if (_isGenerating) {
       await stop();
-      await Future.delayed(const Duration(milliseconds: 50));
+      // Small buffer to let the isolate loop spin down completely
+      await Future.delayed(const Duration(milliseconds: 10));
     }
 
     _currentPromptId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -207,11 +269,9 @@ class LlamaParent {
     _currentScope = nextPrompt.scope;
 
     String? targetSlotId;
-    if (nextPrompt.scope != null) {
-      if (nextPrompt.scope is LlamaScope) {
+    if (nextPrompt.scope != null && nextPrompt.scope is LlamaScope) {
         targetSlotId = (nextPrompt.scope as LlamaScope).id;
         (nextPrompt.scope as LlamaScope).addPromptId(_currentPromptId);
-      }
     }
 
     final formattedPrompt = messages.isEmpty
@@ -224,27 +284,20 @@ class LlamaParent {
     _parent.sendToChild(
         id: 1,
         data: LlamaPrompt(formattedPrompt, _currentPromptId,
-            images: nextPrompt.images,
-            slotId: targetSlotId
-            ));
+            images: nextPrompt.images, slotId: targetSlotId));
 
+    // Wait for this specific prompt to finish
     _promptCompleters[_currentPromptId]!.future.whenComplete(() {
       _processNextPrompt();
     });
   }
 
-  /// Wait for a prompt to complete
-  /// [promptId] is the ID returned by sendPrompt
   Future<void> waitForCompletion(String promptId) async {
-    if (!_promptCompleters.containsKey(promptId)) {
-      return;
-    }
-
+    if (!_promptCompleters.containsKey(promptId)) return;
     final completer = _promptCompleters[promptId]!;
     await completer.future;
   }
 
-  /// Stop text generation
   Future<void> stop() async {
     if (_isGenerating) {
       await _sendCommand(LlamaStop(), "generation stopping");
@@ -252,7 +305,6 @@ class LlamaParent {
     }
   }
 
-  /// Get embeddings for a prompt
   Future<List<double>> getEmbeddings(String prompt) async {
     if (!loadCommand.contextParams.embeddings) {
       throw StateError("Not configured for embeddings.");
@@ -262,20 +314,15 @@ class LlamaParent {
     return _embeddingsCompleter!.future;
   }
 
-  /// Dispose of resources
   Future<void> dispose() async {
     _isGenerating = false;
     _status = LlamaStatus.disposed;
 
-    if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
-      _readyCompleter!.completeError("Disposed");
-    }
-    if (_operationCompleter != null && !_operationCompleter!.isCompleted) {
-      _operationCompleter!.completeError("Disposed");
-    }
-    if (_embeddingsCompleter != null && !_embeddingsCompleter!.isCompleted) {
-      _embeddingsCompleter!.completeError("Disposed");
-    }
+    // Reject all pending
+    if (_readyCompleter != null && !_readyCompleter!.isCompleted) _readyCompleter!.completeError("Disposed");
+    if (_operationCompleter != null && !_operationCompleter!.isCompleted) _operationCompleter!.completeError("Disposed");
+    if (_embeddingsCompleter != null && !_embeddingsCompleter!.isCompleted) _embeddingsCompleter!.completeError("Disposed");
+    if (_stateCompleter != null && !_stateCompleter!.isCompleted) _stateCompleter!.completeError("Disposed");
 
     for (var p in _promptQueue) {
       if (!p.idCompleter.isCompleted) p.idCompleter.completeError("Disposed");
@@ -292,19 +339,21 @@ class LlamaParent {
     if (!_controller.isClosed) await _controller.close();
     if (!_completionController.isClosed) await _completionController.close();
 
-    _parent.sendToChild(id: 1, data: LlamaClear());
-    await Future.delayed(const Duration(milliseconds: 10));
+    // FIX: Send explicit dispose command to clean up C pointers
+    _parent.sendToChild(id: 1, data: LlamaDispose());
+    
+    // Give a tiny moment for the message to be processed before killing the isolate
+    await Future.delayed(const Duration(milliseconds: 50));
+    
     _parent.dispose();
   }
 
-  /// Create a new scope for this parent
   dynamic getScope() {
     final scope = LlamaScope(this);
     _scopes.add(scope);
     return scope;
   }
 
-  /// Cancel prompts tied to a specific scope
   Future<void> cancelScope(Object scope,
       {bool cancelInFlight = true, bool cancelQueued = true}) async {
     if (cancelQueued) {

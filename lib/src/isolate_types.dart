@@ -1,3 +1,4 @@
+import 'dart:typed_data'; // Needed for Uint8List
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 /// Base class for commands sent to the LlamaChild isolate
@@ -8,6 +9,32 @@ class LlamaStop extends LlamaCommand {}
 class LlamaClear extends LlamaCommand {}
 
 class LlamaDispose extends LlamaCommand {}
+
+// --- NEW COMMANDS FOR TIER 2 & 3 ---
+
+class LlamaSaveState extends LlamaCommand {
+  final String slotId;
+  LlamaSaveState(this.slotId);
+}
+
+class LlamaLoadState extends LlamaCommand {
+  final String slotId;
+  final Uint8List data;
+  LlamaLoadState(this.slotId, this.data);
+}
+
+class LlamaLoadSession extends LlamaCommand {
+  final String slotId;
+  final String path;
+  LlamaLoadSession(this.slotId, this.path);
+}
+
+class LlamaFreeSlot extends LlamaCommand {
+  final String slotId;
+  LlamaFreeSlot(this.slotId);
+}
+
+// -----------------------------------
 
 class LlamaEmbedd extends LlamaCommand {
   final String prompt;
@@ -54,6 +81,9 @@ class LlamaResponse {
   final String? errorDetails;
   final bool isConfirmation;
   final List<double>? embeddings;
+  
+  // NEW: Carries the binary state data from Child -> Parent
+  final Uint8List? stateData; 
 
   LlamaResponse({
     required this.text,
@@ -63,6 +93,7 @@ class LlamaResponse {
     this.errorDetails,
     this.isConfirmation = false,
     this.embeddings,
+    this.stateData,
   });
 
   factory LlamaResponse.confirmation(LlamaStatus status, [String? promptId]) {
@@ -72,6 +103,15 @@ class LlamaResponse {
       status: status,
       promptId: promptId,
       isConfirmation: true,
+    );
+  }
+
+  // NEW: Response specifically for saveState
+  factory LlamaResponse.stateData(Uint8List data) {
+    return LlamaResponse(
+      text: "",
+      isDone: true, // Treated as a completed operation
+      stateData: data,
     );
   }
 

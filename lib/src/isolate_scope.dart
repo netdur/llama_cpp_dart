@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+import 'isolate_parent.dart'; // Ensure this import points to your LlamaParent definition
 
 /// A scope that filters responses from LlamaParent for specific prompt IDs
 class LlamaScope {
@@ -27,6 +29,15 @@ class LlamaScope {
     return promptId;
   }
 
+  /// Send a prompt with images to the model and track its ID in this scope
+  Future<String> sendPromptWithImages(
+      String prompt, List<LlamaImage> images) async {
+    final promptId =
+        await _parent.sendPromptWithImages(prompt, images, scope: this);
+    _promptIds.add(promptId);
+    return promptId;
+  }
+
   /// Handle a response from the parent
   void handleResponse(LlamaResponse response) {
     if (response.promptId != null &&
@@ -49,25 +60,38 @@ class LlamaScope {
     _promptIds.add(promptId);
   }
 
-  /// Dispose of resources
+  /// Stop generation for this scope only.
+  Future<void> stop({bool alsoCancelQueued = true}) {
+    return _parent.cancelScope(this,
+        cancelInFlight: true, cancelQueued: alsoCancelQueued);
+  }
+
+  // -----------------------------------------------------------------------
+  // TIER 2 & 3 LIFECYCLE METHODS (These were missing)
+  // -----------------------------------------------------------------------
+
+  /// Captures the current KV Cache of this scope from VRAM.
+  /// Returns the serialized state as a byte array (Tier 2).
+  Future<Uint8List> saveState() async {
+    return await _parent.saveState(this);
+  }
+
+  /// Restores a serialized state from RAM into VRAM for this scope.
+  Future<void> loadState(Uint8List data) async {
+    await _parent.loadState(this, data);
+  }
+
+  /// Restores a session directly from a Disk file into VRAM (Tier 3).
+  Future<void> loadSession(String path) async {
+    await _parent.loadSession(this, path);
+  }
+
+  /// Dispose of resources and FREE THE SLOT.
   Future<void> dispose() async {
     if (!_streamController.isClosed) await _streamController.close();
     if (!_completionController.isClosed) await _completionController.close();
-  }
-
-  /// Send a prompt with images to the model and track its ID in this scope
-  Future<String> sendPromptWithImages(
-      String prompt, List<LlamaImage> images) async {
-    final promptId =
-        await _parent.sendPromptWithImages(prompt, images, scope: this);
-    _promptIds.add(promptId);
-    return promptId;
-  }
-
-  /// Stop generation for this scope only.
-  /// - If this scope owns the active prompt, it will be stopped.
-  /// - Any queued prompts from this scope are removed.
-  Future<void> stop({bool alsoCancelQueued = true}) {
-    return _parent.cancelScope(this, cancelInFlight: true, cancelQueued: alsoCancelQueued);
+    
+    // Notify Parent to release the VRAM Slot
+    await _parent.disposeScope(this);
   }
 }
