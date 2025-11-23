@@ -5,12 +5,12 @@ import 'llama_cpp.dart';
 /// GGML Types for KV Cache Quantization (ggml_type)
 enum LlamaKvCacheType {
   f32(0),
-  f16(1),  // Standard
-  q4_0(2), // Compressed
+  f16(1),
+  q4_0(2),
   q4_1(3),
   q5_0(6),
   q5_1(7),
-  q8_0(8); // Balanced
+  q8_0(8);
 
   final int value;
   const LlamaKvCacheType(this.value);
@@ -30,7 +30,7 @@ enum LlamaRopeScalingType {
   none(0),
   linear(1),
   yarn(2),
-  longrope(3), // Updated to match C header
+  longrope(3),
   maxValue(3);
 
   final int value;
@@ -62,7 +62,6 @@ class ContextParams {
   /// Generation Config (App level)
   int nPredict = -1;
 
-  // --- C Struct Fields ---
   int nCtx = 512;
   int nBatch = 512;
   int nUbatch = 512;
@@ -74,24 +73,19 @@ class ContextParams {
   LlamaPoolingType poolingType = LlamaPoolingType.unspecified;
   LlamaAttentionType attentionType = LlamaAttentionType.unspecified;
   
-  // FIX: Flash Attention is now an Enum in your binding, not a bool
   LlamaFlashAttnType flashAttention = LlamaFlashAttnType.disabled;
 
-  // --- KV Cache Quantization ---
   LlamaKvCacheType typeK = LlamaKvCacheType.f16;
   LlamaKvCacheType typeV = LlamaKvCacheType.f16;
 
-  // --- Booleans ---
   bool embeddings = false;
   bool offloadKqv = true;
   bool noPerfTimings = false;
   
-  // New booleans found in your binding
-  bool opOffload = true;  // offload host tensor operations
-  bool swaFull = false;   // use full-size SWA cache
-  bool kvUnified = false; // unified buffer (disable for n_seq_max > 1)
+  bool opOffload = true;
+  bool swaFull = false;
+  bool kvUnified = false;
 
-  // --- Advanced Math ---
   double ropeFreqBase = 0.0;
   double ropeFreqScale = 0.0;
   double yarnExtFactor = -1.0;
@@ -117,7 +111,6 @@ class ContextParams {
     params.pooling_typeAsInt = poolingType.value;
     params.attention_typeAsInt = attentionType.value;
     
-    // FIX: Map Enum to Int
     params.flash_attn_typeAsInt = flashAttention.value;
 
     params.rope_freq_base = ropeFreqBase;
@@ -133,12 +126,10 @@ class ContextParams {
     params.offload_kqv = offloadKqv;
     params.no_perf = noPerfTimings;
     
-    // New boolean mappings
     params.op_offload = opOffload;
     params.swa_full = swaFull;
     params.kv_unified = kvUnified;
 
-    // FIX: Map KV Cache Enums to Ints
     params.type_kAsInt = typeK.value;
     params.type_vAsInt = typeV.value;
 
@@ -165,7 +156,6 @@ class ContextParams {
           (e) => e.value == (json['attentionType'] ?? -1),
           orElse: () => LlamaAttentionType.unspecified)
       
-      // New Enum Mappings
       ..flashAttention = LlamaFlashAttnType.values.firstWhere(
           (e) => e.value == (json['flashAttention'] ?? 0),
           orElse: () => LlamaFlashAttnType.disabled)
@@ -205,7 +195,6 @@ class ContextParams {
         'poolingType': poolingType.value,
         'attentionType': attentionType.value,
         
-        // New Fields
         'flashAttention': flashAttention.value,
         'typeK': typeK.value,
         'typeV': typeV.value,

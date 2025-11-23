@@ -43,25 +43,20 @@ enum LlamaStatus {
 class Llama {
   static llama_cpp? _lib;
 
-  // Core Llama.cpp pointers
   late Pointer<llama_model> model;
   late Pointer<llama_vocab> vocab;
   late llama_batch batch;
 
-  // Helper pointers
   Pointer<llama_sampler> _smpl = nullptr;
   Pointer<llama_token> _tokens = nullptr;
   Pointer<llama_token> _tokenPtr = nullptr;
   Pointer<mtmd_context> _mctx = nullptr;
 
-  // Memory Management: Pre-allocated pool of sequence IDs
   final List<Pointer<llama_seq_id>> _batchSeqIds = [];
 
-  // Slot-based state for multi-tenant contexts
   final Map<String, _LlamaSlot> _slots = {};
   String _currentSlotId = "default";
 
-  // State variables
   int _nPredict = 32;
 
   bool _verbose = false;
@@ -90,7 +85,6 @@ class Llama {
 
   llama_cpp getLib() => _lib!;
 
-  // ---- Slot helpers ----
   Pointer<llama_context> get context => _slots[_currentSlotId]!.context;
 
   int get _nPos => _slots[_currentSlotId]!.nPos;
@@ -127,14 +121,12 @@ class Llama {
       try {
         batch = lib.llama_batch_init(nativeContextParams.n_batch, 0, 1);
 
-        // Pre-allocate sequence ID pointers
         for (int i = 0; i < nativeContextParams.n_batch; i++) {
           final seqIdPtr = calloc<llama_seq_id>();
           seqIdPtr.value = 0;
           _batchSeqIds.add(seqIdPtr);
         }
       } catch (e) {
-        // Cleanup on batch init failure
         if (_smpl != nullptr) lib.llama_sampler_free(_smpl);
         if (context.address != 0) lib.llama_free(context);
         if (model.address != 0) lib.llama_free_model(model);
@@ -179,7 +171,6 @@ class Llama {
           "Slot $slotId does not exist. Call createSlot first.");
     }
 
-    // Clear shared batch tokens for cleanliness
     batch.n_tokens = 0;
 
     _currentSlotId = slotId;
@@ -286,19 +277,16 @@ class Llama {
   void _initializeSampler(SamplerParams? samplerParams) {
     samplerParams ??= SamplerParams();
 
-    // Initialize Chain
     llama_sampler_chain_params sparams =
         lib.llama_sampler_chain_default_params();
     sparams.no_perf = false;
     _smpl = lib.llama_sampler_chain_init(sparams);
 
-    // 1. Greedy (Exclusive)
     if (samplerParams.greedy) {
       lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_greedy());
       return;
     }
 
-    // 2. Grammar
     final grammarStrPtr = samplerParams.grammarStr.toNativeUtf8().cast<Char>();
     final grammarRootPtr =
         samplerParams.grammarRoot.toNativeUtf8().cast<Char>();
@@ -313,17 +301,15 @@ class Llama {
     malloc.free(grammarStrPtr);
     malloc.free(grammarRootPtr);
 
-    // 3. Penalties
     lib.llama_sampler_chain_add(
         _smpl,
         lib.llama_sampler_init_penalties(
           samplerParams.penaltyLastTokens,
           samplerParams.penaltyRepeat,
           samplerParams.penaltyFreq,
-          samplerParams.penaltyPresent,
+        samplerParams.penaltyPresent,
         ));
 
-    // 4. DRY (Do Not Repeat Yourself)
     if (samplerParams.dryMultiplier > 0.0) {
       try {
         final breakers = samplerParams.dryBreakers;
@@ -338,20 +324,19 @@ class Llama {
           allocatedStrings.add(strPtr);
         }
 
-        // FIXED: Retrieve n_ctx_train from the model
         final int nCtxTrain = lib.llama_model_n_ctx_train(model);
 
         lib.llama_sampler_chain_add(
             _smpl,
             lib.llama_sampler_init_dry(
               vocab,
-              nCtxTrain, // 2. n_ctx_train (int)
-              samplerParams.dryMultiplier, // 3. multiplier (float)
-              samplerParams.dryBase, // 4. base (float)
-              samplerParams.dryAllowedLen, // 5. allowed_len (int)
-              samplerParams.dryPenaltyLastN, // 6. penalty_last_n (int)
-              breakersPtr, // 7. breakers (char**)
-              breakerCount, // 8. num_breakers (size_t)
+              nCtxTrain,
+              samplerParams.dryMultiplier,
+              samplerParams.dryBase,
+              samplerParams.dryAllowedLen,
+              samplerParams.dryPenaltyLastN,
+              breakersPtr,
+              breakerCount,
             ));
 
         for (var ptr in allocatedStrings) {
@@ -359,12 +344,10 @@ class Llama {
         }
         malloc.free(breakersPtr);
       } catch (e) {
-        // ignore: avoid_print
-        // print("Warning: DRY sampler failed: $e");
+        // intentional ignore
       }
     }
 
-    // 5. Selection Strategy
     if (samplerParams.mirostat == 2) {
       lib.llama_sampler_chain_add(
           _smpl,
@@ -380,7 +363,6 @@ class Llama {
               samplerParams.mirostatEta,
               samplerParams.mirostatM));
     } else {
-      // Standard Stack
       lib.llama_sampler_chain_add(
           _smpl, lib.llama_sampler_init_top_k(samplerParams.topK));
 
@@ -393,7 +375,6 @@ class Llama {
       lib.llama_sampler_chain_add(
           _smpl, lib.llama_sampler_init_typical(samplerParams.typical, 1));
 
-      // Temperature
       if (samplerParams.dynatempRange > 0.0) {
         try {
           lib.llama_sampler_chain_add(
@@ -409,7 +390,6 @@ class Llama {
             _smpl, lib.llama_sampler_init_temp(samplerParams.temp));
       }
 
-      // XTC
       if (samplerParams.xtcProbability > 0.0) {
         try {
           lib.llama_sampler_chain_add(
@@ -417,16 +397,13 @@ class Llama {
               lib.llama_sampler_init_xtc(
                   samplerParams.xtcProbability,
                   samplerParams.xtcThreshold,
-                  1, // min_keep
+                  1,
                   samplerParams.seed));
         } catch (_) {
-          // ignore: avoid_print
-          // print("Warning: XTC init failed");
         }
       }
     }
 
-    // 6. Distribution
     lib.llama_sampler_chain_add(
         _smpl, lib.llama_sampler_init_dist(samplerParams.seed));
   }
@@ -488,7 +465,7 @@ class Llama {
         batch.token[i] = _tokens[i];
         batch.pos[i] = _nPos + i;
         batch.n_seq_id[i] = 1;
-        batch.seq_id[i] = _batchSeqIds[i]; // Reuse pointer
+        batch.seq_id[i] = _batchSeqIds[i];
         batch.seq_id[i].value = 0;
         batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
       }
@@ -836,7 +813,6 @@ class Llama {
         if (model.address != 0) lib.llama_free_model(model);
 
         try {
-          // Safe detachment before free
           if (batch.seq_id != nullptr) {
             final batchCapacity = _contextParams?.nBatch ?? 512;
             for (int i = 0; i < batchCapacity; ++i) {
@@ -987,7 +963,6 @@ class Llama {
       throw LlamaException('Error generating embeddings', e);
     } finally {
       if (promptBatch != null) {
-        // Detach pointers first
         if (promptBatch.seq_id != nullptr) {
           for (int i = 0; i < batchCapacity; i++) {
             promptBatch.seq_id[i] = nullptr;
@@ -1010,26 +985,20 @@ class Llama {
     final ptr = malloc<Uint8>(stateSize);
 
     try {
-      // 1. Extract "Brain" to C Memory
       lib.llama_copy_state_data(context, ptr);
 
-      // 2. Create Header
       final header = ByteData(16)
         ..setUint32(0, 0x4C4C5346, Endian.little)
         ..setUint32(4, 1, Endian.little)
         ..setUint32(8, _nPos, Endian.little)
         ..setUint32(12, _nPrompt, Endian.little);
 
-      // 3. Write to disk using RandomAccessFile (Direct stream)
       final file = File(path);
       final raf = file.openSync(mode: FileMode.write);
 
       try {
-        // Write Header
         raf.writeFromSync(header.buffer.asUint8List());
 
-        // Write Body directly from C pointer (Zero-copy to Dart)
-        // asTypedList creates a view, not a copy
         final externalView = ptr.asTypedList(stateSize);
         raf.writeFromSync(externalView);
 
@@ -1061,7 +1030,6 @@ class Llama {
             'Session file corrupted or model configuration changed');
       }
 
-      // 1. Read Header
       final headerBytes = raf.readSync(headerSize);
       final header = ByteData.sublistView(headerBytes);
 
@@ -1073,16 +1041,12 @@ class Llama {
       _nPos = header.getUint32(8, Endian.little);
       _nPrompt = header.getUint32(12, Endian.little);
 
-      // 2. Allocate C Memory
       final ptr = malloc<Uint8>(expectedStateSize);
 
       try {
-        // 3. Read directly from file into C memory
-        // readIntoSync reads directly into the external pointer buffer
         final externalView = ptr.asTypedList(expectedStateSize);
         raf.readIntoSync(externalView);
 
-        // 4. Inject into llama.cpp
         lib.llama_set_state_data(context, ptr);
       } finally {
         malloc.free(ptr);
@@ -1105,25 +1069,18 @@ class Llama {
     const int headerSize = 16;
     final int totalSize = stateSize + headerSize;
 
-    // Allocate temporary C memory for the full snapshot
     final ptr = malloc<Uint8>(totalSize);
 
     try {
-      // 1. Write Header (16 bytes)
-      // We treat the start of the pointer as a ByteData view for easy Int writing
       final headerData = ptr.asTypedList(headerSize).buffer.asByteData();
-      headerData.setUint32(0, 0x4C4C5346, Endian.little); // Magic "LLSF"
-      headerData.setUint32(4, 1, Endian.little); // Version
-      headerData.setUint32(8, _nPos, Endian.little); // Current Position
-      headerData.setUint32(12, _nPrompt, Endian.little); // Prompt token count
+      headerData.setUint32(0, 0x4C4C5346, Endian.little);
+      headerData.setUint32(4, 1, Endian.little);
+      headerData.setUint32(8, _nPos, Endian.little);
+      headerData.setUint32(12, _nPrompt, Endian.little);
 
-      // 2. Copy the "Brain" (KV Cache) from llama.cpp to C-memory
-      // We offset by 16 bytes to skip the header we just wrote
       final dataPtr = Pointer<Uint8>.fromAddress(ptr.address + headerSize);
       lib.llama_copy_state_data(context, dataPtr);
 
-      // 3. Copy from C-memory to Dart-memory (Uint8List)
-      // This creates a strictly managed Dart object we can return safely
       return Uint8List.fromList(ptr.asTypedList(totalSize));
     } finally {
       malloc.free(ptr);
@@ -1139,7 +1096,6 @@ class Llama {
       throw LlamaException('State data too short');
     }
 
-    // 1. Read Header
     final header = ByteData.sublistView(stateData, 0, headerSize);
     final magic = header.getUint32(0, Endian.little);
     final version = header.getUint32(4, Endian.little);
@@ -1148,28 +1104,22 @@ class Llama {
       throw LlamaException('Invalid state data header');
     }
 
-    // 2. Restore context variables
     _nPos = header.getUint32(8, Endian.little);
     _nPrompt = header.getUint32(12, Endian.little);
 
-    // 3. Validate Size
     final int expectedStateSize = lib.llama_get_state_size(context);
     if (stateData.length - headerSize != expectedStateSize) {
-      // Warn but attempt to load (sometimes sizes vary slightly by architecture, but usually this implies mismatch)
       // ignore: avoid_print
       print(
           "Warning: State size mismatch. Expected $expectedStateSize, got ${stateData.length - headerSize}");
     }
 
-    // 4. Allocate C memory
     final ptr = malloc<Uint8>(expectedStateSize);
 
     try {
-      // 5. Copy the data (skipping header) into C memory
       final dataView = stateData.sublist(headerSize);
       ptr.asTypedList(expectedStateSize).setAll(0, dataView);
 
-      // 6. Inject into llama.cpp
       lib.llama_set_state_data(context, ptr);
     } finally {
       malloc.free(ptr);

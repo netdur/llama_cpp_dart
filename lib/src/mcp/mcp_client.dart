@@ -28,7 +28,6 @@ class MCPClient {
       onDone: () => print('Socket closed'),
     );
     
-    // Initialize protocol
     await _call('initialize', {
       'protocolVersion': '2024-11-05',
       'clientInfo': {'name': 'dart-mcp-client', 'version': '1.0.0'},
@@ -36,7 +35,6 @@ class MCPClient {
     
     await _notify('notifications/initialized', {});
     
-    // Load tools
     final resp = await _call('tools/list', {});
     final list = resp['result']['tools'] as List;
     
@@ -80,9 +78,7 @@ class MCPClient {
     _subscription.cancel();
     _socket.close();
   }
-  
-  // --- Private boring stuff ---
-  
+
   void _handleData(Uint8List data) {
     _buffer.write(utf8.decode(data));
     

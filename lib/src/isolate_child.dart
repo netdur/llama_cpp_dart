@@ -38,7 +38,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       case LlamaEmbedd(:final prompt):
         _handleEmbedding(prompt);
 
-      // FIX: Handle the Dispose command to satisfy exhaustiveness
       case LlamaDispose():
         _handleDispose();
     }
@@ -50,15 +49,11 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       llama!.dispose();
       llama = null;
     }
-    // The isolate usually dies shortly after this, but explicit disposal 
-    // ensures C pointers are freed immediately.
   }
 
   /// Handle stop command
   void _handleStop() {
     shouldStop = true;
-    // We don't send confirmation here immediately;
-    // the generation loop will detect 'shouldStop', break, and send the final status.
   }
 
   /// Handle clear command
@@ -128,7 +123,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   void _handleInit(String? libraryPath) {
     try {
       Llama.libraryPath = libraryPath;
-      // Force load to verify path
       final _ = Llama.lib;
       sendToParent(LlamaResponse.confirmation(LlamaStatus.uninitialized));
     } catch (e) {
@@ -144,10 +138,8 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     }
 
     try {
-      // --- Slot Management ---
       if (slotId != null) {
         try {
-          // Ensure slot exists and switch to it
           llama!.createSlot(slotId);
           llama!.setSlot(slotId);
         } catch (e) {
@@ -155,10 +147,8 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
           return;
         }
       } else {
-        // Fallback to default
         llama!.setSlot("default");
       }
-      // -----------------------
 
       sendToParent(LlamaResponse(
           text: "",

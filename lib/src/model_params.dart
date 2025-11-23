@@ -6,9 +6,9 @@ import 'llama_cpp.dart';
 
 /// Enum representing how to split the model across multiple GPUs
 enum LlamaSplitMode {
-  none(0),  // Single GPU
-  layer(1), // Split layers and KV across GPUs
-  row(2);   // Split layers and KV across GPUs, use tensor parallelism
+  none(0),
+  layer(1),
+  row(2);
 
   final int value;
   const LlamaSplitMode(this.value);
@@ -51,7 +51,6 @@ class ModelParams {
   /// Bypass host buffer allowing extra buffers to be used
   bool noHost = false;
 
-  // Pointers that need to be freed
   Pointer<Float>? _tensorSplitPtr;
 
   ModelParams();
@@ -68,11 +67,9 @@ class ModelParams {
     modelParams.use_mlock = useMemoryLock;
     modelParams.check_tensors = checkTensors;
     
-    // New fields
     modelParams.use_extra_bufts = useExtraBufts;
     modelParams.no_host = noHost;
 
-    // Handle tensor_split
     if (tensorSplit.isNotEmpty) {
       _tensorSplitPtr = malloc<Float>(tensorSplit.length);
       for (var i = 0; i < tensorSplit.length; i++) {
@@ -81,7 +78,6 @@ class ModelParams {
       modelParams.tensor_split = _tensorSplitPtr!;
     }
 
-    // Pointers currently set to null (Complex implementation required for overrides)
     modelParams.progress_callback = nullptr;
     modelParams.progress_callback_user_data = nullptr;
     modelParams.kv_overrides = nullptr; 

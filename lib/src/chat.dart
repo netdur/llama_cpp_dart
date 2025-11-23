@@ -80,8 +80,6 @@ class ChatHistory {
   String getLatestTurn(ChatFormat format) {
     if (messages.isEmpty) return "";
 
-    // Logic: Get the last user message. 
-    // If we added a placeholder assistant message (for streaming), include that too.
     int count = 1;
     if (messages.length >= 2 && 
         messages.last.role == Role.assistant && 
@@ -100,8 +98,6 @@ class ChatHistory {
   String exportFormat(ChatFormat format, {bool leaveLastAssistantOpen = false}) {
     return _formatList(messages, format, leaveLastAssistantOpen: leaveLastAssistantOpen);
   }
-
-  // --- Internal Formatting Logic ---
 
   String _formatList(List<Message> msgs, ChatFormat format, {required bool leaveLastAssistantOpen}) {
     switch (format) {
@@ -156,7 +152,6 @@ class ChatHistory {
       final message = msgs[i];
       final isLastMessage = i == msgs.length - 1;
       
-      // If we are at the end, and it's an assistant message, we might want to leave it open
       final shouldLeaveOpen = leaveLastAssistantOpen && isLastMessage && message.role == Role.assistant;
 
       switch (message.role) {
@@ -170,7 +165,6 @@ class ChatHistory {
           }
           break;
         case Role.system:
-          // Gemma usually maps system to user
           buffer.write('<start_of_turn>user\nSystem: ${message.content}<end_of_turn>\n');
           break;
         case Role.unknown:
@@ -178,7 +172,6 @@ class ChatHistory {
       }
     }
     
-    // Critical: If we want to prompt the model, ensure the buffer ends with the model tag
     if (leaveLastAssistantOpen && msgs.isNotEmpty && msgs.last.role != Role.assistant) {
         buffer.write('<start_of_turn>model\n');
     }
@@ -214,8 +207,6 @@ class ChatHistory {
     }
     return buffer.toString();
   }
-
-  // --- Standard Methods ---
 
   bool autoTrimForSpace(Llama llama, {int reserveTokens = 100}) {
     int remainingSpace = llama.getRemainingContextSpace();

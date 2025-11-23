@@ -78,13 +78,10 @@ class LlamaParent {
     await _subscription?.cancel();
     _subscription = _parent.stream.listen(_onData);
 
-    // Spawn the child isolate
     await _parent.spawn(LlamaChild());
 
-    // Initialize library path
     await _sendCommand(LlamaInit(Llama.libraryPath), "library initialization");
 
-    // Load model
     _status = LlamaStatus.loading;
     await _sendCommand(loadCommand, "model loading");
 
@@ -93,7 +90,6 @@ class LlamaParent {
 
   /// Handle responses from the child isolate
   void _onData(LlamaResponse data) {
-    // 1. Handle Embeddings
     if (data.embeddings != null) {
       if (_embeddingsCompleter != null && !_embeddingsCompleter!.isCompleted) {
         _embeddingsCompleter!.complete(data.embeddings);
@@ -105,12 +101,10 @@ class LlamaParent {
     if (data.status == LlamaStatus.error && data.errorDetails != null) {
       if (_operationCompleter != null && !_operationCompleter!.isCompleted) {
         _operationCompleter!.completeError(LlamaException(data.errorDetails!));
-        // Clear it so we don't try to complete it again later
         _operationCompleter = null;
       }
     }
 
-    // 2. Update Status
     if (data.status != null) {
       _status = data.status!;
       if (data.status == LlamaStatus.ready &&
@@ -120,14 +114,12 @@ class LlamaParent {
       }
     }
 
-    // 3. Handle Confirmation (ACKs for commands)
     if (data.isConfirmation) {
       if (_operationCompleter != null && !_operationCompleter!.isCompleted) {
         _operationCompleter!.complete();
       }
     }
 
-    // 4. Handle Text Stream
     if (data.text.isNotEmpty) {
       _controller.add(data.text);
       for (final scope in _scopes) {
@@ -135,12 +127,10 @@ class LlamaParent {
       }
     }
 
-    // 5. Handle Completion (End of generation or Error)
     if (data.isDone) {
       _isGenerating = false;
       final promptId = data.promptId ?? _currentPromptId;
 
-      // Complete the specific prompt completer
       if (_promptCompleters.containsKey(promptId)) {
         if (!_promptCompleters[promptId]!.isCompleted) {
           _promptCompleters[promptId]!.complete();
@@ -205,11 +195,6 @@ class LlamaParent {
     _isProcessingQueue = true;
     final nextPrompt = _promptQueue.removeAt(0);
 
-    // --- REMOVED: The aggressive stop() logic ---
-    // With slots, we don't necessarily need to stop/clear if switching users!
-    // However, since the Child is single-threaded, it can only GENERATE one at a time.
-    // But it can switch CONTEXT instantly.
-
     if (_isGenerating) {
       await stop();
       await Future.delayed(const Duration(milliseconds: 50));
@@ -221,17 +206,13 @@ class LlamaParent {
 
     _currentScope = nextPrompt.scope;
 
-    // --- NEW: Extract Slot ID ---
     String? targetSlotId;
     if (nextPrompt.scope != null) {
-      // Assuming the scope passed is of type LlamaScope
-      // You might need to cast or adjust _QueuedPrompt definition
       if (nextPrompt.scope is LlamaScope) {
         targetSlotId = (nextPrompt.scope as LlamaScope).id;
         (nextPrompt.scope as LlamaScope).addPromptId(_currentPromptId);
       }
     }
-    // ----------------------------
 
     final formattedPrompt = messages.isEmpty
         ? (formatter?.formatPrompt(nextPrompt.prompt) ?? nextPrompt.prompt)
@@ -244,7 +225,7 @@ class LlamaParent {
         id: 1,
         data: LlamaPrompt(formattedPrompt, _currentPromptId,
             images: nextPrompt.images,
-            slotId: targetSlotId // <--- Sending it down
+            slotId: targetSlotId
             ));
 
     _promptCompleters[_currentPromptId]!.future.whenComplete(() {
@@ -256,7 +237,6 @@ class LlamaParent {
   /// [promptId] is the ID returned by sendPrompt
   Future<void> waitForCompletion(String promptId) async {
     if (!_promptCompleters.containsKey(promptId)) {
-      // Prompt ID not found, might have already completed
       return;
     }
 
@@ -287,7 +267,6 @@ class LlamaParent {
     _isGenerating = false;
     _status = LlamaStatus.disposed;
 
-    // Reject all pending completers
     if (_readyCompleter != null && !_readyCompleter!.isCompleted) {
       _readyCompleter!.completeError("Disposed");
     }
@@ -314,7 +293,6 @@ class LlamaParent {
     if (!_completionController.isClosed) await _completionController.close();
 
     _parent.sendToChild(id: 1, data: LlamaClear());
-    // Give a tiny moment for the message to fly before killing the isolate
     await Future.delayed(const Duration(milliseconds: 10));
     _parent.dispose();
   }

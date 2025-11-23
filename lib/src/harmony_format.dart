@@ -18,7 +18,6 @@ class HarmonyFormat extends PromptFormat {
 
   @override
   String formatPrompt(String prompt) {
-    // Single-turn prompt -> User turn + End + Open Assistant turn
     return '$inputSequence$prompt$stopSequence$outputSequence';
   }
 
@@ -41,8 +40,6 @@ class HarmonyFormat extends PromptFormat {
           break;
 
         case 'assistant':
-          // Check if this is an empty placeholder or a partial generation
-          // If content is present, write it.
           if (content.isNotEmpty) {
             buffer.write('$outputSequence$content$stopSequence');
           }
@@ -53,16 +50,13 @@ class HarmonyFormat extends PromptFormat {
       }
     }
 
-    // CRITICAL: Trigger logic
     if (messages.isNotEmpty) {
       final lastRole = messages.last['role'];
       final lastContent = messages.last['content'];
 
       if (lastRole != 'assistant') {
-        // If the last message was User/System, open the Assistant tag
         buffer.write(outputSequence);
       } else if (lastContent == null || lastContent.toString().isEmpty) {
-        // If the last message was an empty Assistant placeholder, open the tag
         buffer.write(outputSequence);
       }
     }

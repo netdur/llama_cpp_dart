@@ -8,7 +8,6 @@ import 'package:llama_cpp_dart/src/llama_cpp.dart';
 /// An abstract class representing a multimodal input for the Llama model.
 abstract class LlamaInput {}
 
-// A record to hold the FFI pointers for a bitmap, ensuring they are managed together.
 typedef BitmapPointers = ({
   Pointer<mtmd_bitmap> bitmap,
   Pointer<Uint8> imageData
@@ -20,7 +19,6 @@ typedef BitmapPointers = ({
 /// either a file path or raw image bytes. The actual file reading and native
 /// conversion is deferred until it's processed inside the Llama instance.
 class LlamaImage extends LlamaInput {
-  // The LlamaImage will hold EITHER a path OR bytes, but not both.
   final String? _path;
   final Uint8List? _bytes;
 
@@ -46,7 +44,6 @@ class LlamaImage extends LlamaInput {
     if (_bytes != null) {
       return _bytes;
     }
-    // This should be unreachable due to the constructors.
     throw StateError('LlamaImage is empty. Use fromFile() or fromBytes().');
   }
 
@@ -56,7 +53,6 @@ class LlamaImage extends LlamaInput {
   /// This method is safe to be called inside any isolate, as it performs
   /// its own I/O if necessary.
   BitmapPointers toBitmap(llama_cpp lib, Allocator allocator) {
-    // Get the raw bytes using our new internal method.
     final imageBytes = _getImageBytes();
 
     final decodedImage = img.decodeImage(imageBytes);
@@ -65,15 +61,12 @@ class LlamaImage extends LlamaInput {
           "Failed to decode image. Ensure it's a valid format (PNG, JPEG, etc.).");
     }
 
-    // Convert the image to RGB format, which is what the model expects.
     final Uint8List rgbBytes =
         decodedImage.getBytes(order: img.ChannelOrder.rgb);
 
-    // Allocate memory for the image data and copy it.
     final imageDataPtr = allocator<Uint8>(rgbBytes.length);
     imageDataPtr.asTypedList(rgbBytes.length).setAll(0, rgbBytes);
 
-    // Create the multimodal bitmap structure.
     final imageBitmap = lib.mtmd_bitmap_init(decodedImage.width,
         decodedImage.height, imageDataPtr.cast<UnsignedChar>());
 

@@ -1,4 +1,3 @@
-// lib/mcp_server.dart
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -76,7 +75,6 @@ class MCPServer {
   /// This is what your TCP server should call.
   Future<Map<String, dynamic>> handleForTcp(Map<String, dynamic> req) async {
     final resp = await _handle(req);
-    // ensure jsonrpc is present
     if (resp['jsonrpc'] != '2.0') resp['jsonrpc'] = '2.0';
     return resp;
   }
@@ -106,7 +104,6 @@ class MCPServer {
         });
 
       case 'notifications/initialized':
-        // no response for notifications
         return {};
 
       case 'tools/list':
@@ -149,7 +146,7 @@ class MCPServer {
         }
 
         try {
-          final contentParts = await tool.call(args); // content parts
+          final contentParts = await tool.call(args);
           return _ok(id, {
             'content': contentParts,
             'isError': false,
