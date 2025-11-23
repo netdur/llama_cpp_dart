@@ -12,7 +12,7 @@ void main() async {
 
     final contextParams = ContextParams()
       ..nCtx = 2048
-      ..nPredict = -1; // Unlimited generation
+      ..nPredict = -1;
 
     // 2. Initialize Llama
     llama = Llama(
@@ -22,40 +22,51 @@ void main() async {
       verbose: false,
     );
 
+    // Initialize History
+    ChatHistory history = ChatHistory();
+
+    // --- STEP 1: INTRO (State starts at 0) ---
     print("\n=== STEP 1: Introduction ===");
-    String prompt1 = _formatForGemma("Hello, I am Adel.");
     
-    print("Sending: $prompt1");
+    // Add to history object
+    history.addMessage(role: Role.user, content: "Hello, I am Adel.");
+    
+    // Use the new helper to get just this message formatted
+    String prompt1 = history.getLatestTurn(ChatFormat.gemma);
+    
+    print("Sending:\n$prompt1");
     llama.setPrompt(prompt1);
     
-    // Generate Response
     await _printResponse(llama);
 
 
     // --- STEP 2: MEMORY CHECK (State preserved) ---
     print("\n=== STEP 2: Memory Check (No Clear) ===");
-    String prompt2 = _formatForGemma("What is my name?");
     
-    print("Sending: $prompt2");
-    llama.setPrompt(prompt2);
+    history.addMessage(role: Role.user, content: "What is my name?");
     
-    // Generate Response
+    // getLatestTurn gets ONLY the message we just added
+    String prompt2 = history.getLatestTurn(ChatFormat.gemma);
+    
+    print("Sending:\n$prompt2");
+    llama.setPrompt(prompt2); // Appends to existing VRAM context
+    
     await _printResponse(llama);
 
 
     // --- STEP 3: AMNESIA (Clear State) ---
     print("\n=== STEP 3: Amnesia (Clear called) ===");
     
-    llama.clear();
+    llama.clear(); // Wipes VRAM
     
     print("State cleared.");
-    print("Sending: $prompt2");
+    print("Sending:\n$prompt2");
     
-    llama.setPrompt(prompt2);
+    // NOTE: Here we send ONLY prompt2 ("What is my name?") into an empty brain.
+    // We intentionally DO NOT send the full history, to prove it forgot.
+    llama.setPrompt(prompt2); 
     
-    // Generate Response
     await _printResponse(llama);
-
 
     llama.dispose();
   } catch (e) {
@@ -68,13 +79,10 @@ void main() async {
 Future<void> _printResponse(Llama llama) async {
   stdout.write("AI: ");
   await for (final token in llama.generateText()) {
-    if (token.contains("<end_of_turn>")) break; // Stop at EOS
+    // Stop if we see the end tag (logic is now inside Llama class to strip it, 
+    // but breaking the loop is still good practice)
+    if (token.contains("<end_of_turn>")) break; 
     stdout.write(token);
   }
   stdout.write("\n");
-}
-
-/// Helper to format prompt for Gemma
-String _formatForGemma(String userText) {
-  return "<start_of_turn>user\n$userText<end_of_turn><start_of_turn>model\n";
 }

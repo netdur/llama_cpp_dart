@@ -104,8 +104,13 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   }
 
   void _handleInit(String? libraryPath) {
-    Llama.libraryPath = libraryPath;
-    sendToParent(LlamaResponse.confirmation(LlamaStatus.uninitialized));
+    try {
+      Llama.libraryPath = libraryPath;
+      final _ = Llama.lib; 
+      sendToParent(LlamaResponse.confirmation(LlamaStatus.uninitialized));
+    } catch (e) {
+      sendToParent(LlamaResponse.error("Failed to open library at $libraryPath: $e"));
+    }
   }
 
   void _handleDispose() {

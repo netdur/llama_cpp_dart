@@ -1,15 +1,15 @@
-import 'package:llama_cpp_dart/src/sequence_filter.dart';
-
 /// An enumeration representing different types of LLM Prompt Formats.
 enum PromptFormatType {
   raw,
   chatml,
   alpaca,
+  gemma,
+  harmony,
 }
 
 /// A class representing a LLM Prompt Format.
+/// Handles formatting of messages for specific model architectures.
 abstract class PromptFormat {
-  late List<SequenceFilter> _filters;
   final PromptFormatType type;
   final String inputSequence;
   final String outputSequence;
@@ -20,36 +20,9 @@ abstract class PromptFormat {
       {required this.inputSequence,
       required this.outputSequence,
       required this.systemSequence,
-      this.stopSequence}) {
-    var tempFilters = [
-      SequenceFilter(inputSequence),
-      SequenceFilter(outputSequence),
-      SequenceFilter(systemSequence)
-    ];
+      this.stopSequence});
 
-    if (stopSequence != null) {
-      tempFilters.add(SequenceFilter(stopSequence!));
-    }
-
-    _filters = tempFilters;
-  }
-
-  String? filterResponse(String response) {
-    // Iteratively process the response through each filter
-    List<String?> chunks = [];
-    for (var filter in _filters) {
-      chunks.add(filter.processChunk(response));
-    }
-
-    // If any of the _filters return null, the response is incomplete
-    for (var chunk in chunks) {
-      if (chunk == null) return null;
-    }
-
-    // Return the longest chunk
-    return chunks.reduce((a, b) => a!.length > b!.length ? a : b);
-  }
-
+  /// Formats a single prompt (User -> Assistant).
   String formatPrompt(String prompt) {
     if (stopSequence != null) {
       return '$inputSequence$prompt$stopSequence$outputSequence';
@@ -57,21 +30,27 @@ abstract class PromptFormat {
     return '$inputSequence$prompt$outputSequence';
   }
 
+  /// Formats a list of messages into a full conversation string.
+  /// Subclasses should override this for specific logic (e.g. handling newlines or special tags).
   String formatMessages(List<Map<String, dynamic>> messages) {
-    String formattedMessages = '';
+    final buffer = StringBuffer();
+    
     for (var message in messages) {
-      if (message['role'] == 'user') {
-        formattedMessages += '$inputSequence${message['content']}';
-      } else if (message['role'] == 'assistant') {
-        formattedMessages += '$outputSequence${message['content']}';
-      } else if (message['role'] == 'system') {
-        formattedMessages += '$systemSequence${message['content']}';
+      final role = message['role'];
+      final content = message['content'];
+
+      if (role == 'user') {
+        buffer.write('$inputSequence$content');
+      } else if (role == 'assistant') {
+        buffer.write('$outputSequence$content');
+      } else if (role == 'system') {
+        buffer.write('$systemSequence$content');
       }
 
       if (stopSequence != null) {
-        formattedMessages += stopSequence!;
+        buffer.write(stopSequence!);
       }
     }
-    return formattedMessages;
+    return buffer.toString();
   }
 }

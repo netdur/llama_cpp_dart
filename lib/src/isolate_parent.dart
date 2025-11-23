@@ -103,6 +103,16 @@ class LlamaParent {
       return; 
     }
 
+    if (data.status == LlamaStatus.error && data.errorDetails != null) {
+      if (_operationCompleter != null && !_operationCompleter!.isCompleted) {
+        _operationCompleter!.completeError(
+          LlamaException(data.errorDetails!)
+        );
+        // Clear it so we don't try to complete it again later
+        _operationCompleter = null; 
+      }
+    }
+
     // 2. Update Status
     if (data.status != null) {
       _status = data.status!;
