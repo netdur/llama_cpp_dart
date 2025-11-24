@@ -307,7 +307,7 @@ class Llama {
           samplerParams.penaltyLastTokens,
           samplerParams.penaltyRepeat,
           samplerParams.penaltyFreq,
-        samplerParams.penaltyPresent,
+          samplerParams.penaltyPresent,
         ));
 
     if (samplerParams.dryMultiplier > 0.0) {
@@ -343,9 +343,7 @@ class Llama {
           malloc.free(ptr);
         }
         malloc.free(breakersPtr);
-      } catch (e) {
-        // intentional ignore
-      }
+      } catch (e) {}
     }
 
     if (samplerParams.mirostat == 2) {
@@ -394,13 +392,9 @@ class Llama {
         try {
           lib.llama_sampler_chain_add(
               _smpl,
-              lib.llama_sampler_init_xtc(
-                  samplerParams.xtcProbability,
-                  samplerParams.xtcThreshold,
-                  1,
-                  samplerParams.seed));
-        } catch (_) {
-        }
+              lib.llama_sampler_init_xtc(samplerParams.xtcProbability,
+                  samplerParams.xtcThreshold, 1, samplerParams.seed));
+        } catch (_) {}
       }
     }
 
@@ -862,20 +856,22 @@ class Llama {
   List<int> tokenize(String text, bool addBos) {
     if (_isDisposed) throw StateError('Disposed');
     if (text.isEmpty) throw ArgumentError('Empty text');
-    final textPtr = text.toNativeUtf8().cast<Char>();
+    final utf8Ptr = text.toNativeUtf8();
+    final length = utf8Ptr.length;
+    final textPtr = utf8Ptr.cast<Char>();
     try {
-      int nTokens = -lib.llama_tokenize(
-          vocab, textPtr, text.length, nullptr, 0, addBos, true);
+      int nTokens =
+          -lib.llama_tokenize(vocab, textPtr, length, nullptr, 0, addBos, true);
       final tokens = malloc<llama_token>(nTokens);
       try {
         int actual = lib.llama_tokenize(
-            vocab, textPtr, text.length, tokens, nTokens, addBos, true);
+            vocab, textPtr, length, tokens, nTokens, addBos, true);
         return List<int>.generate(actual, (i) => tokens[i]);
       } finally {
         malloc.free(tokens);
       }
     } finally {
-      malloc.free(textPtr);
+      malloc.free(utf8Ptr);
     }
   }
 

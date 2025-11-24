@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:typed_data'; // Needed for Uint8List
+import 'dart:typed_data';
 import 'package:llama_cpp_dart/src/llama_input.dart';
 import 'package:typed_isolate/typed_isolate.dart';
 
@@ -46,7 +46,6 @@ class LlamaParent {
   Completer<void>? _operationCompleter;
   Completer<List<double>>? _embeddingsCompleter;
 
-  // NEW: Completer specifically for the large binary state data
   Completer<Uint8List>? _stateCompleter;
 
   /// Maps prompt IDs to completers for operation tracking
@@ -81,10 +80,8 @@ class LlamaParent {
 
     await _parent.spawn(LlamaChild());
 
-    // 1. Init Library
     await _sendCommand(LlamaInit(Llama.libraryPath), "library initialization");
 
-    // 2. Load Model
     _status = LlamaStatus.loading;
     await _sendCommand(loadCommand, "model loading");
 
@@ -92,7 +89,6 @@ class LlamaParent {
   }
 
   void _onData(LlamaResponse data) {
-    // 1. Handle Binary State Data (Tier 2 Save)
     if (data.stateData != null) {
       if (_stateCompleter != null && !_stateCompleter!.isCompleted) {
         _stateCompleter!.complete(data.stateData);
@@ -101,7 +97,6 @@ class LlamaParent {
       return; 
     }
 
-    // 2. Handle Embeddings
     if (data.embeddings != null) {
       if (_embeddingsCompleter != null && !_embeddingsCompleter!.isCompleted) {
         _embeddingsCompleter!.complete(data.embeddings);
@@ -110,7 +105,6 @@ class LlamaParent {
       return;
     }
 
-    // 3. Handle Errors during specific operations
     if (data.status == LlamaStatus.error && data.errorDetails != null) {
       final ex = LlamaException(data.errorDetails!);
       
@@ -118,14 +112,12 @@ class LlamaParent {
         _operationCompleter!.completeError(ex);
         _operationCompleter = null;
       }
-      // Also fail state operations if they were pending
       if (_stateCompleter != null && !_stateCompleter!.isCompleted) {
         _stateCompleter!.completeError(ex);
         _stateCompleter = null;
       }
     }
 
-    // 4. Update Status
     if (data.status != null) {
       _status = data.status!;
       if (data.status == LlamaStatus.ready &&
@@ -135,14 +127,12 @@ class LlamaParent {
       }
     }
 
-    // 5. Handle Confirmations (Stop, Clear, LoadState, etc.)
     if (data.isConfirmation) {
       if (_operationCompleter != null && !_operationCompleter!.isCompleted) {
         _operationCompleter!.complete();
       }
     }
 
-    // 6. Forward generated text
     if (data.text.isNotEmpty) {
       _controller.add(data.text);
       for (final scope in _scopes) {
@@ -150,8 +140,6 @@ class LlamaParent {
       }
     }
 
-    // 7. Handle Completion
-    // Ensure it's not a state response (which sets isDone=true)
     if (data.isDone && data.stateData == null && data.embeddings == null && !data.isConfirmation) {
       _isGenerating = false;
       final promptId = data.promptId ?? _currentPromptId;
@@ -173,8 +161,6 @@ class LlamaParent {
       _currentScope = null;
     }
   }
-
-  // --- NEW METHODS FOR SCOPE / SLOT MANAGEMENT (TIER 2/3) ---
 
   /// Requests the child to save the VRAM state of a specific scope to RAM.
   Future<Uint8List> saveState(LlamaScope scope) async {
@@ -206,8 +192,6 @@ class LlamaParent {
     await _sendCommand(LlamaFreeSlot(scope.id), "free slot");
   }
 
-  // ----------------------------------------------------------
-
   Future<void> _sendCommand(LlamaCommand command, String description) async {
     _operationCompleter = Completer<void>();
     _parent.sendToChild(data: command, id: 1);
@@ -215,9 +199,8 @@ class LlamaParent {
     return await _operationCompleter!.future.timeout(
       Duration(seconds: description == "model loading" ? 60 : 30),
       onTimeout: () {
-        // Don't throw immediately on stop timeout, just log, 
-        // as the isolate might be busy but will eventually stop.
         if (command is LlamaStop) {
+           // ignore: avoid_print
            print("Warning: Stop command timed out, forcing state reset.");
            return; 
         }
@@ -255,10 +238,8 @@ class LlamaParent {
     _isProcessingQueue = true;
     final nextPrompt = _promptQueue.removeAt(0);
 
-    // Ensure previous generation is fully stopped before starting new one
     if (_isGenerating) {
       await stop();
-      // Small buffer to let the isolate loop spin down completely
       await Future.delayed(const Duration(milliseconds: 10));
     }
 
@@ -286,7 +267,6 @@ class LlamaParent {
         data: LlamaPrompt(formattedPrompt, _currentPromptId,
             images: nextPrompt.images, slotId: targetSlotId));
 
-    // Wait for this specific prompt to finish
     _promptCompleters[_currentPromptId]!.future.whenComplete(() {
       _processNextPrompt();
     });
@@ -318,7 +298,6 @@ class LlamaParent {
     _isGenerating = false;
     _status = LlamaStatus.disposed;
 
-    // Reject all pending
     if (_readyCompleter != null && !_readyCompleter!.isCompleted) _readyCompleter!.completeError("Disposed");
     if (_operationCompleter != null && !_operationCompleter!.isCompleted) _operationCompleter!.completeError("Disposed");
     if (_embeddingsCompleter != null && !_embeddingsCompleter!.isCompleted) _embeddingsCompleter!.completeError("Disposed");
@@ -339,10 +318,8 @@ class LlamaParent {
     if (!_controller.isClosed) await _controller.close();
     if (!_completionController.isClosed) await _completionController.close();
 
-    // FIX: Send explicit dispose command to clean up C pointers
     _parent.sendToChild(id: 1, data: LlamaDispose());
     
-    // Give a tiny moment for the message to be processed before killing the isolate
     await Future.delayed(const Duration(milliseconds: 50));
     
     _parent.dispose();

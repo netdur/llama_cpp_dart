@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
-import 'isolate_parent.dart'; // Ensure this import points to your LlamaParent definition
 
 /// A scope that filters responses from LlamaParent for specific prompt IDs
 class LlamaScope {
@@ -66,10 +65,6 @@ class LlamaScope {
         cancelInFlight: true, cancelQueued: alsoCancelQueued);
   }
 
-  // -----------------------------------------------------------------------
-  // TIER 2 & 3 LIFECYCLE METHODS (These were missing)
-  // -----------------------------------------------------------------------
-
   /// Captures the current KV Cache of this scope from VRAM.
   /// Returns the serialized state as a byte array (Tier 2).
   Future<Uint8List> saveState() async {
@@ -91,7 +86,6 @@ class LlamaScope {
     if (!_streamController.isClosed) await _streamController.close();
     if (!_completionController.isClosed) await _completionController.close();
     
-    // Notify Parent to release the VRAM Slot
     await _parent.disposeScope(this);
   }
 }

@@ -46,7 +46,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       case LlamaDispose():
         _handleDispose();
 
-      // --- TIER 2 & 3 HANDLERS ---
       case LlamaSaveState(:final slotId):
         _handleSaveState(slotId);
 
@@ -72,7 +71,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   /// Handle stop command
   void _handleStop() {
     shouldStop = true;
-    // Send confirmation so the Parent stops waiting!
     sendToParent(
         LlamaResponse.confirmation(llama?.status ?? LlamaStatus.ready));
   }
@@ -119,7 +117,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   void _handleInit(String? libraryPath) {
     try {
       Llama.libraryPath = libraryPath;
-      // Force load to verify path
       final _ = Llama.lib;
       sendToParent(LlamaResponse.confirmation(LlamaStatus.uninitialized));
     } catch (e) {
@@ -154,18 +151,13 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     _sendPrompt(prompt, promptId, images, slotId);
   }
 
-  // --- NEW TIER 2 & 3 IMPLEMENTATIONS ---
-
   void _handleSaveState(String slotId) {
     if (llama == null) return;
     try {
-      // 1. Switch to the slot we want to save
       llama!.setSlot(slotId);
 
-      // 2. Extract Data (Uint8List)
       final data = llama!.saveState();
 
-      // 3. Send back to Parent
       sendToParent(LlamaResponse.stateData(data));
     } catch (e) {
       sendToParent(
@@ -176,15 +168,12 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   void _handleLoadState(String slotId, dynamic data) {
     if (llama == null) return;
     try {
-      // 1. Create/Set slot
       try {
         llama!.createSlot(slotId);
       } catch (_) {
-        // Ignore if already exists, logic continues
       }
       llama!.setSlot(slotId);
 
-      // 2. Load
       llama!.loadState(data);
 
       sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));
@@ -200,7 +189,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       try {
         llama!.createSlot(slotId);
       } catch (_) {
-        // Ignore if already exists
       }
       llama!.setSlot(slotId);
 
@@ -221,14 +209,11 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       llama!.freeSlot(slotId);
       sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));
     } catch (e) {
-      // Log but don't crash, maybe it was already freed
       // ignore: avoid_print
       print("Warning freeing slot $slotId: $e");
       sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));
     }
   }
-
-  // --- GENERATION LOOP ---
 
   Future<void> _sendPrompt(String prompt, String promptId,
       List<LlamaImage>? images, String? slotId) async {
@@ -238,7 +223,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
     }
 
     try {
-      // --- Slot Management ---
       if (slotId != null) {
         try {
           llama!.createSlot(slotId);
@@ -251,7 +235,6 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       } else {
         llama!.setSlot("default");
       }
-      // -----------------------
 
       sendToParent(LlamaResponse(
           text: "",
