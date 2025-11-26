@@ -65,7 +65,7 @@ class Llama {
   bool _isVisionEnabled = false;
   LlamaStatus _status = LlamaStatus.uninitialized;
 
-  static String? libraryPath = Platform.isAndroid ? "libllama.so" : null;
+  static String? libraryPath = Platform.isAndroid ? "libmtmd.so" : null;
 
   LlamaStatus get status => _status;
   bool get isDisposed => _isDisposed;

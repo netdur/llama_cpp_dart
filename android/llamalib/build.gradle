@@ -4,40 +4,34 @@ plugins {
 
 android {
     namespace 'io.github.netdur.llama_cpp_dart.llamalib'
-    compileSdk 34
-    ndkVersion "27.0.12077973"
+    compileSdk 36
+    ndkVersion "29.0.13846066"
 
     defaultConfig {
         minSdk 24
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles "consumer-rules.pro"
-
         ndk { abiFilters "arm64-v8a", "x86_64" }
 
         externalNativeBuild {
             cmake {
-                // abiFilters 'arm64-v8a', 'x86_64'
                 cppFlags "-std=c++17", "-fexceptions", "-frtti"
+                
                 arguments  "-DBUILD_SHARED_LIBS=ON",
                            "-DLLAMA_CURL=OFF",
-
-                            // "-DGGML_OPENCL=ON",
-                            // "-DOpenCL_INCLUDE_DIR=/Users/adel/Workspace/OpenCL-Headers/include",
-
-                            // "-DGGML_VULKAN=ON",
-                           // "-DGGML_VULKAN_COOPMAT_GLSLC_SUPPORT=OFF",
-                           // "-DGGML_VULKAN_COOPMAT2_GLSLC_SUPPORT=OFF",
-                           // "-DGGML_VULKAN_BFLOAT16_GLSLC_SUPPORT=OFF",
-                           // "-DVK_USE_PLATFORM_ANDROID_KHR=ON",
-                           // "-DGGML_VULKAN_VALIDATE=OFF",
                            "-DLLAMA_BUILD_TESTS=OFF",
                            "-DLLAMA_BUILD_EXAMPLES=OFF",
                            "-DLLAMA_BUILD_SERVER=OFF",
                            "-DLLAMA_BUILD_TOOLS=ON",
                            "-DCMAKE_PROJECT_INCLUDE=/Users/adel/Workspace/llama_cpp_dart/darwin/no_bundle.cmake",
-                           "-DANDROID_STL=c++_static"
-
+                           "-DGGML_VULKAN=ON",
+                           "-DANDROID_PLATFORM=android-29", 
+                           "-DANDROID_STL=c++_shared",
+                           "-DLLAMA_NATIVE=OFF",
+                           "-DGGML_VULKAN_COOPMAT_GLSLC_SUPPORT=OFF",
+                           "-DGGML_VULKAN_COOPMAT2_GLSLC_SUPPORT=OFF",
+                           "-DGGML_VULKAN_BFLOAT16_GLSLC_SUPPORT=OFF" 
             }
         }
     }
@@ -49,7 +43,6 @@ android {
         }
     }
 
-    // This is correct
     externalNativeBuild {
         cmake {
             path '../../src/CMakeLists.txt'

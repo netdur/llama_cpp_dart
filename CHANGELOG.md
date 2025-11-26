@@ -1,4 +1,5 @@
-## 0.2
+## 0.2.0
+* llama.cpp b8595b16e69e3029e06be3b8f6635f9812b2bc3f
 * Memory Safety: No more pointer being freed was not allocated crashes.
 * UTF-8 Safety: Emojis and foreign languages won't break generation.
 * Context Management: You can Append, Clear, or Save the brain.
