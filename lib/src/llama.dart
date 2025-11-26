@@ -215,6 +215,7 @@ class Llama {
     }
 
     lib.llama_backend_init();
+    lib.ggml_backend_load_all();
 
     modelParamsDart ??= ModelParams();
     var modelParams = modelParamsDart.get();
