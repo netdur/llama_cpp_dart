@@ -218,21 +218,10 @@ class Llama {
       ModelParams? modelParamsDart,
       ContextParams? contextParamsDart,
       SamplerParams? samplerParams) {
-    /*
-    if (!_verbose) {
+    if (_verbose == false) {
       final nullCallbackPointer =
           Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackNull);
       lib.llama_log_set(nullCallbackPointer, nullptr);
-    }
-    */
-    if (!_verbose) {
-      final nullCallbackPointer =
-          Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackNull);
-      lib.llama_log_set(nullCallbackPointer, nullptr);
-    } else {
-      final printCallbackPointer =
-          Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackPrint);
-      lib.llama_log_set(printCallbackPointer, nullptr);
     }
 
     lib.llama_backend_init();
