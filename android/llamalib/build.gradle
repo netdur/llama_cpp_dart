@@ -17,21 +17,21 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17", "-fexceptions", "-frtti"
-                
+
                 arguments  "-DBUILD_SHARED_LIBS=ON",
-                           "-DLLAMA_CURL=OFF",
-                           "-DLLAMA_BUILD_TESTS=OFF",
-                           "-DLLAMA_BUILD_EXAMPLES=OFF",
-                           "-DLLAMA_BUILD_SERVER=OFF",
-                           "-DLLAMA_BUILD_TOOLS=ON",
-                           "-DCMAKE_PROJECT_INCLUDE=/Users/adel/Workspace/llama_cpp_dart/darwin/no_bundle.cmake",
-                           "-DGGML_VULKAN=ON",
-                           "-DANDROID_PLATFORM=android-29", 
-                           "-DANDROID_STL=c++_shared",
-                           "-DLLAMA_NATIVE=OFF",
-                           "-DGGML_VULKAN_COOPMAT_GLSLC_SUPPORT=OFF",
-                           "-DGGML_VULKAN_COOPMAT2_GLSLC_SUPPORT=OFF",
-                           "-DGGML_VULKAN_BFLOAT16_GLSLC_SUPPORT=OFF" 
+                        "-DLLAMA_CURL=OFF",
+                        "-DLLAMA_BUILD_TESTS=OFF",
+                        "-DLLAMA_BUILD_EXAMPLES=OFF",
+                        "-DLLAMA_BUILD_SERVER=OFF",
+                        "-DLLAMA_BUILD_TOOLS=ON",
+                        "-DCMAKE_PROJECT_INCLUDE=/Users/adel/Workspace/llama_cpp_dart/darwin/no_bundle.cmake",
+                        // GPU backend: OpenCL instead of Vulkan
+                        "-DGGML_OPENCL=ON",
+                        "-DGGML_OPENCL_EMBED_KERNELS=ON",
+                        "-DGGML_OPENCL_USE_ADRENO_KERNELS=ON",
+                        "-DANDROID_PLATFORM=android-29",
+                        "-DANDROID_STL=c++_shared",
+                        "-DLLAMA_NATIVE=OFF"
             }
         }
     }

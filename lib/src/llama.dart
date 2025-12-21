@@ -202,20 +202,49 @@ class Llama {
   static void llamaLogCallbackNull(
       int level, Pointer<Char> text, Pointer<Void> userData) {}
 
+  static void llamaLogCallbackPrint(
+    int level,
+    Pointer<Char> text,
+    Pointer<Void> userData,
+  ) {
+    // char*  to utf8  to dart string
+    final msg = text.cast<Utf8>().toDartString();
+    print('llama native [$level] $msg');
+  }
+
   void _initializeLlama(
       String modelPath,
       String? mmprojPath,
       ModelParams? modelParamsDart,
       ContextParams? contextParamsDart,
       SamplerParams? samplerParams) {
+    /*
     if (!_verbose) {
       final nullCallbackPointer =
           Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackNull);
       lib.llama_log_set(nullCallbackPointer, nullptr);
     }
+    */
+    if (!_verbose) {
+      final nullCallbackPointer =
+          Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackNull);
+      lib.llama_log_set(nullCallbackPointer, nullptr);
+    } else {
+      final printCallbackPointer =
+          Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackPrint);
+      lib.llama_log_set(printCallbackPointer, nullptr);
+    }
 
     lib.llama_backend_init();
-    lib.ggml_backend_load_all();
+    if (!Platform.isAndroid) {
+      lib.ggml_backend_load_all();
+    }
+
+    final ptr = lib.llama_print_system_info();
+    final sysInfo = ptr.cast<Utf8>().toDartString();
+    print(sysInfo);
+    print("modelPath: $modelPath");
+    print("libraryPath: $libraryPath");
 
     modelParamsDart ??= ModelParams();
     var modelParams = modelParamsDart.get();

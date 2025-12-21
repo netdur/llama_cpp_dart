@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import '../llama_cpp_dart.dart';
+import 'llama_input.dart';
 
 /// Represents supported chat formats for export
 enum ChatFormat {
@@ -36,26 +39,31 @@ enum Role {
 class Message {
   final Role role;
   final String content;
+  final List<String> images;
 
   const Message({
     required this.role,
     required this.content,
+    this.images = const [],
   });
 
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
       role: Role.fromString(json['role'] as String),
       content: json['content'] as String,
+      images: (json['images'] as List<dynamic>?)?.cast<String>() ?? [],
     );
   }
 
   Map<String, dynamic> toJson() => {
         'role': role.value,
         'content': content,
+        'images': images,
       };
 
   @override
-  String toString() => 'Message(role: ${role.value}, content: $content)';
+  String toString() =>
+      'Message(role: ${role.value}, content: $content, images: $images)';
 }
 
 class ChatHistory {
@@ -67,22 +75,27 @@ class ChatHistory {
       : messages = [],
         fullHistory = [];
 
-  void addMessage({required Role role, required String content}) {
-    final message = Message(role: role, content: content);
+  void addMessage(
+      {required Role role, required String content, List<String>? images}) {
+    final message = Message(role: role, content: content, images: images ?? []);
     messages.add(message);
     fullHistory.add(message);
   }
 
+  /// Returns all image paths in the current history order
+  List<String> get images =>
+      messages.expand((msg) => msg.images).toList(growable: false);
+
   /// --- STATEFUL API (New) ---
-  
+
   /// Exports ONLY the latest turn (User + Optional Empty Assistant).
   /// Use this with `llama.setPrompt()` to append to existing context.
   String getLatestTurn(ChatFormat format) {
     if (messages.isEmpty) return "";
 
     int count = 1;
-    if (messages.length >= 2 && 
-        messages.last.role == Role.assistant && 
+    if (messages.length >= 2 &&
+        messages.last.role == Role.assistant &&
         messages.last.content.isEmpty) {
       count = 2;
     }
@@ -93,22 +106,57 @@ class ChatHistory {
 
   /// --- STATELESS API (Classic) ---
 
-  /// Exports the ENTIRE history. 
+  /// Exports the ENTIRE history.
   /// Use this when initializing context, or after calling `llama.clear()`.
-  String exportFormat(ChatFormat format, {bool leaveLastAssistantOpen = false}) {
-    return _formatList(messages, format, leaveLastAssistantOpen: leaveLastAssistantOpen);
+  String exportFormat(ChatFormat format,
+      {bool leaveLastAssistantOpen = false}) {
+    return _formatList(messages, format,
+        leaveLastAssistantOpen: leaveLastAssistantOpen);
   }
 
-  String _formatList(List<Message> msgs, ChatFormat format, {required bool leaveLastAssistantOpen}) {
+  /// Exports both the formatted prompt and the corresponding LlamaInput list.
+  /// This is a convenience method for use with `llama.generateWithMedia`.
+  (String, List<LlamaInput>) exportWithMedia(ChatFormat format,
+      {bool leaveLastAssistantOpen = false}) {
+    final prompt =
+        exportFormat(format, leaveLastAssistantOpen: leaveLastAssistantOpen);
+    final inputs =
+        images.map((path) => LlamaImage.fromFile(File(path))).toList();
+    return (prompt, inputs);
+  }
+
+  String _formatList(List<Message> msgs, ChatFormat format,
+      {required bool leaveLastAssistantOpen}) {
+    // Pre-process messages to ensure <image> tags exist if images are present
+    final processedMsgs = msgs.map((msg) {
+      if (msg.images.isEmpty) return msg;
+
+      final imageTagCount = '<image>'.allMatches(msg.content).length;
+      if (imageTagCount >= msg.images.length) return msg;
+
+      final missingTags = msg.images.length - imageTagCount;
+      final prefix = '<image>' * missingTags;
+
+      // If content is empty, just return tags. Otherwise prepend.
+      // We might want a newline if content is not empty?
+      // Usually <image>\nText is good.
+      final newContent =
+          msg.content.isEmpty ? prefix : '$prefix\n${msg.content}';
+
+      return Message(role: msg.role, content: newContent, images: msg.images);
+    }).toList();
+
     switch (format) {
       case ChatFormat.chatml:
-        return _exportChatML(msgs);
+        return _exportChatML(processedMsgs);
       case ChatFormat.alpaca:
-        return _exportAlpaca(msgs);
+        return _exportAlpaca(processedMsgs);
       case ChatFormat.gemma:
-        return _exportGemma(msgs, leaveLastAssistantOpen: leaveLastAssistantOpen);
+        return _exportGemma(processedMsgs,
+            leaveLastAssistantOpen: leaveLastAssistantOpen);
       case ChatFormat.harmony:
-        return _exportHarmony(msgs, leaveLastAssistantOpen: leaveLastAssistantOpen);
+        return _exportHarmony(processedMsgs,
+            leaveLastAssistantOpen: leaveLastAssistantOpen);
     }
   }
 
@@ -145,18 +193,22 @@ class ChatHistory {
     return buffer.toString();
   }
 
-  String _exportGemma(List<Message> msgs, {bool leaveLastAssistantOpen = false}) {
+  String _exportGemma(List<Message> msgs,
+      {bool leaveLastAssistantOpen = false}) {
     final buffer = StringBuffer();
 
     for (int i = 0; i < msgs.length; i++) {
       final message = msgs[i];
       final isLastMessage = i == msgs.length - 1;
-      
-      final shouldLeaveOpen = leaveLastAssistantOpen && isLastMessage && message.role == Role.assistant;
+
+      final shouldLeaveOpen = leaveLastAssistantOpen &&
+          isLastMessage &&
+          message.role == Role.assistant;
 
       switch (message.role) {
         case Role.user:
-          buffer.write('<start_of_turn>user\n${message.content}<end_of_turn>\n');
+          buffer
+              .write('<start_of_turn>user\n${message.content}<end_of_turn>\n');
           break;
         case Role.assistant:
           buffer.write('<start_of_turn>model\n${message.content}');
@@ -165,21 +217,25 @@ class ChatHistory {
           }
           break;
         case Role.system:
-          buffer.write('<start_of_turn>user\nSystem: ${message.content}<end_of_turn>\n');
+          buffer.write(
+              '<start_of_turn>user\nSystem: ${message.content}<end_of_turn>\n');
           break;
         case Role.unknown:
           break;
       }
     }
-    
-    if (leaveLastAssistantOpen && msgs.isNotEmpty && msgs.last.role != Role.assistant) {
-        buffer.write('<start_of_turn>model\n');
+
+    if (leaveLastAssistantOpen &&
+        msgs.isNotEmpty &&
+        msgs.last.role != Role.assistant) {
+      buffer.write('<start_of_turn>model\n');
     }
 
     return buffer.toString();
   }
 
-  String _exportHarmony(List<Message> msgs, {bool leaveLastAssistantOpen = false}) {
+  String _exportHarmony(List<Message> msgs,
+      {bool leaveLastAssistantOpen = false}) {
     final buffer = StringBuffer();
 
     for (int i = 0; i < msgs.length; i++) {
@@ -188,16 +244,24 @@ class ChatHistory {
 
       String roleTag;
       switch (msg.role) {
-        case Role.system: roleTag = '<|system|>\n'; break;
-        case Role.user: roleTag = '<|user|>\n'; break;
-        case Role.assistant: roleTag = '<|assistant|>\n'; break;
-        default: continue;
+        case Role.system:
+          roleTag = '<|system|>\n';
+          break;
+        case Role.user:
+          roleTag = '<|user|>\n';
+          break;
+        case Role.assistant:
+          roleTag = '<|assistant|>\n';
+          break;
+        default:
+          continue;
       }
 
       buffer.write(roleTag);
       buffer.write(msg.content);
 
-      final isAssistantAndOpen = leaveLastAssistantOpen && isLast && msg.role == Role.assistant;
+      final isAssistantAndOpen =
+          leaveLastAssistantOpen && isLast && msg.role == Role.assistant;
 
       if (!isAssistantAndOpen) {
         buffer.write('\n<|end|>\n');
@@ -212,10 +276,13 @@ class ChatHistory {
     int remainingSpace = llama.getRemainingContextSpace();
     if (remainingSpace > reserveTokens) return false;
 
-    List<Message> systemMessages = messages.where((msg) => msg.role == Role.system).toList();
+    List<Message> systemMessages =
+        messages.where((msg) => msg.role == Role.system).toList();
     List<Message> recentMessages = [];
     int pairsFound = 0;
-    for (int i = messages.length - 1; i >= 0 && pairsFound < keepRecentPairs; i--) {
+    for (int i = messages.length - 1;
+        i >= 0 && pairsFound < keepRecentPairs;
+        i--) {
       recentMessages.insert(0, messages[i]);
       if (messages[i].role == Role.user) pairsFound++;
     }
@@ -236,14 +303,15 @@ class ChatHistory {
     final chatHistory = ChatHistory();
     final messagesList = json['messages'] as List<dynamic>;
     for (final message in messagesList) {
-      chatHistory.messages.add(Message.fromJson(message as Map<String, dynamic>));
+      chatHistory.messages
+          .add(Message.fromJson(message as Map<String, dynamic>));
     }
     return chatHistory;
   }
 
   Map<String, dynamic> toJson() => {
-    'messages': messages.map((message) => message.toJson()).toList(),
-  };
+        'messages': messages.map((message) => message.toJson()).toList(),
+      };
 
   void clear() => messages.clear();
   int get length => messages.length;

@@ -1,42 +1,33 @@
 cmake_minimum_required(VERSION 3.22.1)
 
-project(LlamaCppAAR)
+project(llama_cpp_dart_wrapper)
 
-# --- Configuration ---
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# 1. Setup OpenCL paths BEFORE adding llama.cpp
+set(OPENCL_HEADERS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/OpenCL-Headers")
 
-# Optimization Flags (Crucial: -fno-finite-math-only fixes the CPU build error)
-add_compile_options(-O3 -ffast-math -fno-finite-math-only)
+if (ANDROID)
+    message(STATUS "Configuring for Android (OpenCL)...")
+    message(STATUS "CMAKE_ANDROID_ARCH_ABI = ${CMAKE_ANDROID_ARCH_ABI}")
 
-set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libraries" FORCE)
-set(GGML_VULKAN ON CACHE BOOL "Enable Vulkan Backend" FORCE)
-set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "Build examples" FORCE)
-set(LLAMA_BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
-set(LLAMA_BUILD_SERVER OFF CACHE BOOL "Build server" FORCE)
+    # Define the path to the prebuilt library
+    set(OPENCL_LIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/opencl-libs/android/${CMAKE_ANDROID_ARCH_ABI}/libOpenCL.so")
 
-# --- 1. Point to your downloaded Vulkan Headers ---
-# You listed "Vulkan-Headers-main" in your src directory
-set(VULKAN_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/Vulkan-Headers-main/include")
-
-if(NOT EXISTS "${VULKAN_INCLUDE_DIR}/vulkan/vulkan.hpp")
-    message(FATAL_ERROR "Vulkan headers not found at ${VULKAN_INCLUDE_DIR}. Please check that the 'include' folder exists inside Vulkan-Headers-main.")
+    # Create the imported target for your wrapper to use later
+    add_library(opencl-lib SHARED IMPORTED)
+    set_target_properties(opencl-lib PROPERTIES IMPORTED_LOCATION "${OPENCL_LIB_PATH}")
+    
+    # CRITICAL: Force llama.cpp (and ggml) to use these paths instead of searching system paths
+    set(OpenCL_FOUND TRUE CACHE BOOL "OpenCL found" FORCE)
+    set(OpenCL_INCLUDE_DIR "${OPENCL_HEADERS_DIR}" CACHE PATH "OpenCL include dir" FORCE)
+    set(OpenCL_LIBRARY "${OPENCL_LIB_PATH}" CACHE FILEPATH "OpenCL library" FORCE)
 endif()
 
-# --- Add llama.cpp Subdirectory ---
+# 2. Add llama.cpp (This builds llama, ggml, and applies the -DGGML_OPENCL flags)
 add_subdirectory(llama.cpp)
 
-# --- 2. Inject Vulkan Headers ---
-if(TARGET ggml-vulkan)
-    target_include_directories(ggml-vulkan PRIVATE "${VULKAN_INCLUDE_DIR}")
-endif()
-
-# --- Android Specific Logic ---
+# 3. Define your wrapper library (mtmd)
 if (ANDROID)
-    message(STATUS "Configuring for Android...")
-
     find_library(log-lib log)
-    find_library(vulkan-lib vulkan)
 
     add_library(mtmd SHARED
         llama.cpp/tools/mtmd/mtmd.cpp
@@ -45,24 +36,25 @@ if (ANDROID)
         llama.cpp/tools/mtmd/mtmd-helper.cpp
     )
 
+    # Include directories
     target_include_directories(mtmd PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/ggml/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/common"
         "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp/tools/mtmd"
-        # 3. Add root src path so C++ can find "miniaudio/miniaudio.h"
-        "${CMAKE_CURRENT_SOURCE_DIR}" 
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${OPENCL_HEADERS_DIR}"
     )
 
+    # Link libraries
     target_link_libraries(mtmd 
         PUBLIC 
-        llama 
-        ggml
-        ${log-lib}
-        ${vulkan-lib} 
+            llama 
+            ggml
+            ${log-lib}
+            opencl-lib 
     )
 
     find_package(Threads REQUIRED)
     target_link_libraries(mtmd PRIVATE Threads::Threads)
-    
 endif()
