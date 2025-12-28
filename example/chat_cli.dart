@@ -22,7 +22,9 @@ void main() async {
     // Load the LLM model
     print("Loading model, please wait...");
     Llama.libraryPath = "bin/MAC_ARM64/libllama.dylib";
-    String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
+    // String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
+    String modelPath =
+        "/Users/adel/.hugind/Qwen/Qwen3-VL-8B-Instruct-GGUF/Qwen3VL-8B-Instruct-Q8_0.gguf";
     Llama llama = Llama(
       modelPath,
       modelParams: ModelParams(),
@@ -63,12 +65,13 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
       if (chatHistory.shouldTrimBeforePrompt(llama, userInput)) {
         print("📝 Auto-trimming old messages to make space...");
         chatHistory.autoTrimForSpace(llama);
-        
+
         // Clear llama context to match our trimmed history
         llama.clear();
-        
+
         // Re-set the context with trimmed history
-        String trimmedContext = chatHistory.exportFormat(ChatFormat.gemma);
+        // String trimmedContext = chatHistory.exportFormat(ChatFormat.gemma);
+        String trimmedContext = chatHistory.exportFormat(ChatFormat.qwen3);
         try {
           llama.setPrompt(trimmedContext);
         } catch (e) {
@@ -84,35 +87,36 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
       chatHistory.addMessage(role: Role.assistant, content: "");
 
       // Prepare prompt for the model
-      String prompt = chatHistory.exportFormat(ChatFormat.gemma,
+      String prompt = chatHistory.exportFormat(ChatFormat.qwen3,
           leaveLastAssistantOpen: true);
 
       try {
         // Send to model
         llama.setPrompt(prompt);
       } catch (e) {
-        if (e.toString().contains("Context") || e.toString().contains("context")) {
+        if (e.toString().contains("Context") ||
+            e.toString().contains("context")) {
           // Auto-trim and retry
           print("\n📝 Context full! Auto-trimming conversation history...");
-          
+
           // Remove the messages we just added
           chatHistory.messages.removeLast(); // Remove empty assistant
           chatHistory.messages.removeLast(); // Remove user message
-          
+
           // Trim the history
           chatHistory.autoTrimForSpace(llama, reserveTokens: 150);
-          
+
           // Clear and reset llama
           llama.clear();
-          
+
           // Re-add the user message after trimming
           chatHistory.addMessage(role: Role.user, content: userInput);
           chatHistory.addMessage(role: Role.assistant, content: "");
-          
+
           // Try again with trimmed context
-          prompt = chatHistory.exportFormat(ChatFormat.gemma,
+          prompt = chatHistory.exportFormat(ChatFormat.qwen3,
               leaveLastAssistantOpen: true);
-          
+
           try {
             llama.setPrompt(prompt);
           } catch (e2) {
@@ -134,11 +138,11 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
       await for (final token in llama.generateText()) {
         final incoming = responseBuffer.toString() + token;
 
-        if (incoming.contains("<end_of_turn>")) {
+        if (incoming.contains("<|im_end|>")) {
           endOfTurnFound = true;
-          final clean = incoming.split("<end_of_turn>").first;
-          final newSegment = clean.substring(responseBuffer.length);
-          if (newSegment.isNotEmpty) {
+          final clean = incoming.split("<|im_end|>").first;
+          if (clean.length > responseBuffer.length) {
+            final newSegment = clean.substring(responseBuffer.length);
             stdout.write(newSegment);
           }
           responseBuffer
@@ -165,12 +169,10 @@ You are a helpful, concise assistant. Keep your answers informative but brief.""
       }
 
       print(""); // Newline after response
-      
+
       // Show history status
-      print(
-        "\n[History: ${chatHistory.messages.length} active / "
-        "${chatHistory.fullHistory.length} total messages]"
-      );
+      print("\n[History: ${chatHistory.messages.length} active / "
+          "${chatHistory.fullHistory.length} total messages]");
     }
 
     // Clean up

@@ -8,7 +8,8 @@ enum ChatFormat {
   chatml,
   alpaca,
   gemma,
-  harmony;
+  harmony,
+  qwen3;
 
   String get value => name;
 }
@@ -157,6 +158,9 @@ class ChatHistory {
       case ChatFormat.harmony:
         return _exportHarmony(processedMsgs,
             leaveLastAssistantOpen: leaveLastAssistantOpen);
+      case ChatFormat.qwen3:
+        return _exportQwen3Jinja(processedMsgs,
+            leaveLastAssistantOpen: leaveLastAssistantOpen);
     }
   }
 
@@ -291,6 +295,89 @@ class ChatHistory {
     messages.addAll(systemMessages);
     messages.addAll(recentMessages);
     return true;
+  }
+
+  String _exportQwen3Jinja(List<Message> msgs,
+      {bool leaveLastAssistantOpen = false}) {
+    final buffer = StringBuffer();
+
+    // Qwen3 expects add_generation_prompt instead of an open assistant turn.
+    // If the last message is an empty assistant placeholder, drop it and
+    // request a new turn footer at the end instead.
+    final trimmedMsgs = List<Message>.from(msgs);
+    bool addGenerationPrompt = leaveLastAssistantOpen;
+    if (leaveLastAssistantOpen &&
+        trimmedMsgs.isNotEmpty &&
+        trimmedMsgs.last.role == Role.assistant &&
+        trimmedMsgs.last.content.trim().isEmpty) {
+      trimmedMsgs.removeLast();
+      addGenerationPrompt = true;
+    }
+
+    int startIdx = 0;
+    if (trimmedMsgs.isNotEmpty && trimmedMsgs.first.role == Role.system) {
+      buffer.write(
+          '<|im_start|>system\n${trimmedMsgs.first.content}<|im_end|>\n');
+      startIdx = 1;
+    }
+
+    // Find the last user message index to mirror the template's thinking logic.
+    int lastUserIdx = trimmedMsgs.lastIndexWhere(
+        (m) => m.role == Role.user || m.role == Role.system);
+    if (lastUserIdx < 0) lastUserIdx = trimmedMsgs.length - 1;
+
+    for (var i = startIdx; i < trimmedMsgs.length; i++) {
+      final message = trimmedMsgs[i];
+
+      switch (message.role) {
+        case Role.user:
+          buffer
+              .write('<|im_start|>user\n${message.content}<|im_end|>\n');
+          break;
+        case Role.system:
+          buffer
+              .write('<|im_start|>system\n${message.content}<|im_end|>\n');
+          break;
+        case Role.assistant:
+          final content = message.content;
+          String reasoning = '';
+          String assistantContent = content;
+
+          // If the assistant already contains a think block, preserve it.
+          const thinkOpen = '<think>';
+          const thinkClose = '</think>';
+          if (content.contains(thinkOpen) && content.contains(thinkClose)) {
+            final beforeClose = content.split(thinkClose).first;
+            final afterClose = content.substring(
+                content.indexOf(thinkClose) + thinkClose.length);
+            if (beforeClose.contains(thinkOpen)) {
+              reasoning = beforeClose.split(thinkOpen).last.trim();
+              assistantContent = afterClose.trimLeft();
+            }
+          }
+
+          buffer.write('<|im_start|>assistant\n');
+          final isAfterLastQuery = i > lastUserIdx;
+          final isLastMessage = i == trimmedMsgs.length - 1;
+
+          if (isAfterLastQuery && (isLastMessage || reasoning.isNotEmpty)) {
+            buffer.write('<think>\n${reasoning.trim()}\n</think>\n\n');
+            buffer.write(assistantContent.trimLeft());
+          } else {
+            buffer.write(assistantContent);
+          }
+          buffer.write('<|im_end|>\n');
+          break;
+        case Role.unknown:
+          break;
+      }
+    }
+
+    if (addGenerationPrompt) {
+      buffer.write('<|im_start|>assistant\n');
+    }
+
+    return buffer.toString();
   }
 
   bool shouldTrimBeforePrompt(Llama llama, String newPrompt) {
