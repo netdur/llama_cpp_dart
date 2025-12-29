@@ -819,6 +819,11 @@ class Llama {
       }
 
       if (_isInitialized) {
+        if (_mctx != nullptr) {
+          lib.mtmd_free(_mctx);
+          _mctx = nullptr;
+        }
+
         for (final slot in _slots.values) {
           if (slot.context.address != 0) lib.llama_free(slot.context);
         }
@@ -841,7 +846,10 @@ class Llama {
         _batchSeqIds.clear();
       }
 
-      if (_mctx != nullptr) _mctx = nullptr;
+      if (_mctx != nullptr) {
+        lib.mtmd_free(_mctx);
+        _mctx = nullptr;
+      }
       lib.llama_backend_free();
     } finally {
       _isDisposed = true;
