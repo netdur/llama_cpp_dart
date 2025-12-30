@@ -12,7 +12,8 @@ The project includes llama.cpp as a submodule and requires native binaries for v
 1. Make sure you've initialized the submodules:
    ```bash
    git submodule update --remote src/llama.cpp
-   git submodule update --init --recursive
+   git add src/llama.cpp
+   git commit -m "Bump llama.cpp submodule"
    ```
 
 2. Navigate to the `darwin` directory:

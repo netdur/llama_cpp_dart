@@ -3457,6 +3457,78 @@ class llama_cpp {
       ffi.Pointer<ggml_tensor> Function(
           ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>)>();
 
+  ffi.Pointer<ggml_tensor> ggml_expm1(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+  ) {
+    return _ggml_expm1(
+      ctx,
+      a,
+    );
+  }
+
+  late final _ggml_expm1Ptr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>)>>('ggml_expm1');
+  late final _ggml_expm1 = _ggml_expm1Ptr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>)>();
+
+  ffi.Pointer<ggml_tensor> ggml_expm1_inplace(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+  ) {
+    return _ggml_expm1_inplace(
+      ctx,
+      a,
+    );
+  }
+
+  late final _ggml_expm1_inplacePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>)>>('ggml_expm1_inplace');
+  late final _ggml_expm1_inplace = _ggml_expm1_inplacePtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>)>();
+
+  ffi.Pointer<ggml_tensor> ggml_softplus(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+  ) {
+    return _ggml_softplus(
+      ctx,
+      a,
+    );
+  }
+
+  late final _ggml_softplusPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>)>>('ggml_softplus');
+  late final _ggml_softplus = _ggml_softplusPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>)>();
+
+  ffi.Pointer<ggml_tensor> ggml_softplus_inplace(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+  ) {
+    return _ggml_softplus_inplace(
+      ctx,
+      a,
+    );
+  }
+
+  late final _ggml_softplus_inplacePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>)>>('ggml_softplus_inplace');
+  late final _ggml_softplus_inplace = _ggml_softplus_inplacePtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>)>();
+
   ffi.Pointer<ggml_tensor> ggml_sin(
     ffi.Pointer<ggml_context> ctx,
     ffi.Pointer<ggml_tensor> a,
@@ -3562,6 +3634,24 @@ class llama_cpp {
           ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
               ffi.Pointer<ggml_tensor>)>>('ggml_sum_rows');
   late final _ggml_sum_rows = _ggml_sum_rowsPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>)>();
+
+  ffi.Pointer<ggml_tensor> ggml_cumsum(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+  ) {
+    return _ggml_cumsum(
+      ctx,
+      a,
+    );
+  }
+
+  late final _ggml_cumsumPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>)>>('ggml_cumsum');
+  late final _ggml_cumsum = _ggml_cumsumPtr.asFunction<
       ffi.Pointer<ggml_tensor> Function(
           ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>)>();
 
@@ -7813,6 +7903,37 @@ class llama_cpp {
       ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
           ffi.Pointer<ggml_tensor>, int, int, int, int)>();
 
+  ffi.Pointer<ggml_tensor> ggml_pad_circular(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+    int p0,
+    int p1,
+    int p2,
+    int p3,
+  ) {
+    return _ggml_pad_circular(
+      ctx,
+      a,
+      p0,
+      p1,
+      p2,
+      p3,
+    );
+  }
+
+  late final _ggml_pad_circularPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(
+              ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>,
+              ffi.Int,
+              ffi.Int,
+              ffi.Int,
+              ffi.Int)>>('ggml_pad_circular');
+  late final _ggml_pad_circular = _ggml_pad_circularPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+          ffi.Pointer<ggml_tensor>, int, int, int, int)>();
+
   ffi.Pointer<ggml_tensor> ggml_pad_ext(
     ffi.Pointer<ggml_context> ctx,
     ffi.Pointer<ggml_tensor> a,
@@ -7853,6 +7974,49 @@ class llama_cpp {
               ffi.Int,
               ffi.Int)>>('ggml_pad_ext');
   late final _ggml_pad_ext = _ggml_pad_extPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+          ffi.Pointer<ggml_tensor>, int, int, int, int, int, int, int, int)>();
+
+  ffi.Pointer<ggml_tensor> ggml_pad_ext_circular(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+    int lp0,
+    int rp0,
+    int lp1,
+    int rp1,
+    int lp2,
+    int rp2,
+    int lp3,
+    int rp3,
+  ) {
+    return _ggml_pad_ext_circular(
+      ctx,
+      a,
+      lp0,
+      rp0,
+      lp1,
+      rp1,
+      lp2,
+      rp2,
+      lp3,
+      rp3,
+    );
+  }
+
+  late final _ggml_pad_ext_circularPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(
+              ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>,
+              ffi.Int,
+              ffi.Int,
+              ffi.Int,
+              ffi.Int,
+              ffi.Int,
+              ffi.Int,
+              ffi.Int,
+              ffi.Int)>>('ggml_pad_ext_circular');
+  late final _ggml_pad_ext_circular = _ggml_pad_ext_circularPtr.asFunction<
       ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
           ffi.Pointer<ggml_tensor>, int, int, int, int, int, int, int, int)>();
 
@@ -7912,6 +8076,66 @@ class llama_cpp {
       ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
           ffi.Pointer<ggml_tensor>, int, int, int, int)>();
 
+  ffi.Pointer<ggml_tensor> ggml_tri(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+    ggml_tri_type type,
+  ) {
+    return _ggml_tri(
+      ctx,
+      a,
+      type.value,
+    );
+  }
+
+  late final _ggml_triPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>, ffi.UnsignedInt)>>('ggml_tri');
+  late final _ggml_tri = _ggml_triPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>, int)>();
+
+  ffi.Pointer<ggml_tensor> ggml_fill(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+    double c,
+  ) {
+    return _ggml_fill(
+      ctx,
+      a,
+      c,
+    );
+  }
+
+  late final _ggml_fillPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>, ffi.Float)>>('ggml_fill');
+  late final _ggml_fill = _ggml_fillPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>, double)>();
+
+  ffi.Pointer<ggml_tensor> ggml_fill_inplace(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+    double c,
+  ) {
+    return _ggml_fill_inplace(
+      ctx,
+      a,
+      c,
+    );
+  }
+
+  late final _ggml_fill_inplacePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>, ffi.Float)>>('ggml_fill_inplace');
+  late final _ggml_fill_inplace = _ggml_fill_inplacePtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>, double)>();
+
   ffi.Pointer<ggml_tensor> ggml_timestep_embedding(
     ffi.Pointer<ggml_context> ctx,
     ffi.Pointer<ggml_tensor> timesteps,
@@ -7957,6 +8181,46 @@ class llama_cpp {
       ffi.Pointer<ggml_tensor> Function(
           ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>, int)>();
 
+  ffi.Pointer<ggml_tensor> ggml_argsort_top_k(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+    int k,
+  ) {
+    return _ggml_argsort_top_k(
+      ctx,
+      a,
+      k,
+    );
+  }
+
+  late final _ggml_argsort_top_kPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>, ffi.Int)>>('ggml_argsort_top_k');
+  late final _ggml_argsort_top_k = _ggml_argsort_top_kPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>, int)>();
+
+  ffi.Pointer<ggml_tensor> ggml_top_k(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+    int k,
+  ) {
+    return _ggml_top_k(
+      ctx,
+      a,
+      k,
+    );
+  }
+
+  late final _ggml_top_kPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>, ffi.Int)>>('ggml_top_k');
+  late final _ggml_top_k = _ggml_top_kPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>, int)>();
+
   ffi.Pointer<ggml_tensor> ggml_arange(
     ffi.Pointer<ggml_context> ctx,
     double start,
@@ -7978,26 +8242,6 @@ class llama_cpp {
   late final _ggml_arange = _ggml_arangePtr.asFunction<
       ffi.Pointer<ggml_tensor> Function(
           ffi.Pointer<ggml_context>, double, double, double)>();
-
-  ffi.Pointer<ggml_tensor> ggml_top_k(
-    ffi.Pointer<ggml_context> ctx,
-    ffi.Pointer<ggml_tensor> a,
-    int k,
-  ) {
-    return _ggml_top_k(
-      ctx,
-      a,
-      k,
-    );
-  }
-
-  late final _ggml_top_kPtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
-              ffi.Pointer<ggml_tensor>, ffi.Int)>>('ggml_top_k');
-  late final _ggml_top_k = _ggml_top_kPtr.asFunction<
-      ffi.Pointer<ggml_tensor> Function(
-          ffi.Pointer<ggml_context>, ffi.Pointer<ggml_tensor>, int)>();
 
   ffi.Pointer<ggml_tensor> ggml_flash_attn_ext(
     ffi.Pointer<ggml_context> ctx,
@@ -8487,6 +8731,42 @@ class llama_cpp {
           ffi.Pointer<ggml_tensor>,
           ffi.Pointer<ggml_tensor>,
           ffi.Pointer<ggml_tensor>)>();
+
+  ffi.Pointer<ggml_tensor> ggml_solve_tri(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+    ffi.Pointer<ggml_tensor> b,
+    bool left,
+    bool lower,
+    bool uni,
+  ) {
+    return _ggml_solve_tri(
+      ctx,
+      a,
+      b,
+      left,
+      lower,
+      uni,
+    );
+  }
+
+  late final _ggml_solve_triPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(
+              ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>,
+              ffi.Pointer<ggml_tensor>,
+              ffi.Bool,
+              ffi.Bool,
+              ffi.Bool)>>('ggml_solve_tri');
+  late final _ggml_solve_tri = _ggml_solve_triPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(
+          ffi.Pointer<ggml_context>,
+          ffi.Pointer<ggml_tensor>,
+          ffi.Pointer<ggml_tensor>,
+          bool,
+          bool,
+          bool)>();
 
   ffi.Pointer<ggml_tensor> ggml_map_custom1(
     ffi.Pointer<ggml_context> ctx,
@@ -9251,6 +9531,24 @@ class llama_cpp {
       void Function(ffi.Pointer<ggml_cgraph>, ffi.Pointer<ggml_cgraph>,
           ffi.Pointer<ffi.Char>)>();
 
+  void ggml_log_get(
+    ffi.Pointer<ggml_log_callback> log_callback,
+    ffi.Pointer<ffi.Pointer<ffi.Void>> user_data,
+  ) {
+    return _ggml_log_get(
+      log_callback,
+      user_data,
+    );
+  }
+
+  late final _ggml_log_getPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ggml_log_callback>,
+              ffi.Pointer<ffi.Pointer<ffi.Void>>)>>('ggml_log_get');
+  late final _ggml_log_get = _ggml_log_getPtr.asFunction<
+      void Function(ffi.Pointer<ggml_log_callback>,
+          ffi.Pointer<ffi.Pointer<ffi.Void>>)>();
+
   void ggml_log_set(
     ggml_log_callback log_callback,
     ffi.Pointer<ffi.Void> user_data,
@@ -9515,6 +9813,39 @@ class llama_cpp {
   late final _ggml_gallocr_reserve = _ggml_gallocr_reservePtr
       .asFunction<bool Function(ggml_gallocr_t, ffi.Pointer<ggml_cgraph>)>();
 
+  void ggml_gallocr_reserve_n_size(
+    ggml_gallocr_t galloc,
+    ffi.Pointer<ggml_cgraph> graph,
+    ffi.Pointer<ffi.Int> node_buffer_ids,
+    ffi.Pointer<ffi.Int> leaf_buffer_ids,
+    ffi.Pointer<ffi.Size> sizes,
+  ) {
+    return _ggml_gallocr_reserve_n_size(
+      galloc,
+      graph,
+      node_buffer_ids,
+      leaf_buffer_ids,
+      sizes,
+    );
+  }
+
+  late final _ggml_gallocr_reserve_n_sizePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+              ggml_gallocr_t,
+              ffi.Pointer<ggml_cgraph>,
+              ffi.Pointer<ffi.Int>,
+              ffi.Pointer<ffi.Int>,
+              ffi.Pointer<ffi.Size>)>>('ggml_gallocr_reserve_n_size');
+  late final _ggml_gallocr_reserve_n_size =
+      _ggml_gallocr_reserve_n_sizePtr.asFunction<
+          void Function(
+              ggml_gallocr_t,
+              ffi.Pointer<ggml_cgraph>,
+              ffi.Pointer<ffi.Int>,
+              ffi.Pointer<ffi.Int>,
+              ffi.Pointer<ffi.Size>)>();
+
   bool ggml_gallocr_reserve_n(
     ggml_gallocr_t galloc,
     ffi.Pointer<ggml_cgraph> graph,
@@ -9572,6 +9903,26 @@ class llama_cpp {
           'ggml_gallocr_get_buffer_size');
   late final _ggml_gallocr_get_buffer_size = _ggml_gallocr_get_buffer_sizePtr
       .asFunction<int Function(ggml_gallocr_t, int)>();
+
+  int ggml_backend_alloc_ctx_tensors_from_buft_size(
+    ffi.Pointer<ggml_context> ctx,
+    ggml_backend_buffer_type_t buft,
+  ) {
+    return _ggml_backend_alloc_ctx_tensors_from_buft_size(
+      ctx,
+      buft,
+    );
+  }
+
+  late final _ggml_backend_alloc_ctx_tensors_from_buft_sizePtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Size Function(
+                  ffi.Pointer<ggml_context>, ggml_backend_buffer_type_t)>>(
+      'ggml_backend_alloc_ctx_tensors_from_buft_size');
+  late final _ggml_backend_alloc_ctx_tensors_from_buft_size =
+      _ggml_backend_alloc_ctx_tensors_from_buft_sizePtr.asFunction<
+          int Function(
+              ffi.Pointer<ggml_context>, ggml_backend_buffer_type_t)>();
 
   ffi.Pointer<ggml_backend_buffer> ggml_backend_alloc_ctx_tensors_from_buft(
     ffi.Pointer<ggml_context> ctx,
@@ -11008,6 +11359,27 @@ class llama_cpp {
   late final _ggml_backend_sched_free = _ggml_backend_sched_freePtr
       .asFunction<void Function(ggml_backend_sched_t)>();
 
+  void ggml_backend_sched_reserve_size(
+    ggml_backend_sched_t sched,
+    ffi.Pointer<ggml_cgraph> measure_graph,
+    ffi.Pointer<ffi.Size> sizes,
+  ) {
+    return _ggml_backend_sched_reserve_size(
+      sched,
+      measure_graph,
+      sizes,
+    );
+  }
+
+  late final _ggml_backend_sched_reserve_sizePtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ggml_backend_sched_t, ffi.Pointer<ggml_cgraph>,
+              ffi.Pointer<ffi.Size>)>>('ggml_backend_sched_reserve_size');
+  late final _ggml_backend_sched_reserve_size =
+      _ggml_backend_sched_reserve_sizePtr.asFunction<
+          void Function(ggml_backend_sched_t, ffi.Pointer<ggml_cgraph>,
+              ffi.Pointer<ffi.Size>)>();
+
   bool ggml_backend_sched_reserve(
     ggml_backend_sched_t sched,
     ffi.Pointer<ggml_cgraph> measure_graph,
@@ -12014,6 +12386,15 @@ class llama_cpp {
       _lookup<ffi.NativeFunction<ffi.Int Function()>>('ggml_cpu_has_riscv_v');
   late final _ggml_cpu_has_riscv_v =
       _ggml_cpu_has_riscv_vPtr.asFunction<int Function()>();
+
+  int ggml_cpu_get_rvv_vlen() {
+    return _ggml_cpu_get_rvv_vlen();
+  }
+
+  late final _ggml_cpu_get_rvv_vlenPtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>('ggml_cpu_get_rvv_vlen');
+  late final _ggml_cpu_get_rvv_vlen =
+      _ggml_cpu_get_rvv_vlenPtr.asFunction<int Function()>();
 
   int ggml_cpu_has_vsx() {
     return _ggml_cpu_has_vsx();
@@ -13275,6 +13656,50 @@ class llama_cpp {
   late final _llama_free =
       _llama_freePtr.asFunction<void Function(ffi.Pointer<llama_context>)>();
 
+  llama_params_fit_status llama_params_fit(
+    ffi.Pointer<ffi.Char> path_model,
+    ffi.Pointer<llama_model_params> mparams,
+    ffi.Pointer<llama_context_params> cparams,
+    ffi.Pointer<ffi.Float> tensor_split,
+    ffi.Pointer<llama_model_tensor_buft_override> tensor_buft_overrides,
+    int margin,
+    int n_ctx_min,
+    ggml_log_level log_level,
+  ) {
+    return llama_params_fit_status.fromValue(_llama_params_fit(
+      path_model,
+      mparams,
+      cparams,
+      tensor_split,
+      tensor_buft_overrides,
+      margin,
+      n_ctx_min,
+      log_level.value,
+    ));
+  }
+
+  late final _llama_params_fitPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.UnsignedInt Function(
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<llama_model_params>,
+              ffi.Pointer<llama_context_params>,
+              ffi.Pointer<ffi.Float>,
+              ffi.Pointer<llama_model_tensor_buft_override>,
+              ffi.Size,
+              ffi.Uint32,
+              ffi.UnsignedInt)>>('llama_params_fit');
+  late final _llama_params_fit = _llama_params_fitPtr.asFunction<
+      int Function(
+          ffi.Pointer<ffi.Char>,
+          ffi.Pointer<llama_model_params>,
+          ffi.Pointer<llama_context_params>,
+          ffi.Pointer<ffi.Float>,
+          ffi.Pointer<llama_model_tensor_buft_override>,
+          int,
+          int,
+          int)>();
+
   int llama_time_us() {
     return _llama_time_us();
   }
@@ -13301,6 +13726,16 @@ class llama_cpp {
           'llama_max_parallel_sequences');
   late final _llama_max_parallel_sequences =
       _llama_max_parallel_sequencesPtr.asFunction<int Function()>();
+
+  int llama_max_tensor_buft_overrides() {
+    return _llama_max_tensor_buft_overrides();
+  }
+
+  late final _llama_max_tensor_buft_overridesPtr =
+      _lookup<ffi.NativeFunction<ffi.Size Function()>>(
+          'llama_max_tensor_buft_overrides');
+  late final _llama_max_tensor_buft_overrides =
+      _llama_max_tensor_buft_overridesPtr.asFunction<int Function()>();
 
   bool llama_supports_mmap() {
     return _llama_supports_mmap();
@@ -13761,6 +14196,20 @@ class llama_cpp {
           'llama_model_meta_count');
   late final _llama_model_meta_count = _llama_model_meta_countPtr
       .asFunction<int Function(ffi.Pointer<llama_model>)>();
+
+  ffi.Pointer<ffi.Char> llama_model_meta_key_str(
+    llama_model_meta_key key,
+  ) {
+    return _llama_model_meta_key_str(
+      key.value,
+    );
+  }
+
+  late final _llama_model_meta_key_strPtr = _lookup<
+          ffi.NativeFunction<ffi.Pointer<ffi.Char> Function(ffi.UnsignedInt)>>(
+      'llama_model_meta_key_str');
+  late final _llama_model_meta_key_str = _llama_model_meta_key_strPtr
+      .asFunction<ffi.Pointer<ffi.Char> Function(int)>();
 
   int llama_model_meta_key_by_index(
     ffi.Pointer<llama_model> model,
@@ -16613,6 +17062,24 @@ class llama_cpp {
   late final _llama_print_system_info = _llama_print_system_infoPtr
       .asFunction<ffi.Pointer<ffi.Char> Function()>();
 
+  void llama_log_get(
+    ffi.Pointer<ggml_log_callback> log_callback,
+    ffi.Pointer<ffi.Pointer<ffi.Void>> user_data,
+  ) {
+    return _llama_log_get(
+      log_callback,
+      user_data,
+    );
+  }
+
+  late final _llama_log_getPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ggml_log_callback>,
+              ffi.Pointer<ffi.Pointer<ffi.Void>>)>>('llama_log_get');
+  late final _llama_log_get = _llama_log_getPtr.asFunction<
+      void Function(ffi.Pointer<ggml_log_callback>,
+          ffi.Pointer<ffi.Pointer<ffi.Void>>)>();
+
   void llama_log_set(
     ggml_log_callback log_callback,
     ffi.Pointer<ffi.Void> user_data,
@@ -17431,6 +17898,23 @@ class llama_cpp {
   late final _mtmd_get_output_embd = _mtmd_get_output_embdPtr
       .asFunction<ffi.Pointer<ffi.Float> Function(ffi.Pointer<mtmd_context>)>();
 
+  void mtmd_log_set(
+    ggml_log_callback log_callback,
+    ffi.Pointer<ffi.Void> user_data,
+  ) {
+    return _mtmd_log_set(
+      log_callback,
+      user_data,
+    );
+  }
+
+  late final _mtmd_log_setPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(
+              ggml_log_callback, ffi.Pointer<ffi.Void>)>>('mtmd_log_set');
+  late final _mtmd_log_set = _mtmd_log_setPtr
+      .asFunction<void Function(ggml_log_callback, ffi.Pointer<ffi.Void>)>();
+
   /// //////////////////////////////////////
   ffi.Pointer<mtmd_input_chunks> mtmd_test_create_input_chunks() {
     return _mtmd_test_create_input_chunks();
@@ -17958,81 +18442,86 @@ enum ggml_op {
   GGML_OP_COS(13),
   GGML_OP_SUM(14),
   GGML_OP_SUM_ROWS(15),
-  GGML_OP_MEAN(16),
-  GGML_OP_ARGMAX(17),
-  GGML_OP_COUNT_EQUAL(18),
-  GGML_OP_REPEAT(19),
-  GGML_OP_REPEAT_BACK(20),
-  GGML_OP_CONCAT(21),
-  GGML_OP_SILU_BACK(22),
-  GGML_OP_NORM(23),
-  GGML_OP_RMS_NORM(24),
-  GGML_OP_RMS_NORM_BACK(25),
-  GGML_OP_GROUP_NORM(26),
-  GGML_OP_L2_NORM(27),
-  GGML_OP_MUL_MAT(28),
-  GGML_OP_MUL_MAT_ID(29),
-  GGML_OP_OUT_PROD(30),
-  GGML_OP_SCALE(31),
-  GGML_OP_SET(32),
-  GGML_OP_CPY(33),
-  GGML_OP_CONT(34),
-  GGML_OP_RESHAPE(35),
-  GGML_OP_VIEW(36),
-  GGML_OP_PERMUTE(37),
-  GGML_OP_TRANSPOSE(38),
-  GGML_OP_GET_ROWS(39),
-  GGML_OP_GET_ROWS_BACK(40),
-  GGML_OP_SET_ROWS(41),
-  GGML_OP_DIAG(42),
-  GGML_OP_DIAG_MASK_INF(43),
-  GGML_OP_DIAG_MASK_ZERO(44),
-  GGML_OP_SOFT_MAX(45),
-  GGML_OP_SOFT_MAX_BACK(46),
-  GGML_OP_ROPE(47),
-  GGML_OP_ROPE_BACK(48),
-  GGML_OP_CLAMP(49),
-  GGML_OP_CONV_TRANSPOSE_1D(50),
-  GGML_OP_IM2COL(51),
-  GGML_OP_IM2COL_BACK(52),
-  GGML_OP_IM2COL_3D(53),
-  GGML_OP_CONV_2D(54),
-  GGML_OP_CONV_3D(55),
-  GGML_OP_CONV_2D_DW(56),
-  GGML_OP_CONV_TRANSPOSE_2D(57),
-  GGML_OP_POOL_1D(58),
-  GGML_OP_POOL_2D(59),
-  GGML_OP_POOL_2D_BACK(60),
-  GGML_OP_UPSCALE(61),
-  GGML_OP_PAD(62),
-  GGML_OP_PAD_REFLECT_1D(63),
-  GGML_OP_ROLL(64),
-  GGML_OP_ARANGE(65),
-  GGML_OP_TIMESTEP_EMBEDDING(66),
-  GGML_OP_ARGSORT(67),
-  GGML_OP_LEAKY_RELU(68),
-  GGML_OP_FLASH_ATTN_EXT(69),
-  GGML_OP_FLASH_ATTN_BACK(70),
-  GGML_OP_SSM_CONV(71),
-  GGML_OP_SSM_SCAN(72),
-  GGML_OP_WIN_PART(73),
-  GGML_OP_WIN_UNPART(74),
-  GGML_OP_GET_REL_POS(75),
-  GGML_OP_ADD_REL_POS(76),
-  GGML_OP_RWKV_WKV6(77),
-  GGML_OP_GATED_LINEAR_ATTN(78),
-  GGML_OP_RWKV_WKV7(79),
-  GGML_OP_UNARY(80),
-  GGML_OP_MAP_CUSTOM1(81),
-  GGML_OP_MAP_CUSTOM2(82),
-  GGML_OP_MAP_CUSTOM3(83),
-  GGML_OP_CUSTOM(84),
-  GGML_OP_CROSS_ENTROPY_LOSS(85),
-  GGML_OP_CROSS_ENTROPY_LOSS_BACK(86),
-  GGML_OP_OPT_STEP_ADAMW(87),
-  GGML_OP_OPT_STEP_SGD(88),
-  GGML_OP_GLU(89),
-  GGML_OP_COUNT(90);
+  GGML_OP_CUMSUM(16),
+  GGML_OP_MEAN(17),
+  GGML_OP_ARGMAX(18),
+  GGML_OP_COUNT_EQUAL(19),
+  GGML_OP_REPEAT(20),
+  GGML_OP_REPEAT_BACK(21),
+  GGML_OP_CONCAT(22),
+  GGML_OP_SILU_BACK(23),
+  GGML_OP_NORM(24),
+  GGML_OP_RMS_NORM(25),
+  GGML_OP_RMS_NORM_BACK(26),
+  GGML_OP_GROUP_NORM(27),
+  GGML_OP_L2_NORM(28),
+  GGML_OP_MUL_MAT(29),
+  GGML_OP_MUL_MAT_ID(30),
+  GGML_OP_OUT_PROD(31),
+  GGML_OP_SCALE(32),
+  GGML_OP_SET(33),
+  GGML_OP_CPY(34),
+  GGML_OP_CONT(35),
+  GGML_OP_RESHAPE(36),
+  GGML_OP_VIEW(37),
+  GGML_OP_PERMUTE(38),
+  GGML_OP_TRANSPOSE(39),
+  GGML_OP_GET_ROWS(40),
+  GGML_OP_GET_ROWS_BACK(41),
+  GGML_OP_SET_ROWS(42),
+  GGML_OP_DIAG(43),
+  GGML_OP_DIAG_MASK_INF(44),
+  GGML_OP_DIAG_MASK_ZERO(45),
+  GGML_OP_SOFT_MAX(46),
+  GGML_OP_SOFT_MAX_BACK(47),
+  GGML_OP_ROPE(48),
+  GGML_OP_ROPE_BACK(49),
+  GGML_OP_CLAMP(50),
+  GGML_OP_CONV_TRANSPOSE_1D(51),
+  GGML_OP_IM2COL(52),
+  GGML_OP_IM2COL_BACK(53),
+  GGML_OP_IM2COL_3D(54),
+  GGML_OP_CONV_2D(55),
+  GGML_OP_CONV_3D(56),
+  GGML_OP_CONV_2D_DW(57),
+  GGML_OP_CONV_TRANSPOSE_2D(58),
+  GGML_OP_POOL_1D(59),
+  GGML_OP_POOL_2D(60),
+  GGML_OP_POOL_2D_BACK(61),
+  GGML_OP_UPSCALE(62),
+  GGML_OP_PAD(63),
+  GGML_OP_PAD_REFLECT_1D(64),
+  GGML_OP_ROLL(65),
+  GGML_OP_ARANGE(66),
+  GGML_OP_TIMESTEP_EMBEDDING(67),
+  GGML_OP_ARGSORT(68),
+  GGML_OP_TOP_K(69),
+  GGML_OP_LEAKY_RELU(70),
+  GGML_OP_TRI(71),
+  GGML_OP_FILL(72),
+  GGML_OP_FLASH_ATTN_EXT(73),
+  GGML_OP_FLASH_ATTN_BACK(74),
+  GGML_OP_SSM_CONV(75),
+  GGML_OP_SSM_SCAN(76),
+  GGML_OP_WIN_PART(77),
+  GGML_OP_WIN_UNPART(78),
+  GGML_OP_GET_REL_POS(79),
+  GGML_OP_ADD_REL_POS(80),
+  GGML_OP_RWKV_WKV6(81),
+  GGML_OP_GATED_LINEAR_ATTN(82),
+  GGML_OP_RWKV_WKV7(83),
+  GGML_OP_SOLVE_TRI(84),
+  GGML_OP_UNARY(85),
+  GGML_OP_MAP_CUSTOM1(86),
+  GGML_OP_MAP_CUSTOM2(87),
+  GGML_OP_MAP_CUSTOM3(88),
+  GGML_OP_CUSTOM(89),
+  GGML_OP_CROSS_ENTROPY_LOSS(90),
+  GGML_OP_CROSS_ENTROPY_LOSS_BACK(91),
+  GGML_OP_OPT_STEP_ADAMW(92),
+  GGML_OP_OPT_STEP_SGD(93),
+  GGML_OP_GLU(94),
+  GGML_OP_COUNT(95);
 
   final int value;
   const ggml_op(this.value);
@@ -18054,81 +18543,86 @@ enum ggml_op {
         13 => GGML_OP_COS,
         14 => GGML_OP_SUM,
         15 => GGML_OP_SUM_ROWS,
-        16 => GGML_OP_MEAN,
-        17 => GGML_OP_ARGMAX,
-        18 => GGML_OP_COUNT_EQUAL,
-        19 => GGML_OP_REPEAT,
-        20 => GGML_OP_REPEAT_BACK,
-        21 => GGML_OP_CONCAT,
-        22 => GGML_OP_SILU_BACK,
-        23 => GGML_OP_NORM,
-        24 => GGML_OP_RMS_NORM,
-        25 => GGML_OP_RMS_NORM_BACK,
-        26 => GGML_OP_GROUP_NORM,
-        27 => GGML_OP_L2_NORM,
-        28 => GGML_OP_MUL_MAT,
-        29 => GGML_OP_MUL_MAT_ID,
-        30 => GGML_OP_OUT_PROD,
-        31 => GGML_OP_SCALE,
-        32 => GGML_OP_SET,
-        33 => GGML_OP_CPY,
-        34 => GGML_OP_CONT,
-        35 => GGML_OP_RESHAPE,
-        36 => GGML_OP_VIEW,
-        37 => GGML_OP_PERMUTE,
-        38 => GGML_OP_TRANSPOSE,
-        39 => GGML_OP_GET_ROWS,
-        40 => GGML_OP_GET_ROWS_BACK,
-        41 => GGML_OP_SET_ROWS,
-        42 => GGML_OP_DIAG,
-        43 => GGML_OP_DIAG_MASK_INF,
-        44 => GGML_OP_DIAG_MASK_ZERO,
-        45 => GGML_OP_SOFT_MAX,
-        46 => GGML_OP_SOFT_MAX_BACK,
-        47 => GGML_OP_ROPE,
-        48 => GGML_OP_ROPE_BACK,
-        49 => GGML_OP_CLAMP,
-        50 => GGML_OP_CONV_TRANSPOSE_1D,
-        51 => GGML_OP_IM2COL,
-        52 => GGML_OP_IM2COL_BACK,
-        53 => GGML_OP_IM2COL_3D,
-        54 => GGML_OP_CONV_2D,
-        55 => GGML_OP_CONV_3D,
-        56 => GGML_OP_CONV_2D_DW,
-        57 => GGML_OP_CONV_TRANSPOSE_2D,
-        58 => GGML_OP_POOL_1D,
-        59 => GGML_OP_POOL_2D,
-        60 => GGML_OP_POOL_2D_BACK,
-        61 => GGML_OP_UPSCALE,
-        62 => GGML_OP_PAD,
-        63 => GGML_OP_PAD_REFLECT_1D,
-        64 => GGML_OP_ROLL,
-        65 => GGML_OP_ARANGE,
-        66 => GGML_OP_TIMESTEP_EMBEDDING,
-        67 => GGML_OP_ARGSORT,
-        68 => GGML_OP_LEAKY_RELU,
-        69 => GGML_OP_FLASH_ATTN_EXT,
-        70 => GGML_OP_FLASH_ATTN_BACK,
-        71 => GGML_OP_SSM_CONV,
-        72 => GGML_OP_SSM_SCAN,
-        73 => GGML_OP_WIN_PART,
-        74 => GGML_OP_WIN_UNPART,
-        75 => GGML_OP_GET_REL_POS,
-        76 => GGML_OP_ADD_REL_POS,
-        77 => GGML_OP_RWKV_WKV6,
-        78 => GGML_OP_GATED_LINEAR_ATTN,
-        79 => GGML_OP_RWKV_WKV7,
-        80 => GGML_OP_UNARY,
-        81 => GGML_OP_MAP_CUSTOM1,
-        82 => GGML_OP_MAP_CUSTOM2,
-        83 => GGML_OP_MAP_CUSTOM3,
-        84 => GGML_OP_CUSTOM,
-        85 => GGML_OP_CROSS_ENTROPY_LOSS,
-        86 => GGML_OP_CROSS_ENTROPY_LOSS_BACK,
-        87 => GGML_OP_OPT_STEP_ADAMW,
-        88 => GGML_OP_OPT_STEP_SGD,
-        89 => GGML_OP_GLU,
-        90 => GGML_OP_COUNT,
+        16 => GGML_OP_CUMSUM,
+        17 => GGML_OP_MEAN,
+        18 => GGML_OP_ARGMAX,
+        19 => GGML_OP_COUNT_EQUAL,
+        20 => GGML_OP_REPEAT,
+        21 => GGML_OP_REPEAT_BACK,
+        22 => GGML_OP_CONCAT,
+        23 => GGML_OP_SILU_BACK,
+        24 => GGML_OP_NORM,
+        25 => GGML_OP_RMS_NORM,
+        26 => GGML_OP_RMS_NORM_BACK,
+        27 => GGML_OP_GROUP_NORM,
+        28 => GGML_OP_L2_NORM,
+        29 => GGML_OP_MUL_MAT,
+        30 => GGML_OP_MUL_MAT_ID,
+        31 => GGML_OP_OUT_PROD,
+        32 => GGML_OP_SCALE,
+        33 => GGML_OP_SET,
+        34 => GGML_OP_CPY,
+        35 => GGML_OP_CONT,
+        36 => GGML_OP_RESHAPE,
+        37 => GGML_OP_VIEW,
+        38 => GGML_OP_PERMUTE,
+        39 => GGML_OP_TRANSPOSE,
+        40 => GGML_OP_GET_ROWS,
+        41 => GGML_OP_GET_ROWS_BACK,
+        42 => GGML_OP_SET_ROWS,
+        43 => GGML_OP_DIAG,
+        44 => GGML_OP_DIAG_MASK_INF,
+        45 => GGML_OP_DIAG_MASK_ZERO,
+        46 => GGML_OP_SOFT_MAX,
+        47 => GGML_OP_SOFT_MAX_BACK,
+        48 => GGML_OP_ROPE,
+        49 => GGML_OP_ROPE_BACK,
+        50 => GGML_OP_CLAMP,
+        51 => GGML_OP_CONV_TRANSPOSE_1D,
+        52 => GGML_OP_IM2COL,
+        53 => GGML_OP_IM2COL_BACK,
+        54 => GGML_OP_IM2COL_3D,
+        55 => GGML_OP_CONV_2D,
+        56 => GGML_OP_CONV_3D,
+        57 => GGML_OP_CONV_2D_DW,
+        58 => GGML_OP_CONV_TRANSPOSE_2D,
+        59 => GGML_OP_POOL_1D,
+        60 => GGML_OP_POOL_2D,
+        61 => GGML_OP_POOL_2D_BACK,
+        62 => GGML_OP_UPSCALE,
+        63 => GGML_OP_PAD,
+        64 => GGML_OP_PAD_REFLECT_1D,
+        65 => GGML_OP_ROLL,
+        66 => GGML_OP_ARANGE,
+        67 => GGML_OP_TIMESTEP_EMBEDDING,
+        68 => GGML_OP_ARGSORT,
+        69 => GGML_OP_TOP_K,
+        70 => GGML_OP_LEAKY_RELU,
+        71 => GGML_OP_TRI,
+        72 => GGML_OP_FILL,
+        73 => GGML_OP_FLASH_ATTN_EXT,
+        74 => GGML_OP_FLASH_ATTN_BACK,
+        75 => GGML_OP_SSM_CONV,
+        76 => GGML_OP_SSM_SCAN,
+        77 => GGML_OP_WIN_PART,
+        78 => GGML_OP_WIN_UNPART,
+        79 => GGML_OP_GET_REL_POS,
+        80 => GGML_OP_ADD_REL_POS,
+        81 => GGML_OP_RWKV_WKV6,
+        82 => GGML_OP_GATED_LINEAR_ATTN,
+        83 => GGML_OP_RWKV_WKV7,
+        84 => GGML_OP_SOLVE_TRI,
+        85 => GGML_OP_UNARY,
+        86 => GGML_OP_MAP_CUSTOM1,
+        87 => GGML_OP_MAP_CUSTOM2,
+        88 => GGML_OP_MAP_CUSTOM3,
+        89 => GGML_OP_CUSTOM,
+        90 => GGML_OP_CROSS_ENTROPY_LOSS,
+        91 => GGML_OP_CROSS_ENTROPY_LOSS_BACK,
+        92 => GGML_OP_OPT_STEP_ADAMW,
+        93 => GGML_OP_OPT_STEP_SGD,
+        94 => GGML_OP_GLU,
+        95 => GGML_OP_COUNT,
         _ => throw ArgumentError('Unknown value for ggml_op: $value'),
       };
 }
@@ -18148,13 +18642,15 @@ enum ggml_unary_op {
   GGML_UNARY_OP_HARDSWISH(11),
   GGML_UNARY_OP_HARDSIGMOID(12),
   GGML_UNARY_OP_EXP(13),
-  GGML_UNARY_OP_GELU_ERF(14),
-  GGML_UNARY_OP_XIELU(15),
-  GGML_UNARY_OP_FLOOR(16),
-  GGML_UNARY_OP_CEIL(17),
-  GGML_UNARY_OP_ROUND(18),
-  GGML_UNARY_OP_TRUNC(19),
-  GGML_UNARY_OP_COUNT(20);
+  GGML_UNARY_OP_EXPM1(14),
+  GGML_UNARY_OP_SOFTPLUS(15),
+  GGML_UNARY_OP_GELU_ERF(16),
+  GGML_UNARY_OP_XIELU(17),
+  GGML_UNARY_OP_FLOOR(18),
+  GGML_UNARY_OP_CEIL(19),
+  GGML_UNARY_OP_ROUND(20),
+  GGML_UNARY_OP_TRUNC(21),
+  GGML_UNARY_OP_COUNT(22);
 
   final int value;
   const ggml_unary_op(this.value);
@@ -18174,13 +18670,15 @@ enum ggml_unary_op {
         11 => GGML_UNARY_OP_HARDSWISH,
         12 => GGML_UNARY_OP_HARDSIGMOID,
         13 => GGML_UNARY_OP_EXP,
-        14 => GGML_UNARY_OP_GELU_ERF,
-        15 => GGML_UNARY_OP_XIELU,
-        16 => GGML_UNARY_OP_FLOOR,
-        17 => GGML_UNARY_OP_CEIL,
-        18 => GGML_UNARY_OP_ROUND,
-        19 => GGML_UNARY_OP_TRUNC,
-        20 => GGML_UNARY_OP_COUNT,
+        14 => GGML_UNARY_OP_EXPM1,
+        15 => GGML_UNARY_OP_SOFTPLUS,
+        16 => GGML_UNARY_OP_GELU_ERF,
+        17 => GGML_UNARY_OP_XIELU,
+        18 => GGML_UNARY_OP_FLOOR,
+        19 => GGML_UNARY_OP_CEIL,
+        20 => GGML_UNARY_OP_ROUND,
+        21 => GGML_UNARY_OP_TRUNC,
+        22 => GGML_UNARY_OP_COUNT,
         _ => throw ArgumentError('Unknown value for ggml_unary_op: $value'),
       };
 }
@@ -18262,6 +18760,24 @@ enum ggml_tensor_flag {
         4 => GGML_TENSOR_FLAG_PARAM,
         8 => GGML_TENSOR_FLAG_LOSS,
         _ => throw ArgumentError('Unknown value for ggml_tensor_flag: $value'),
+      };
+}
+
+enum ggml_tri_type {
+  GGML_TRI_TYPE_UPPER_DIAG(0),
+  GGML_TRI_TYPE_UPPER(1),
+  GGML_TRI_TYPE_LOWER_DIAG(2),
+  GGML_TRI_TYPE_LOWER(3);
+
+  final int value;
+  const ggml_tri_type(this.value);
+
+  static ggml_tri_type fromValue(int value) => switch (value) {
+        0 => GGML_TRI_TYPE_UPPER_DIAG,
+        1 => GGML_TRI_TYPE_UPPER,
+        2 => GGML_TRI_TYPE_LOWER_DIAG,
+        3 => GGML_TRI_TYPE_LOWER,
+        _ => throw ArgumentError('Unknown value for ggml_tri_type: $value'),
       };
 }
 
@@ -18364,13 +18880,15 @@ enum ggml_scale_mode {
 }
 
 enum ggml_scale_flag {
-  GGML_SCALE_FLAG_ALIGN_CORNERS(256);
+  GGML_SCALE_FLAG_ALIGN_CORNERS(256),
+  GGML_SCALE_FLAG_ANTIALIAS(512);
 
   final int value;
   const ggml_scale_flag(this.value);
 
   static ggml_scale_flag fromValue(int value) => switch (value) {
         256 => GGML_SCALE_FLAG_ALIGN_CORNERS,
+        512 => GGML_SCALE_FLAG_ANTIALIAS,
         _ => throw ArgumentError('Unknown value for ggml_scale_flag: $value'),
       };
 }
@@ -19351,6 +19869,41 @@ enum llama_model_kv_override_type {
       };
 }
 
+enum llama_model_meta_key {
+  LLAMA_MODEL_META_KEY_SAMPLING_SEQUENCE(0),
+  LLAMA_MODEL_META_KEY_SAMPLING_TOP_K(1),
+  LLAMA_MODEL_META_KEY_SAMPLING_TOP_P(2),
+  LLAMA_MODEL_META_KEY_SAMPLING_MIN_P(3),
+  LLAMA_MODEL_META_KEY_SAMPLING_XTC_PROBABILITY(4),
+  LLAMA_MODEL_META_KEY_SAMPLING_XTC_THRESHOLD(5),
+  LLAMA_MODEL_META_KEY_SAMPLING_TEMP(6),
+  LLAMA_MODEL_META_KEY_SAMPLING_PENALTY_LAST_N(7),
+  LLAMA_MODEL_META_KEY_SAMPLING_PENALTY_REPEAT(8),
+  LLAMA_MODEL_META_KEY_SAMPLING_MIROSTAT(9),
+  LLAMA_MODEL_META_KEY_SAMPLING_MIROSTAT_TAU(10),
+  LLAMA_MODEL_META_KEY_SAMPLING_MIROSTAT_ETA(11);
+
+  final int value;
+  const llama_model_meta_key(this.value);
+
+  static llama_model_meta_key fromValue(int value) => switch (value) {
+        0 => LLAMA_MODEL_META_KEY_SAMPLING_SEQUENCE,
+        1 => LLAMA_MODEL_META_KEY_SAMPLING_TOP_K,
+        2 => LLAMA_MODEL_META_KEY_SAMPLING_TOP_P,
+        3 => LLAMA_MODEL_META_KEY_SAMPLING_MIN_P,
+        4 => LLAMA_MODEL_META_KEY_SAMPLING_XTC_PROBABILITY,
+        5 => LLAMA_MODEL_META_KEY_SAMPLING_XTC_THRESHOLD,
+        6 => LLAMA_MODEL_META_KEY_SAMPLING_TEMP,
+        7 => LLAMA_MODEL_META_KEY_SAMPLING_PENALTY_LAST_N,
+        8 => LLAMA_MODEL_META_KEY_SAMPLING_PENALTY_REPEAT,
+        9 => LLAMA_MODEL_META_KEY_SAMPLING_MIROSTAT,
+        10 => LLAMA_MODEL_META_KEY_SAMPLING_MIROSTAT_TAU,
+        11 => LLAMA_MODEL_META_KEY_SAMPLING_MIROSTAT_ETA,
+        _ =>
+          throw ArgumentError('Unknown value for llama_model_meta_key: $value'),
+      };
+}
+
 final class UnnamedUnion1 extends ffi.Union {
   @ffi.Int64()
   external int val_i64;
@@ -19426,6 +19979,9 @@ final class llama_model_params extends ffi.Struct {
 
   @ffi.Bool()
   external bool no_host;
+
+  @ffi.Bool()
+  external bool no_alloc;
 }
 
 final class llama_context_params extends ffi.Struct {
@@ -19598,6 +20154,23 @@ final class llama_chat_message extends ffi.Struct {
 
 final class llama_adapter_lora extends ffi.Opaque {}
 
+enum llama_params_fit_status {
+  LLAMA_PARAMS_FIT_STATUS_SUCCESS(0),
+  LLAMA_PARAMS_FIT_STATUS_FAILURE(1),
+  LLAMA_PARAMS_FIT_STATUS_ERROR(2);
+
+  final int value;
+  const llama_params_fit_status(this.value);
+
+  static llama_params_fit_status fromValue(int value) => switch (value) {
+        0 => LLAMA_PARAMS_FIT_STATUS_SUCCESS,
+        1 => LLAMA_PARAMS_FIT_STATUS_FAILURE,
+        2 => LLAMA_PARAMS_FIT_STATUS_ERROR,
+        _ => throw ArgumentError(
+            'Unknown value for llama_params_fit_status: $value'),
+      };
+}
+
 typedef llama_state_seq_flags = ffi.Uint32;
 typedef Dartllama_state_seq_flags = int;
 
@@ -19705,11 +20278,6 @@ final class mtmd_context_params extends ffi.Struct {
   @ffi.Int()
   external int n_threads;
 
-  @ffi.UnsignedInt()
-  external int verbosityAsInt;
-
-  ggml_log_level get verbosity => ggml_log_level.fromValue(verbosityAsInt);
-
   external ffi.Pointer<ffi.Char> image_marker;
 
   external ffi.Pointer<ffi.Char> media_marker;
@@ -19719,6 +20287,9 @@ final class mtmd_context_params extends ffi.Struct {
 
   llama_flash_attn_type get flash_attn_type =>
       llama_flash_attn_type.fromValue(flash_attn_typeAsInt);
+
+  @ffi.Bool()
+  external bool warmup;
 
   @ffi.Int()
   external int image_min_tokens;
@@ -20091,6 +20662,8 @@ const int __MAC_26_0 = 260000;
 
 const int __MAC_26_1 = 260100;
 
+const int __MAC_26_2 = 260200;
+
 const int __IPHONE_2_0 = 20000;
 
 const int __IPHONE_2_1 = 20100;
@@ -20271,6 +20844,8 @@ const int __IPHONE_26_0 = 260000;
 
 const int __IPHONE_26_1 = 260100;
 
+const int __IPHONE_26_2 = 260200;
+
 const int __WATCHOS_1_0 = 10000;
 
 const int __WATCHOS_2_0 = 20000;
@@ -20388,6 +20963,8 @@ const int __WATCHOS_12_0 = 120000;
 const int __WATCHOS_26_0 = 260000;
 
 const int __WATCHOS_26_1 = 260100;
+
+const int __WATCHOS_26_2 = 260200;
 
 const int __TVOS_9_0 = 90000;
 
@@ -20507,6 +21084,8 @@ const int __TVOS_26_0 = 260000;
 
 const int __TVOS_26_1 = 260100;
 
+const int __TVOS_26_2 = 260200;
+
 const int __BRIDGEOS_2_0 = 20000;
 
 const int __BRIDGEOS_3_0 = 30000;
@@ -20579,6 +21158,8 @@ const int __BRIDGEOS_10_0 = 100000;
 
 const int __BRIDGEOS_10_1 = 100100;
 
+const int __BRIDGEOS_10_2 = 100200;
+
 const int __DRIVERKIT_19_0 = 190000;
 
 const int __DRIVERKIT_20_0 = 200000;
@@ -20625,6 +21206,8 @@ const int __DRIVERKIT_25_0 = 250000;
 
 const int __DRIVERKIT_25_1 = 250100;
 
+const int __DRIVERKIT_25_2 = 250200;
+
 const int __VISIONOS_1_0 = 10000;
 
 const int __VISIONOS_1_1 = 10100;
@@ -20652,6 +21235,8 @@ const int __VISIONOS_3_0 = 30000;
 const int __VISIONOS_26_0 = 260000;
 
 const int __VISIONOS_26_1 = 260100;
+
+const int __VISIONOS_26_2 = 260200;
 
 const int MAC_OS_X_VERSION_10_0 = 1000;
 
@@ -20801,6 +21386,8 @@ const int MAC_OS_VERSION_26_0 = 260000;
 
 const int MAC_OS_VERSION_26_1 = 260100;
 
+const int MAC_OS_VERSION_26_2 = 260200;
+
 const int __AVAILABILITY_VERSIONS_VERSION_HASH = 93585900;
 
 const String __AVAILABILITY_VERSIONS_VERSION_STRING = 'Local';
@@ -20809,7 +21396,7 @@ const String __AVAILABILITY_FILE = 'AvailabilityVersions.h';
 
 const int __MAC_OS_X_VERSION_MIN_REQUIRED = 260000;
 
-const int __MAC_OS_X_VERSION_MAX_ALLOWED = 260100;
+const int __MAC_OS_X_VERSION_MAX_ALLOWED = 260200;
 
 const int __ENABLE_LEGACY_MAC_AVAILABILITY = 1;
 
@@ -20930,8 +21517,6 @@ const int GGML_ROPE_TYPE_VISION = 24;
 const int GGML_ROPE_TYPE_IMROPE = 40;
 
 const int GGML_MROPE_SECTIONS = 4;
-
-const int GGML_KQ_MASK_PAD = 64;
 
 const int GGML_N_TASKS_MAX = -1;
 
