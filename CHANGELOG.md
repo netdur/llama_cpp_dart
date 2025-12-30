@@ -1,5 +1,16 @@
+## 0.2.1
+* **Android**: Added OpenCL support for GPU acceleration (#91).
+* **Vision**: 
+    * Fixed crash in `mtmd` context disposal.
+    * Stable Qwen3-VL support.
+* **Chat**: Added experimental support for Qwen3-VL chat format (`_exportQwen3Jinja`).
+* **Fixes**:
+    * Improved logging initialization (#88).
+    * Fixed stream processing crash in chat.
+* **Core**: Updated `llama.cpp` submodule.
+
 ## 0.2.0
-* llama.cpp b8595b16e69e3029e06be3b8f6635f9812b2bc3f
+* llama.cpp 4ffc47cb2001e7d523f9ff525335bbe34b1a2858
 * Memory Safety: No more pointer being freed was not allocated crashes.
 * UTF-8 Safety: Emojis and foreign languages won't break generation.
 * Context Management: You can Append, Clear, or Save the brain.

@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.2.0 # b8595b16e69e3029e06be3b8f6635f9812b2bc3f
+version: 0.2.1 # 4ffc47cb2001e7d523f9ff525335bbe34b1a2858
 homepage: https://github.com/netdur/llama_cpp_dart
 repository: https://github.com/netdur/llama_cpp_dart
 
