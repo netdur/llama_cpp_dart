@@ -1,3 +1,8 @@
+## 0.2.2- allow freeing the active slot by switching/detaching and reselecting a fallback
+*  ensure isolate child always replies on dispose/free, even when already torn down
+*  keep parent subscription alive through shutdown so free-slot confirmations are received
+*  cancel scope work before freeing slots to avoid in-flight races
+
 ## 0.2.1
 * **Android**: Added OpenCL support for GPU acceleration (#91).
 * **Vision**: 

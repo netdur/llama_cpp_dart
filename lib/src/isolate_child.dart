@@ -66,6 +66,8 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
       llama!.dispose();
       llama = null;
     }
+    // Always acknowledge so callers waiting on dispose do not hang.
+    sendToParent(LlamaResponse.confirmation(LlamaStatus.disposed));
   }
 
   /// Handle stop command
@@ -204,7 +206,11 @@ class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {
   }
 
   void _handleFreeSlot(String slotId) {
-    if (llama == null) return;
+    shouldStop = true;
+    if (llama == null) {
+      sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));
+      return;
+    }
     try {
       llama!.freeSlot(slotId);
       sendToParent(LlamaResponse.confirmation(LlamaStatus.ready));

@@ -188,6 +188,9 @@ class LlamaParent {
 
   /// Requests the child to free the C++ slot associated with this scope.
   Future<void> disposeScope(LlamaScope scope) async {
+    // Ensure any pending or in-flight prompts for this scope are stopped before
+    // releasing its native slot.
+    await cancelScope(scope, cancelInFlight: true, cancelQueued: true);
     _scopes.remove(scope);
     await _sendCommand(LlamaFreeSlot(scope.id), "free slot");
   }
@@ -308,8 +311,6 @@ class LlamaParent {
     }
     _promptQueue.clear();
 
-    await _subscription?.cancel();
-
     for (final scope in List.from(_scopes)) {
       await scope.dispose();
     }
@@ -319,9 +320,13 @@ class LlamaParent {
     if (!_completionController.isClosed) await _completionController.close();
 
     _parent.sendToChild(id: 1, data: LlamaDispose());
-    
+
+    // Keep the subscription alive long enough to receive confirmations while
+    // slots are being freed and the child is disposing.
     await Future.delayed(const Duration(milliseconds: 50));
-    
+
+    await _subscription?.cancel();
+
     _parent.dispose();
   }
 

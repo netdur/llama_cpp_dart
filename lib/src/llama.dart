@@ -183,13 +183,44 @@ class Llama {
   /// Frees a specific slot from VRAM.
   void freeSlot(String slotId) {
     if (!_slots.containsKey(slotId)) return;
+
     if (slotId == _currentSlotId) {
-      throw StateError("Cannot free the currently active slot. Switch first.");
+      // If we are freeing the active slot, try to switch to another existing slot
+      // or simply detach the current slot reference.
+      String? nextSlot;
+      if (slotId != "default" && _slots.containsKey("default")) {
+        nextSlot = "default";
+      } else if (_slots.isNotEmpty) {
+        for (final key in _slots.keys) {
+          if (key != slotId) {
+            nextSlot = key;
+            break;
+          }
+        }
+      }
+
+      if (nextSlot != null) {
+        try {
+          setSlot(nextSlot);
+        } catch (_) {
+          _currentSlotId = "";
+        }
+      } else {
+        // No other slot available. We are freeing the last/only active slot.
+        // Detach current slot ID so the equality check passes and we don't block freeing.
+        _currentSlotId = "";
+      }
     }
 
     final slot = _slots.remove(slotId)!;
     if (slot.context.address != 0) {
       lib.llama_free(slot.context);
+    }
+
+    // If we detached the current slot but still have others allocated, pick one
+    // so subsequent calls to [context] have a valid target.
+    if (_currentSlotId.isEmpty && _slots.isNotEmpty) {
+      _currentSlotId = _slots.keys.first;
     }
   }
 
