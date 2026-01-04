@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:async';
-import 'dart:math' show sqrt;
+import 'dart:math' show max, min, sqrt;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -228,6 +228,55 @@ class Llama {
     if (_nPredict == 0 || _nPredict < -1) {
       throw ArgumentError('nPredict must be positive or -1 for unlimited');
     }
+  }
+
+  /// Ensures there is room in the KV cache for [tokensNeeded] new tokens.
+  /// If auto trimming is enabled, old tokens are removed and the remaining
+  /// positions are shifted down to reclaim space.
+  (int shiftApplied, bool trimmed) _maybeTrimContext(int tokensNeeded) {
+    final params = _contextParams;
+    if (params == null || !params.autoTrimContext) return (0, false);
+
+    final nCtx = params.nCtx;
+    final needed = tokensNeeded <= 0 ? 1 : tokensNeeded;
+
+    if (_nPos + needed < nCtx - 1) return (0, false);
+
+    final keepCap = nCtx - needed;
+    if (keepCap <= 0) {
+      return (0, false);
+    }
+
+    final keepTokens = max(0, min(params.trimKeepTokens, keepCap));
+    final trimStart = max(0, _nPos - keepTokens);
+    if (trimStart <= 0) return (0, false);
+
+    final mem = lib.llama_get_memory(context);
+    final removed = lib.llama_memory_seq_rm(mem, 0, 0, trimStart);
+    if (!removed) return (0, false);
+
+    if (!lib.llama_memory_can_shift(mem)) {
+      lib.llama_memory_clear(mem, true);
+      _nPos = 0;
+      _nPrompt = 0;
+      _pendingBytes.clear();
+      if (_verbose) {
+        // ignore: avoid_print
+        print("llama: auto-trim fell back to clear (backend cannot shift)");
+      }
+      return (0, true);
+    }
+
+    lib.llama_memory_seq_add(mem, 0, trimStart, -1, -trimStart);
+    _nPos = max(0, _nPos - trimStart);
+    _nPrompt = max(0, _nPrompt - trimStart);
+
+    if (_verbose) {
+      // ignore: avoid_print
+      print("llama: auto-trimmed $trimStart token(s), keeping $_nPos");
+    }
+
+    return (trimStart, true);
   }
 
   static void llamaLogCallbackNull(
@@ -458,7 +507,8 @@ class Llama {
     if (_isDisposed) throw StateError('Disposed');
 
     final nCtx = _contextParams?.nCtx ?? 2048;
-    if (_nPos >= nCtx - 10) {
+    final autoTrim = _contextParams?.autoTrimContext ?? false;
+    if (!autoTrim && _nPos >= nCtx - 10) {
       throw LlamaException("Context full (pos: $_nPos, limit: $nCtx)");
     }
 
@@ -486,7 +536,7 @@ class Llama {
 
       if (_nPrompt <= 0) throw LlamaException("Token estimate failed");
       if (_nPrompt > nCtx - 10) throw LlamaException("Prompt too large");
-      if (_nPos + _nPrompt >= nCtx) {
+      if (!autoTrim && _nPos + _nPrompt >= nCtx) {
         throw LlamaException("Context limit exceeded");
       }
 
@@ -498,6 +548,16 @@ class Llama {
 
       if (actualTokens < 0) throw LlamaException("Tokenization failed");
       _nPrompt = actualTokens;
+
+      final (_, trimmed) = _maybeTrimContext(_nPrompt);
+      if (trimmed) {
+        batch.n_tokens = 0;
+      }
+
+      if (_nPrompt > nCtx - 10) throw LlamaException("Prompt too large");
+      if (_nPos + _nPrompt >= nCtx) {
+        throw LlamaException("Context limit exceeded");
+      }
 
       int batchCapacity = _contextParams?.nBatch ?? 512;
       if (_nPrompt > batchCapacity) {
@@ -557,6 +617,21 @@ class Llama {
 
     try {
       final nCtx = _contextParams?.nCtx ?? 2048;
+      final tokensToAdd = batch.n_tokens == 0 ? 1 : batch.n_tokens;
+      final (shifted, trimmed) = _maybeTrimContext(tokensToAdd);
+
+      if (trimmed) {
+        if (shifted > 0) {
+          for (int i = 0; i < batch.n_tokens; i++) {
+            batch.pos[i] = max(0, batch.pos[i] - shifted);
+          }
+        } else {
+          for (int i = 0; i < batch.n_tokens; i++) {
+            batch.pos[i] = i;
+          }
+        }
+      }
+
       if (_nPos >= nCtx - 2) {
         return ("\n\n[Context limit reached]", true, true);
       }

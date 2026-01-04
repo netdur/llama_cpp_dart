@@ -2,6 +2,7 @@
 *  ensure isolate child always replies on dispose/free, even when already torn down
 *  keep parent subscription alive through shutdown so free-slot confirmations are received
 *  cancel scope work before freeing slots to avoid in-flight races
+*  add opt-in KV auto-trim (sliding window) with example `example/auto_trim.dart`
 
 ## 0.2.1
 * **Android**: Added OpenCL support for GPU acceleration (#91).

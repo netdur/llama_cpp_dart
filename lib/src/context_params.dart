@@ -85,6 +85,8 @@ class ContextParams {
   bool opOffload = true;
   bool swaFull = false;
   bool kvUnified = false;
+  bool autoTrimContext = false;
+  int trimKeepTokens = 256;
 
   double ropeFreqBase = 0.0;
   double ropeFreqScale = 0.0;
@@ -180,7 +182,9 @@ class ContextParams {
       ..noPerfTimings = json['noPerfTimings'] ?? false
       ..opOffload = json['opOffload'] ?? true
       ..swaFull = json['swaFull'] ?? false
-      ..kvUnified = json['kvUnified'] ?? false;
+      ..kvUnified = json['kvUnified'] ?? false
+      ..autoTrimContext = json['autoTrimContext'] ?? false
+      ..trimKeepTokens = json['trimKeepTokens'] ?? 256;
   }
 
   Map<String, dynamic> toJson() => {
@@ -213,6 +217,8 @@ class ContextParams {
         'embeddings': embeddings,
         'offloadKqv': offloadKqv,
         'noPerfTimings': noPerfTimings,
+        'autoTrimContext': autoTrimContext,
+        'trimKeepTokens': trimKeepTokens,
       };
 
   @override
