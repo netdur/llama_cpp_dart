@@ -56,7 +56,7 @@ void main(List<String> args) async {
           llama.loadSession(sessionPath);
           print("+");
         } catch (e) {
-          print("!");
+          print("! Load failed: $e");
         }
       }
 

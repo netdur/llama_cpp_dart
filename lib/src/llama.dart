@@ -144,6 +144,7 @@ class Llama {
       _status = LlamaStatus.ready;
     } catch (e) {
       _status = LlamaStatus.error;
+      _freeNativeResources();
       _isDisposed = true;
       throw LlamaException('Failed to initialize Llama', e);
     }
@@ -169,6 +170,9 @@ class Llama {
     if (!_slots.containsKey(slotId)) {
       throw ArgumentError(
           "Slot $slotId does not exist. Call createSlot first.");
+    }
+    if (_status == LlamaStatus.generating) {
+      throw StateError("Cannot switch slot while generating");
     }
 
     batch.n_tokens = 0;
@@ -304,16 +308,21 @@ class Llama {
       lib.llama_log_set(nullCallbackPointer, nullptr);
     }
 
-    lib.llama_backend_init();
-    if (!Platform.isAndroid) {
-      lib.ggml_backend_load_all();
+    if (!_backendInitialized) {
+      lib.llama_backend_init();
+      if (!Platform.isAndroid) {
+        lib.ggml_backend_load_all();
+      }
+      _backendInitialized = true;
     }
 
-    final ptr = lib.llama_print_system_info();
-    final sysInfo = ptr.cast<Utf8>().toDartString();
-    print(sysInfo);
-    print("modelPath: $modelPath");
-    print("libraryPath: $libraryPath");
+    if (_verbose) {
+      final ptr = lib.llama_print_system_info();
+      final sysInfo = ptr.cast<Utf8>().toDartString();
+      print(sysInfo);
+      print("modelPath: $modelPath");
+      print("libraryPath: $libraryPath");
+    }
 
     modelParamsDart ??= ModelParams();
     var modelParams = modelParamsDart.get();
@@ -531,8 +540,12 @@ class Llama {
       final int promptBytes = promptUtf8Ptr.length;
       final Pointer<Char> promptCharPtr = promptUtf8Ptr.cast<Char>();
 
+      // Only add BOS if we are at the beginning of the context
+      final bool addBos = _nPos == 0;
+      if (_verbose) print("setPrompt: nPos=$_nPos, addBos=$addBos");
+
       _nPrompt = -lib.llama_tokenize(
-          vocab, promptCharPtr, promptBytes, nullptr, 0, true, true);
+          vocab, promptCharPtr, promptBytes, nullptr, 0, addBos, true);
 
       if (_nPrompt <= 0) throw LlamaException("Token estimate failed");
       if (_nPrompt > nCtx - 10) throw LlamaException("Prompt too large");
@@ -544,7 +557,7 @@ class Llama {
       _tokens = malloc<llama_token>(_nPrompt);
 
       final int actualTokens = lib.llama_tokenize(
-          vocab, promptCharPtr, promptBytes, _tokens, _nPrompt, true, true);
+          vocab, promptCharPtr, promptBytes, _tokens, _nPrompt, addBos, true);
 
       if (actualTokens < 0) throw LlamaException("Tokenization failed");
       _nPrompt = actualTokens;
@@ -574,6 +587,7 @@ class Llama {
         batch.logits[i] = i == _nPrompt - 1 ? 1 : 0;
       }
       batch.n_tokens = _nPrompt;
+      _slots[_currentSlotId]!.nGeneratedTotal = 0;
     } catch (e) {
       _status = LlamaStatus.error;
       if (_tokens != nullptr) {
@@ -636,7 +650,7 @@ class Llama {
         return ("\n\n[Context limit reached]", true, true);
       }
 
-      final nGenerated = _nPos > _nPrompt ? _nPos - _nPrompt : 0;
+      final nGenerated = _slots[_currentSlotId]!.nGeneratedTotal;
       if (_nPredict > 0 && nGenerated >= _nPredict) {
         return ("", true, false);
       }
@@ -671,6 +685,10 @@ class Llama {
       batch.logits[0] = 1;
       batch.n_tokens = 1;
 
+      if (!isEos) {
+        _slots[_currentSlotId]!.nGeneratedTotal += 1;
+      }
+
       return (piece, isEos, false);
     } catch (e) {
       _status = LlamaStatus.error;
@@ -693,6 +711,10 @@ class Llama {
     } catch (e) {
       _status = LlamaStatus.error;
       throw LlamaException('Error in text generation stream', e);
+    } finally {
+      if (_status != LlamaStatus.error && !_isDisposed) {
+        _status = LlamaStatus.ready;
+      }
     }
   }
 
@@ -717,6 +739,10 @@ class Llama {
     } catch (e) {
       _status = LlamaStatus.error;
       throw LlamaException('Error generating complete text', e);
+    } finally {
+      if (_status != LlamaStatus.error && !_isDisposed) {
+        _status = LlamaStatus.ready;
+      }
     }
   }
 
@@ -890,6 +916,10 @@ class Llama {
         ++produced;
         _nPos = nPast;
       }
+      _nPos = nPast;
+    } catch (e) {
+      _status = LlamaStatus.error;
+      rethrow;
     } finally {
       if (batch.seq_id != nullptr) {
         final batchCapacity = _contextParams?.nBatch ?? 512;
@@ -904,12 +934,23 @@ class Llama {
       }
       if (txtPtr != nullptr) calloc.free(txtPtr);
       if (fullPtr != nullptr) malloc.free(fullPtr);
-      _status = LlamaStatus.ready;
+
+      if (_status != LlamaStatus.error && !_isDisposed) {
+        _status = LlamaStatus.ready;
+      }
     }
   }
 
+  static bool _backendInitialized = false;
+
   void dispose() {
     if (_isDisposed) return;
+    _freeNativeResources();
+    _isDisposed = true;
+    _status = LlamaStatus.disposed;
+  }
+
+  void _freeNativeResources() {
     try {
       if (_tokens != nullptr) {
         malloc.free(_tokens);
@@ -950,16 +991,15 @@ class Llama {
           calloc.free(ptr);
         }
         _batchSeqIds.clear();
+
+        _isInitialized = false; // Mark as uninitialized so we don't double-free
       }
 
-      if (_mctx != nullptr) {
-        lib.mtmd_free(_mctx);
-        _mctx = nullptr;
-      }
-      lib.llama_backend_free();
-    } finally {
-      _isDisposed = true;
-      _status = LlamaStatus.disposed;
+      // We do not strictly free the backend to allow future instances to use it.
+      // lib.llama_backend_free();
+    } catch (e) {
+      // Print error during disposal to avoid crashing if called from GC finalizer (though this is manual dispose)
+      print('Error during Llama dispose: $e');
     }
   }
 
@@ -1016,8 +1056,18 @@ class Llama {
     llama_batch? promptBatch;
     final List<Pointer<llama_seq_id>> tempSeqIds = [];
     int batchCapacity = 0;
+    Uint8List? savedState;
+    List<int> pendingBackup = [];
+    int generatedBackup = 0;
+    final previousStatus = _status;
 
     try {
+      // Snapshot current session so embedding work does not wipe an active chat.
+      savedState = saveState();
+      pendingBackup = List<int>.from(_pendingBytes);
+      generatedBackup = _slots[_currentSlotId]?.nGeneratedTotal ?? 0;
+      _status = LlamaStatus.generating;
+
       List<int> tokens = tokenize(prompt, addBos);
       int nTokens = tokens.length;
       int maxBatch = _contextParams?.nBatch ?? 512;
@@ -1102,90 +1152,153 @@ class Llama {
       for (final ptr in tempSeqIds) {
         calloc.free(ptr);
       }
+      if (savedState != null) {
+        try {
+          loadState(savedState);
+          _pendingBytes
+            ..clear()
+            ..addAll(pendingBackup);
+          _slots[_currentSlotId]?.nGeneratedTotal = generatedBackup;
+        } catch (e) {
+          // ignore: avoid_print
+          print('Warning: failed to restore state after embeddings: $e');
+        }
+      }
+      if (_status != LlamaStatus.error && !_isDisposed) {
+        _status = previousStatus;
+      }
     }
   }
 
   /// Saves session to disk.
-  /// Optimized to stream directly from C-memory to Disk to avoid RAM spikes.
+  /// Uses native `llama_state_save_file` but wraps it with a custom header to store `nPos`.
+  /// This ensures robust binary format (Native) + Single File convenience (User requirement).
   void saveSession(String path) {
     if (_isDisposed) throw StateError('Disposed');
 
-    final int stateSize = lib.llama_get_state_size(context);
-    final ptr = malloc<Uint8>(stateSize);
+    final tempPath = "${path}.tmp.${DateTime.now().millisecondsSinceEpoch}";
+    final tempPathPtr = tempPath.toNativeUtf8().cast<Char>();
 
     try {
-      lib.llama_copy_state_data(context, ptr);
-
-      final header = ByteData(16)
-        ..setUint32(0, 0x4C4C5346, Endian.little)
-        ..setUint32(4, 1, Endian.little)
-        ..setUint32(8, _nPos, Endian.little)
-        ..setUint32(12, _nPrompt, Endian.little);
-
-      final file = File(path);
-      final raf = file.openSync(mode: FileMode.write);
-
-      try {
-        raf.writeFromSync(header.buffer.asUint8List());
-
-        final externalView = ptr.asTypedList(stateSize);
-        raf.writeFromSync(externalView);
-
-        raf.flushSync();
-      } finally {
-        raf.closeSync();
+      // 1. Native Save to Temp
+      final result =
+          lib.llama_state_save_file(context, tempPathPtr, nullptr, 0);
+      if (!result) {
+        throw LlamaException(
+            'Failed to save session (llama_state_save_file returned false)');
       }
-    } catch (e) {
-      throw LlamaException('Failed to save session', e);
+
+      final tempFile = File(tempPath);
+      final stateData = tempFile.readAsBytesSync();
+
+      // 2. Write Final File with Header
+      final file = File(path);
+      // Header: Magic (4) + Version (4) + nPos (4) + nPrompt (4) = 16 bytes
+      final header = ByteData(16);
+      header.setUint32(0, 0x44415254, Endian.little); // "DART" magic
+      header.setUint32(4, 1, Endian.little); // Version 1
+      header.setUint32(8, _nPos, Endian.little);
+      header.setUint32(12, _nPrompt, Endian.little);
+
+      final allBytes = Uint8List(16 + stateData.length);
+      allBytes.setAll(0, header.buffer.asUint8List());
+      allBytes.setAll(16, stateData);
+
+      file.writeAsBytesSync(allBytes, flush: true);
+
+      if (_verbose)
+        print("Session saved (Native Wrapper). Size: ${allBytes.length}");
+
+      // Cleanup
+      tempFile.deleteSync();
     } finally {
-      malloc.free(ptr);
+      malloc.free(tempPathPtr);
     }
   }
 
   /// Loads session from disk.
-  /// Optimized to read directly from Disk to C-memory.
+  /// Unwraps custom header to restore `nPos`, then uses native `llama_state_load_file`.
   bool loadSession(String path) {
     if (_isDisposed) throw StateError('Disposed');
     final file = File(path);
     if (!file.existsSync()) return false;
 
-    final int expectedStateSize = lib.llama_get_state_size(context);
-    final raf = file.openSync(mode: FileMode.read);
-    const int headerSize = 16;
+    // Read entire file
+    final bytes = file.readAsBytesSync();
+    if (bytes.length < 16) {
+      print("Warning: Session file too small.");
+      return false;
+    }
 
-    try {
-      if (raf.lengthSync() < headerSize + expectedStateSize) {
-        throw LlamaException(
-            'Session file corrupted or model configuration changed');
-      }
+    // Check Header
+    final header = ByteData.sublistView(bytes, 0, 16);
+    final magic = header.getUint32(0, Endian.little);
 
-      final headerBytes = raf.readSync(headerSize);
-      final header = ByteData.sublistView(headerBytes);
+    if (magic == 0x44415254) {
+      // DART wrapper
+      final savedPos = header.getUint32(8, Endian.little);
+      final savedPrompt = header.getUint32(12, Endian.little);
+      if (_verbose) print("Custom header found. Saved nPos=$savedPos");
 
-      if (header.getUint32(0, Endian.little) != 0x4C4C5346 ||
-          header.getUint32(4, Endian.little) != 1) {
-        throw LlamaException('Invalid session header');
-      }
+      // Unwrap Native Blob
+      final stateData = bytes.sublist(16);
 
-      _nPos = header.getUint32(8, Endian.little);
-      _nPrompt = header.getUint32(12, Endian.little);
+      // Write to Temp
+      final tempPath =
+          "${path}.tmp.load.${DateTime.now().millisecondsSinceEpoch}";
+      final tempFile = File(tempPath);
+      tempFile.writeAsBytesSync(stateData, flush: true);
 
-      final ptr = malloc<Uint8>(expectedStateSize);
+      final tempPathPtr = tempPath.toNativeUtf8().cast<Char>();
+      final countOut = calloc<Size>(1);
 
       try {
-        final externalView = ptr.asTypedList(expectedStateSize);
-        raf.readIntoSync(externalView);
-
-        lib.llama_set_state_data(context, ptr);
+        final result = lib.llama_state_load_file(
+            context, tempPathPtr, nullptr, 0, countOut);
+        if (_verbose) print("Native load result: $result");
+        if (result) {
+          final restoredPos = countOut.value;
+          _nPos = restoredPos != 0 ? restoredPos : savedPos;
+          _nPrompt = savedPrompt != 0 ? savedPrompt : _nPos;
+        }
+        return result;
       } finally {
-        malloc.free(ptr);
+        malloc.free(tempPathPtr);
+        calloc.free(countOut);
+        if (tempFile.existsSync()) tempFile.deleteSync();
       }
+    } else {
+      // Fallback: Try Raw Native (no wrapper)
+      // Assume Native format
+      if (_verbose)
+        print(
+            "No custom header. Attempting raw native load (nPos resets to 0).");
 
-      return true;
-    } catch (e) {
-      throw LlamaException('Failed to load session', e);
-    } finally {
-      raf.closeSync();
+      final pathPtr = path.toNativeUtf8().cast<Char>();
+      final countOut = calloc<Size>(1);
+      try {
+        // If we have .meta sidecar (backwards compatibility), use it?
+        // Not priority, but good hygiene.
+        final result =
+            lib.llama_state_load_file(context, pathPtr, nullptr, 0, countOut);
+        if (result) {
+          _nPos = countOut.value;
+          final metaFile = File("$path.meta");
+          if (metaFile.existsSync()) {
+            try {
+              final json = jsonDecode(metaFile.readAsStringSync());
+              _nPos = _nPos != 0 ? _nPos : (json["nPos"] ?? 0);
+              _nPrompt = json["nPrompt"] ?? _nPos;
+            } catch (_) {}
+          } else {
+            _nPrompt = _nPos;
+          }
+        }
+        return result;
+      } finally {
+        malloc.free(pathPtr);
+        calloc.free(countOut);
+      }
     }
   }
 
@@ -1257,10 +1370,12 @@ class Llama {
 }
 
 /// Holds the state for a specific user/conversation slot
+
 class _LlamaSlot {
   final Pointer<llama_context> context;
   int nPos = 0;
   int nPrompt = 0;
+  int nGeneratedTotal = 0;
   List<int> pendingBytes = [];
 
   _LlamaSlot(this.context);

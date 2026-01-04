@@ -42,20 +42,20 @@ bool loadSession(llama_cpp lib, Pointer<llama_context> ctx, String path) {
   return true;
 }
 
-
 void main() {
   String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";
 
   String prompt =
-      "<start_of_turn>user\nyeah can you remind me what was my name?\n<end_of_turn>\n<start_of_turn>model\n";
+      "<start_of_turn>user\nwhat was my name?\n<end_of_turn>\n<start_of_turn>model\n";
+  // prompt =
+  //    "<start_of_turn>user\nmy name is adek \n<end_of_turn>\n<start_of_turn>model\n";
 
   final sessionPath = "llama_session.bin";
   int ngl = 99;
   int nPredict = 32;
 
   // Load library
-  final lib = llama_cpp(DynamicLibrary.open(
-      "bin/MAC_ARM64/libllama.dylib"));
+  final lib = llama_cpp(DynamicLibrary.open("bin/MAC_ARM64/libllama.dylib"));
   lib.llama_backend_init();
 
   // Initialize model
