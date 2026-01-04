@@ -44,7 +44,7 @@ class ModelParams {
 
   /// Validate model tensor data
   bool checkTensors = false;
-  
+
   /// Use extra buffer types (used for weight repacking)
   bool useExtraBufts = false;
 
@@ -66,7 +66,7 @@ class ModelParams {
     modelParams.use_mmap = useMemorymap;
     modelParams.use_mlock = useMemoryLock;
     modelParams.check_tensors = checkTensors;
-    
+
     modelParams.use_extra_bufts = useExtraBufts;
     modelParams.no_host = noHost;
 
@@ -80,7 +80,7 @@ class ModelParams {
 
     modelParams.progress_callback = nullptr;
     modelParams.progress_callback_user_data = nullptr;
-    modelParams.kv_overrides = nullptr; 
+    modelParams.kv_overrides = nullptr;
 
     return modelParams;
   }
@@ -97,16 +97,17 @@ class ModelParams {
   factory ModelParams.fromJson(Map<String, dynamic> json) {
     final params = ModelParams();
     params.nGpuLayers = json['nGpuLayers'] ?? 99;
-    
+
     params.splitMode = LlamaSplitMode.values.firstWhere(
         (e) => e.value == (json['splitMode'] ?? 0),
         orElse: () => LlamaSplitMode.none);
-        
+
     params.mainGpu = json['mainGpu'] ?? 0;
-    params.tensorSplit = ((json['tensorSplit'] as List<dynamic>?)
-            ?.map((e) => e.toDouble())
-            .toList() as List<double>?) ??
-        [];
+    if (json['tensorSplit'] != null) {
+      params.tensorSplit = (json['tensorSplit'] as List)
+          .map((e) => (e as num).toDouble())
+          .toList();
+    }
     params.kvOverrides = Map<String, dynamic>.from(json['kvOverrides'] ?? {});
     params.vocabOnly = json['vocabOnly'] ?? false;
     params.useMemorymap = json['useMemorymap'] ?? true;

@@ -1,14 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-
-// import 'package:llama_cpp_dart/llama_cpp_dart.dart';
+import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 void main() {
-  test('adds one to input values', () {
-    /*
-    final calculator = Calculator();
-    expect(calculator.addOne(2), 3);
-    expect(calculator.addOne(-7), -6);
-    expect(calculator.addOne(0), 1);
-    */
+  test('library imports correctly', () {
+    // Just verify we can import the library without errors.
+    expect(LlamaSplitMode.none, isNotNull);
   });
 }
