@@ -1,8 +1,9 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:math' show max;
+import 'dart:math' show max, min;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -21,6 +22,7 @@ class LlamaService {
   static llama_cpp get lib => Llama.lib;
 
   static bool _backendInitialized = false;
+  static const int _maxTokensPerSessionPerBatch = 16;
 
   final String modelPath;
   final ModelParams modelParams;
@@ -43,6 +45,8 @@ class LlamaService {
   Pointer<llama_token> _hiddenTokenPtr = nullptr;
 
   int _nBatch = 0;
+  int _contextNCtx = 0;
+  int _contextNPredict = -1;
   int _lastScheduledSessionIndex = 0; // For Round-Robin
 
   // Multimodal (Vision)
@@ -98,6 +102,8 @@ class LlamaService {
     }
 
     final ctxParams = defaultContextParams.get();
+    _contextNCtx = ctxParams.n_ctx;
+    _contextNPredict = defaultContextParams.nPredict;
     _maxParallel = max(1, ctxParams.n_seq_max);
 
     for (int i = 0; i < _maxParallel; i++) {
@@ -168,7 +174,6 @@ class LlamaService {
 
   void createSession(
     String sessionId, {
-    ContextParams? contextParams,
     SamplerParams? samplerParams,
   }) {
     _checkDisposed();
@@ -180,7 +185,6 @@ class LlamaService {
     }
 
     final seqId = _freeSeqIds.removeLast();
-    final ctxParams = contextParams ?? defaultContextParams;
     final sampler = _initializeSampler(samplerParams ?? defaultSamplerParams);
 
     final mem = lib.llama_get_memory(_context);
@@ -190,10 +194,10 @@ class LlamaService {
       id: sessionId,
       seqId: seqId,
       sampler: sampler,
-      contextParams: ctxParams,
     );
 
-    session.decodeBuf = malloc<Char>(256);
+    session.decodeCapacity = 256;
+    session.decodeBuf = malloc<Char>(session.decodeCapacity);
 
     _sessions[sessionId] = session;
     _sessionsBySeqId[seqId] = session;
@@ -242,7 +246,7 @@ class LlamaService {
 
     final promptUtf8 = prompt.toNativeUtf8();
     try {
-      final nCtx = session.contextParams.nCtx;
+      final nCtx = _contextNCtx;
       final length = promptUtf8.length;
       final addBos = clearHistory;
 
@@ -262,7 +266,7 @@ class LlamaService {
         }
 
         for (int i = 0; i < nTokens; i++) {
-          session.pendingItems.add(_PendingItem.token(tokenPtr[i]));
+          session.pendingItems.addLast(_PendingItem.token(tokenPtr[i]));
         }
         session.nPromptTokens = nTokens;
       } finally {
@@ -381,7 +385,7 @@ class LlamaService {
           final floatList = embdPtr.asTypedList(totalFloats);
           final copy = Float32List.fromList(floatList);
 
-          session.pendingItems.add(_PendingItem.embedding(copy, nTok));
+          session.pendingItems.addLast(_PendingItem.embedding(copy, nTok));
         } else {
           final nPtr = malloc<Size>();
           final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
@@ -389,7 +393,7 @@ class LlamaService {
           malloc.free(nPtr);
 
           for (int k = 0; k < nTok; k++) {
-            session.pendingItems.add(_PendingItem.token(tokPt[k]));
+            session.pendingItems.addLast(_PendingItem.token(tokPt[k]));
           }
         }
       }
@@ -423,18 +427,11 @@ class LlamaService {
   // --- Internal Scheduling Loop ---
 
   Future<void> _runLoop() async {
-    _loopTimer.start();
     while (!_disposed) {
       if (_loopTimer.elapsedMilliseconds >= 16) {
         await Future.delayed(Duration.zero);
         _loopTimer.reset();
       }
-      bool anyWork = false;
-      int batchIdx = 0;
-      _batch.n_tokens = 0;
-
-      llama_batch currentBatch = _batch;
-      bool? batchIsEmbedding;
 
       final activeSessions = _sessions.values.toList();
       if (activeSessions.isEmpty) {
@@ -454,96 +451,95 @@ class LlamaService {
         ...activeSessions.sublist(0, rotateStart)
       ];
 
-      for (final session in rotatedSessions) {
-        if (session.status != LlamaStatus.generating) continue;
+      final passes = _visionEnabled ? [false, true] : [false];
 
-        // Zombie Check
-        // Zombie Check - DISABLED (Causes regression in benchmarks due to race condition)
-        // if (!session.outputStream.hasListener) {
-        //   session.status = LlamaStatus.ready;
-        //   session.pendingItems.clear();
-        //   session.outputStream.close();
-        //   // Free memory immediately
-        //   final mem = lib.llama_get_memory(_context);
-        //   lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
-        //   session.nPos = 0;
-        //   continue;
-        // }
+      bool didWork = false;
 
-        if (session.nPos >= session.contextParams.nCtx - 2) {
-          session.status = LlamaStatus.ready;
-          session.outputStream.add("\n[Context Limit]");
-          final mem = lib.llama_get_memory(_context);
-          lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
-          session.nPos = 0;
-          session.pendingItems.clear();
-          session.outputStream.close();
-          continue;
-        }
+      for (final isEmbeddingPass in passes) {
+        int batchIdx = 0;
+        llama_batch currentBatch = isEmbeddingPass ? _batchEmbd : _batch;
+        currentBatch.n_tokens = 0;
+        final Set<int> batchSeqIds = {};
 
-        int available = _nBatch - batchIdx;
-        if (available <= 0) break;
+        for (final session in rotatedSessions) {
+          if (session.status != LlamaStatus.generating) continue;
 
-        if (session.pendingItems.isNotEmpty) {
-          var item = session.pendingItems.first;
-          bool isEmb = item.isEmbedding;
-
-          if (batchIsEmbedding == null) {
-            batchIsEmbedding = isEmb;
-            if (isEmb) {
-              currentBatch = _batchEmbd;
-              currentBatch.n_tokens = 0;
-            } else {
-              currentBatch = _batch;
-              currentBatch.n_tokens = 0;
-            }
-            batchIdx = 0;
+          if (session.nPos >= _contextNCtx - 2) {
+            session.status = LlamaStatus.ready;
+            session.outputStream.add("\n[Context Limit]");
+            final mem = lib.llama_get_memory(_context);
+            lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+            session.nPos = 0;
+            session.pendingItems.clear();
+            session.outputStream.close();
+            continue;
           }
-          // Efficiency Fix: Instead of `continue` (which skips to next session),
-          // we just skip *this* item but stay in the session loop?
-          // No, we need to check other sessions to fill the batch.
-          // `continue` here goes to the next session loop iteration.
-          if (batchIsEmbedding != isEmb) continue;
 
-          if (isEmb) {
-            if (item.nTokens > available) {
-              if (batchIdx == 0) {
-                // Too big for batch, wait
-              }
+          int available = _nBatch - batchIdx;
+          if (available <= 0) break;
+
+          if (session.pendingItems.isEmpty) {
+            _lastScheduledSessionIndex = activeSessions.indexOf(session);
+            continue;
+          }
+
+          final item = session.pendingItems.first;
+          if (item.isEmbedding != isEmbeddingPass) {
+            _lastScheduledSessionIndex = activeSessions.indexOf(session);
+            continue;
+          }
+
+          final int perSessionQuota =
+              min(available, _maxTokensPerSessionPerBatch);
+
+          if (isEmbeddingPass) {
+            final remaining = item.remainingEmbeddingTokens;
+            if (remaining <= 0) {
+              session.pendingItems.removeFirst();
+              _lastScheduledSessionIndex = activeSessions.indexOf(session);
               continue;
             }
 
+            final sendTokens = min(perSessionQuota, remaining);
             final nEmbd = lib.llama_n_embd(_sharedModel.model);
+            final start = item.embdOffsetTokens * nEmbd;
+            final floatCount = sendTokens * nEmbd;
+
             final destPtr = currentBatch.embd.elementAt(batchIdx * nEmbd);
-
-            final floatCount = item.values!.length;
             final destList = destPtr.asTypedList(floatCount);
-            destList.setAll(0, item.values!);
+            destList.setRange(0, floatCount, item.values!, start);
 
-            for (int k = 0; k < item.nTokens; k++) {
+            for (int k = 0; k < sendTokens; k++) {
               currentBatch.pos[batchIdx + k] = session.nPos + k;
               currentBatch.n_seq_id[batchIdx + k] = 1;
               currentBatch.seq_id[batchIdx + k][0] = session.seqId;
               currentBatch.logits[batchIdx + k] = 0;
             }
 
-            session.nPos += item.nTokens;
+            session.nPos += sendTokens;
+            batchSeqIds.add(session.seqId);
 
-            bool isLast = (session.pendingItems.length == 1);
-            if (isLast) {
-              currentBatch.logits[batchIdx + item.nTokens - 1] = 1;
+            if (remaining == sendTokens && session.pendingItems.length == 1) {
+              currentBatch.logits[batchIdx + sendTokens - 1] = 1;
             }
 
-            batchIdx += item.nTokens;
-            session.pendingItems.removeAt(0);
-            anyWork = true;
+            batchIdx += sendTokens;
+
+            if (remaining == sendTokens) {
+              session.pendingItems.removeFirst();
+            } else {
+              item.embdOffsetTokens += sendTokens;
+            }
+
+            didWork = true;
           } else {
-            // Token input
             int filledCount = 0;
 
-            while (filledCount < available && session.pendingItems.isNotEmpty) {
-              if (session.pendingItems.first.isEmbedding) break;
-              final tItem = session.pendingItems.removeAt(0);
+            while (filledCount < perSessionQuota &&
+                session.pendingItems.isNotEmpty &&
+                !session.pendingItems.first.isEmbedding &&
+                batchIdx < _nBatch) {
+              final tItem = session.pendingItems.removeFirst();
 
               currentBatch.token[batchIdx] = tItem.token!;
               currentBatch.pos[batchIdx] = session.nPos;
@@ -554,85 +550,100 @@ class LlamaService {
               session.nPos++;
               batchIdx++;
               filledCount++;
+              batchSeqIds.add(session.seqId);
 
               if (session.pendingItems.isEmpty) {
                 currentBatch.logits[batchIdx - 1] = 1;
               }
             }
-            anyWork = true;
+            if (filledCount > 0) didWork = true;
           }
+
+          _lastScheduledSessionIndex = activeSessions.indexOf(session);
+          if (batchIdx >= _nBatch) break;
         }
 
-        // Update index for next time (Round Robin tracking)
-        // We set it to the index of this session in the original list.
-        _lastScheduledSessionIndex = activeSessions.indexOf(session);
+        if (batchIdx == 0) {
+          continue;
+        }
+
+        currentBatch.n_tokens = batchIdx;
+
+        _activeDecodeSync = Completer<void>();
+
+        if (lib.llama_decode(_context, currentBatch) != 0) {
+          _activeDecodeSync?.complete();
+          _activeDecodeSync = null;
+
+          for (final seqId in batchSeqIds) {
+            final session = _sessionsBySeqId[seqId];
+            if (session != null) {
+              session.status = LlamaStatus.error;
+              session.pendingItems.clear();
+              if (!session.outputStream.isClosed) {
+                session.outputStream.addError(LlamaException(
+                    "llama_decode failed for session ${session.id}"));
+                session.outputStream.close();
+              }
+            }
+          }
+
+          await Future.delayed(const Duration(milliseconds: 100));
+          continue;
+        }
+
+        _activeDecodeSync?.complete();
+        _activeDecodeSync = null;
+
+        for (int i = 0; i < batchIdx; i++) {
+          if (currentBatch.logits[i] != 0) {
+            final sId = currentBatch.seq_id[i][0];
+            final session = _sessionsBySeqId[sId];
+            if (session == null) continue;
+
+            final newToken =
+                lib.llama_sampler_sample(session.sampler, _context, i);
+
+            lib.llama_sampler_accept(session.sampler, newToken);
+
+            bool isEos = lib.llama_token_is_eog(_sharedModel.vocab, newToken);
+            String piece = "";
+            if (isEos) {
+              piece = " [EOS]";
+              session.outputStream.add(piece);
+            } else {
+              piece = _decodeToken(session, newToken);
+              if (piece.isNotEmpty) session.outputStream.add(piece);
+            }
+
+            session.nGenerated++;
+
+            bool done = isEos;
+            if (_contextNPredict != -1 &&
+                session.nGenerated >= _contextNPredict) {
+              done = true;
+            }
+
+            if (done) {
+              session.status = LlamaStatus.ready;
+
+              if (!session.outputStream.isClosed) {
+                session.outputStream.close();
+              }
+            } else {
+              session.pendingItems.addLast(_PendingItem.token(newToken));
+            }
+          }
+        }
       }
 
-      if (!anyWork) {
+      if (!didWork) {
         if (_workSignal.isCompleted) {
           _workSignal = Completer<void>();
           continue;
         }
         await _workSignal.future;
         _workSignal = Completer<void>();
-        continue;
-      }
-
-      currentBatch.n_tokens = batchIdx;
-
-      _activeDecodeSync = Completer<void>();
-
-      if (lib.llama_decode(_context, currentBatch) != 0) {
-        // print("llama_decode failed");
-        _activeDecodeSync?.complete();
-        _activeDecodeSync = null;
-        await Future.delayed(const Duration(milliseconds: 100));
-        continue;
-      }
-
-      _activeDecodeSync?.complete();
-      _activeDecodeSync = null;
-
-      for (int i = 0; i < batchIdx; i++) {
-        if (currentBatch.logits[i] != 0) {
-          final sId = currentBatch.seq_id[i][0];
-          final session = _sessionsBySeqId[sId];
-          if (session == null) continue;
-
-          final newToken =
-              lib.llama_sampler_sample(session.sampler, _context, i);
-
-          lib.llama_sampler_accept(session.sampler, newToken);
-
-          bool isEos = lib.llama_token_is_eog(_sharedModel.vocab, newToken);
-          String piece = "";
-          if (isEos) {
-            piece = " [EOS]";
-            session.outputStream.add(piece);
-          } else {
-            piece = _decodeToken(session, newToken);
-            if (piece.isNotEmpty) session.outputStream.add(piece);
-          }
-
-          // if (piece.isNotEmpty) session.outputStream.add(piece); // Handled by sink now
-          session.nGenerated++;
-
-          bool done = isEos;
-          if (session.contextParams.nPredict != -1 &&
-              session.nGenerated >= session.contextParams.nPredict) {
-            done = true;
-          }
-
-          if (done) {
-            session.status = LlamaStatus.ready;
-
-            if (!session.outputStream.isClosed) {
-              session.outputStream.close();
-            }
-          } else {
-            session.pendingItems.add(_PendingItem.token(newToken));
-          }
-        }
       }
     }
   }
@@ -796,13 +807,30 @@ class LlamaService {
   }
 
   String _decodeToken(_ServiceSession session, int tokenId) {
-    if (session.decodeBuf == nullptr) session.decodeBuf = malloc<Char>(256);
-    final buf = session.decodeBuf;
+    if (session.decodeCapacity == 0) session.decodeCapacity = 256;
+    if (session.decodeBuf == nullptr) {
+      session.decodeBuf = malloc<Char>(session.decodeCapacity);
+    }
+    var buf = session.decodeBuf;
 
     try {
       int n = lib.llama_token_to_piece(
-          _sharedModel.vocab, tokenId, buf, 256, 0, true);
-      if (n < 0) return "";
+          _sharedModel.vocab, tokenId, buf, session.decodeCapacity, 0, true);
+
+      if (n < 0) {
+        final needed = -n;
+        final newCap = max(needed, session.decodeCapacity * 2);
+        session.decodeCapacity = newCap;
+        if (buf != nullptr) {
+          malloc.free(buf);
+        }
+        session.decodeBuf = malloc<Char>(session.decodeCapacity);
+        buf = session.decodeBuf;
+
+        n = lib.llama_token_to_piece(
+            _sharedModel.vocab, tokenId, buf, session.decodeCapacity, 0, true);
+        if (n < 0) return "";
+      }
 
       final newBytes = buf.cast<Uint8>().asTypedList(n);
       return session.accumulator.process(newBytes);
@@ -815,68 +843,24 @@ class LlamaService {
 /// Helper to accumulate bytes and decode only when valid UTF-8 is available.
 class _Utf8Accumulator {
   final List<int> _buffer = [];
+  static const int _maxBufferLen = 8192;
 
   String process(List<int> newBytes) {
     _buffer.addAll(newBytes);
     if (_buffer.isEmpty) return "";
 
-    // Check if the buffer ends with a partial sequence
-    if (_isPartial(_buffer)) {
+    try {
+      final result = utf8.decode(_buffer);
+      _buffer.clear();
+      return result;
+    } on FormatException {
+      if (_buffer.length > _maxBufferLen) {
+        final result = utf8.decode(_buffer, allowMalformed: true);
+        _buffer.clear();
+        return result;
+      }
       return "";
     }
-
-    try {
-      String result = utf8.decode(_buffer);
-      _buffer.clear();
-      return result;
-    } catch (e) {
-      String result = utf8.decode(_buffer, allowMalformed: true);
-      _buffer.clear();
-      return result;
-    }
-  }
-
-  bool _isPartial(List<int> bytes) {
-    if (bytes.isEmpty) return false;
-    int last = bytes.last;
-
-    // 1-byte sequence (0xxxxxxx) - Complete
-    if ((last & 0x80) == 0) return false;
-
-    // Check suffix length logic
-    // We scan backwards to find the start byte
-    int len = bytes.length;
-    int lookback = 0;
-    // Max lookback for UTF8 is 4 bytes
-    while (lookback < 4 && lookback < len) {
-      int b = bytes[len - 1 - lookback];
-
-      if ((b & 0xC0) == 0xC0) {
-        // Found start byte: 11xxxxxx
-        // Count how many bytes it expects
-        int expected = 0;
-        if ((b & 0xE0) == 0xC0)
-          expected = 2; // 110xxxxx
-        else if ((b & 0xF0) == 0xE0)
-          expected = 3; // 1110xxxx
-        else if ((b & 0xF8) == 0xF0) expected = 4; // 11110xxx
-
-        // We have (lookback + 1) bytes including start
-        if ((lookback + 1) < expected) {
-          return true; // Partial
-        }
-        return false; // Complete
-      }
-
-      if ((b & 0x80) == 0) {
-        // Found ASCII in the middle of looking for start?
-        // That means the tail was orphan continuation bytes, or valid.
-        return false;
-      }
-      lookback++;
-    }
-    // If we didn't find a start byte within 4 bytes, assume valid/recoverable
-    return false;
   }
 }
 
@@ -884,26 +868,32 @@ class _PendingItem {
   final int? token;
   final Float32List? values; // for embeddings
   final int nTokens; // size in tokens
+  int embdOffsetTokens;
 
   _PendingItem.token(this.token)
       : values = null,
-        nTokens = 1;
-  _PendingItem.embedding(this.values, this.nTokens) : token = null;
+        nTokens = 1,
+        embdOffsetTokens = 0;
+  _PendingItem.embedding(this.values, this.nTokens,
+      {this.embdOffsetTokens = 0})
+      : token = null;
 
   bool get isEmbedding => values != null;
+
+  int get remainingEmbeddingTokens => nTokens - embdOffsetTokens;
 }
 
 class _ServiceSession {
   final String id;
   final int seqId;
   final Pointer<llama_sampler> sampler;
-  final ContextParams contextParams;
 
   LlamaStatus status = LlamaStatus.uninitialized;
   Pointer<Char> decodeBuf = nullptr;
+  int decodeCapacity = 0;
   _Utf8Accumulator accumulator = _Utf8Accumulator();
 
-  final List<_PendingItem> pendingItems = [];
+  final ListQueue<_PendingItem> pendingItems = ListQueue<_PendingItem>();
   late StreamController<String> outputStream;
   bool _hasStream = false;
 
@@ -915,7 +905,6 @@ class _ServiceSession {
     required this.id,
     required this.seqId,
     required this.sampler,
-    required this.contextParams,
   });
 
   void dispose(llama_cpp lib) {
