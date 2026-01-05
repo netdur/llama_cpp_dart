@@ -155,7 +155,7 @@ class LlamaService {
     String sessionId,
     String prompt, {
     void Function(int current, int total)? onProgress,
-  }) {
+  }) async {
     _checkDisposed();
     final session = _requireSession(sessionId);
     if (prompt.isEmpty) throw ArgumentError('Prompt cannot be empty');
@@ -592,7 +592,7 @@ class LlamaService {
     _checkDisposed();
     final session = _requireSession(sessionId);
 
-    final tempPath = "${path}.tmp.${DateTime.now().millisecondsSinceEpoch}";
+    final tempPath = "$path.tmp.${DateTime.now().millisecondsSinceEpoch}";
     final tempPathPtr = tempPath.toNativeUtf8().cast<Char>();
 
     try {
@@ -672,8 +672,7 @@ class LlamaService {
 
       final stateData = bytes.sublist(16);
 
-      final tempPath =
-          "${path}.tmp.load.${DateTime.now().millisecondsSinceEpoch}";
+      final tempPath = "$path.tmp.load.${DateTime.now().millisecondsSinceEpoch}";
       final tempFile = File(tempPath);
       tempFile.writeAsBytesSync(stateData, flush: true);
 
@@ -819,7 +818,6 @@ class LlamaService {
 
   List<int> tokenize(String sessionId, String text, bool addBos) {
     _checkDisposed();
-    final session = _requireSession(sessionId);
     if (text.isEmpty) throw ArgumentError('Empty text');
     final utf8Ptr = text.toNativeUtf8();
     final length = utf8Ptr.length;
@@ -1045,7 +1043,9 @@ class LlamaService {
           malloc.free(ptr);
         }
         malloc.free(breakersPtr);
-      } catch (e) {}
+      } catch (e) {
+        // Ignore dry sampler initialization failures; continue with remaining samplers.
+      }
     }
 
     if (samplerParams.mirostat == 2) {
@@ -1201,9 +1201,9 @@ class _ServiceSession {
 class _SharedModelHandle {
   final Pointer<llama_model> model;
   final Pointer<llama_vocab> vocab;
-  int refs;
+  int refs = 1;
 
-  _SharedModelHandle({required this.model, required this.vocab, this.refs = 1});
+  _SharedModelHandle({required this.model, required this.vocab});
 }
 
 class _ModelCacheKey {
