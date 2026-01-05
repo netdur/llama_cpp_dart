@@ -49,14 +49,14 @@ void main() async {
     scope2.stream.listen((text) {
       print("SCOPE 2: $text");
     });
-    scope2.completions.listen((event) {
+    scope2.completions.listen((event) async {
       print("SCOPE 2 DONE: ${event.success}");
 
       // When scope2 is done, we'll clean up and exit
       print("\n----- All prompts completed, cleaning up -----\n");
-      scope1.dispose();
-      scope2.dispose();
-      llamaParent.dispose();
+      await scope1.dispose();
+      await scope2.dispose();
+      await llamaParent.dispose();
     });
 
     // Queue both prompts - they'll run sequentially

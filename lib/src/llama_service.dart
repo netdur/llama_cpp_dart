@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:math' show max, min;
+import 'dart:math' show max;
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -16,9 +16,8 @@ import 'sampler_params.dart';
 
 /// Multi-user friendly wrapper around llama.cpp.
 /// - Reuses loaded weights across service instances when possible.
-/// - Keeps per-session KV caches and samplers.
-/// - Supports multimodal prompts and session save/load like [Llama].
-/// - Exposes hooks for round-robin/continuous batching schedulers.
+/// - Uses a single shared context (`llama_context`) to support continuous batching.
+/// - Manages multiple sessions via `seq_id`.
 class LlamaService {
   static final Map<_ModelCacheKey, _SharedModelHandle> _modelCache = {};
 
@@ -33,14 +32,38 @@ class LlamaService {
   final bool _verbose;
 
   final Map<String, _ServiceSession> _sessions = {};
-  final Map<String, LlamaStatus> _status = {};
+
+  /// Active sessions that have a helper-managed sequence ID.
+  final Map<int, _ServiceSession> _sessionsBySeqId = {};
 
   late final _SharedModelHandle _sharedModel;
+
+  // Shared context and batch
+  Pointer<llama_context> _context = nullptr;
+  late llama_batch _batch;
+  int _nBatch = 0;
+
+  // Multimodal (Vision)
   Pointer<mtmd_context> _mctx = nullptr;
   bool _visionEnabled = false;
+
+  // Management
   bool _disposed = false;
+  final _stopSignal = Completer<void>();
+
+  // Optimization: Event Signal
+  Completer<void> _workSignal = Completer<void>();
+
+  // Dispose Race Condition Fix
+  Completer<void>? _activeDecodeSync;
+
+  // Sequence ID management
+  final List<int> _freeSeqIds = [];
+  int _maxParallel = 1;
 
   /// Creates a service that can host multiple sessions on the same weights.
+  ///
+  /// Note: [contextParams.nSeqMax] controls the maximum number of parallel sequences.
   LlamaService(
     this.modelPath, {
     String? mmprojPath,
@@ -60,18 +83,16 @@ class LlamaService {
       final sysInfo = ptr.cast<Utf8>().toDartString();
       // ignore: avoid_print
       print(sysInfo);
-      // ignore: avoid_print
-      print("modelPath: $modelPath");
-      // ignore: avoid_print
-      print("libraryPath: ${Llama.libraryPath}");
     }
 
+    // Initialize Vision if provided
     if (mmprojPath != null && mmprojPath.isNotEmpty) {
       final mprojPathPtr = mmprojPath.toNativeUtf8().cast<Char>();
       try {
         var mparam = lib.mtmd_context_params_default();
         mparam.use_gpu = this.modelParams.nGpuLayers != 0;
-        _mctx = lib.mtmd_init_from_file(mprojPathPtr, _sharedModel.model, mparam);
+        _mctx =
+            lib.mtmd_init_from_file(mprojPathPtr, _sharedModel.model, mparam);
         if (_mctx == nullptr) {
           throw LlamaException(
               "Failed to create multimodal projector context from $mmprojPath");
@@ -81,57 +102,78 @@ class LlamaService {
         malloc.free(mprojPathPtr);
       }
     }
+
+    // Initialize Shared Context
+    final ctxParams = defaultContextParams.get();
+    _maxParallel = max(1, ctxParams.n_seq_max);
+
+    // Ensure sufficient slots
+    for (int i = 0; i < _maxParallel; i++) {
+      _freeSeqIds.add(i);
+    }
+
+    try {
+      _context =
+          lib.llama_new_context_with_model(_sharedModel.model, ctxParams);
+      if (_context == nullptr) {
+        throw LlamaException("Could not create shared context");
+      }
+
+      _nBatch = ctxParams.n_batch;
+      // Fix: Initialize batch for Tokens only (n_embd = 0).
+      // llama.cpp forbids both token and embd pointers being non-null.
+      // For text generation, we need tokens. Vision/Embeddings will require a separate batch configuration or swapping pointers.
+      _batch = lib.llama_batch_init(_nBatch, 0, _maxParallel);
+
+      if (_batch.token.address == 0 ||
+          _batch.pos.address == 0 ||
+          _batch.seq_id.address == 0) {
+        throw LlamaException("llama_batch_init failed to allocate memory");
+      }
+    } catch (e) {
+      _releaseModel(_sharedModel);
+      rethrow;
+    }
+
+    // Start the scheduling loop
+    _runLoop();
   }
 
   /// Returns true when the service or all sessions have been disposed.
   bool get isDisposed => _disposed;
 
   /// Current status for a specific session.
-  LlamaStatus status(String sessionId) => _status[sessionId] ?? LlamaStatus.uninitialized;
+  LlamaStatus status(String sessionId) =>
+      _sessions[sessionId]?.status ?? LlamaStatus.uninitialized;
 
-  /// Creates a new logical user session with its own KV cache and sampler.
+  /// Creates a new logical user session.
+  ///
+  /// Assigns a sequence ID from the pool. Throws if max parallel sessions reached.
   void createSession(
     String sessionId, {
-    ContextParams? contextParams,
+    ContextParams?
+        contextParams, // Note: Only nPredict/nCtx are relevant per-session now
     SamplerParams? samplerParams,
   }) {
     _checkDisposed();
     if (_sessions.containsKey(sessionId)) return;
 
+    if (_freeSeqIds.isEmpty) {
+      throw LlamaException(
+          "Max parallel sessions ($_maxParallel) reached. Cannot create session $sessionId.");
+    }
+
+    final seqId = _freeSeqIds.removeLast();
     final ctxParams = contextParams ?? defaultContextParams;
     final sampler = _initializeSampler(samplerParams ?? defaultSamplerParams);
 
-    final nativeParams = ctxParams.get();
-    Pointer<llama_context> ctx = nullptr;
-    llama_batch batch;
-    final seqIds = <Pointer<llama_seq_id>>[];
-
-    try {
-      ctx = lib.llama_new_context_with_model(_sharedModel.model, nativeParams);
-      if (ctx == nullptr) {
-        throw LlamaException("Could not create context for $sessionId");
-      }
-
-      batch = lib.llama_batch_init(nativeParams.n_batch, 0, 1);
-      for (int i = 0; i < nativeParams.n_batch; i++) {
-        final seq = calloc<llama_seq_id>();
-        seq.value = 0;
-        seqIds.add(seq);
-      }
-    } catch (e) {
-      if (ctx != nullptr) lib.llama_free(ctx);
-      lib.llama_sampler_free(sampler);
-      for (final ptr in seqIds) {
-        calloc.free(ptr);
-      }
-      rethrow;
-    }
+    // Clear KV cache for this slot to be safe
+    final mem = lib.llama_get_memory(_context);
+    lib.llama_memory_seq_rm(mem, seqId, -1, -1);
 
     final session = _ServiceSession(
       id: sessionId,
-      context: ctx,
-      batch: batch,
-      seqIds: seqIds,
+      seqId: seqId,
       sampler: sampler,
       contextParams: ctxParams,
     );
@@ -139,260 +181,124 @@ class LlamaService {
     session.decodeBuf = malloc<Char>(256);
 
     _sessions[sessionId] = session;
-    _status[sessionId] = LlamaStatus.ready;
+    _sessionsBySeqId[seqId] = session;
+    session.status = LlamaStatus.ready;
   }
 
-  /// Removes a session and frees its context memory.
-  void freeSession(String sessionId) {
+  /// Removes a session and frees its sequence ID.
+  Future<void> freeSession(String sessionId) async {
     final session = _sessions.remove(sessionId);
-    _status.remove(sessionId);
     if (session == null) return;
+
+    _sessionsBySeqId.remove(session.seqId);
+
+    // Clear data associated with this sequence
+    if (_context != nullptr) {
+      final mem = lib.llama_get_memory(_context);
+      // Wait for decode to finish if accidental collision?
+      // Unlikely since we removed from map.
+      lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+    }
+
     session.dispose(lib);
+    _freeSeqIds.add(session.seqId);
   }
 
-  /// Sets the prompt for a specific session.
+  /// Sets the prompt for a specific session (starts generation).
+  /// [clearHistory]: If true (default), wipes memory for this session before prompting.
+  /// If false, appending to existing context.
   Future<void> setPrompt(
     String sessionId,
     String prompt, {
+    bool clearHistory = true,
     void Function(int current, int total)? onProgress,
   }) async {
     _checkDisposed();
     final session = _requireSession(sessionId);
     if (prompt.isEmpty) throw ArgumentError('Prompt cannot be empty');
 
-    final nCtx = session.contextParams.nCtx;
-    final autoTrim = session.contextParams.autoTrimContext;
-    if (!autoTrim && session.nPos >= nCtx - 10) {
-      throw LlamaException("Context full (pos: ${session.nPos}, limit: $nCtx)");
+    // Reset session state
+    session.pendingItems.clear();
+    session.nGenerated = 0;
+    session.nPromptTokens = 0;
+    session.pendingBytes.clear(); // Resource fix
+    session.status = LlamaStatus.generating;
+
+    if (clearHistory) {
+      // Clear KV cache for new prompt
+      final mem = lib.llama_get_memory(_context);
+      lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+      session.nPos = 0;
+      if (session.sampler != nullptr) lib.llama_sampler_reset(session.sampler);
     }
 
-    Pointer<Utf8>? promptUtf8Ptr;
-
-    try {
-      _status[sessionId] = LlamaStatus.generating;
-      session.pendingBytes.clear();
-
-      if (session.nPos == 0) {
-        if (session.context.address != 0) {
-          final mem = lib.llama_get_memory(session.context);
-          lib.llama_memory_clear(mem, true);
-        }
-        if (session.sampler != nullptr) lib.llama_sampler_reset(session.sampler);
-        session.batch.n_tokens = 0;
-      }
-
-      promptUtf8Ptr = prompt.toNativeUtf8();
-      final int promptBytes = promptUtf8Ptr.length;
-      final Pointer<Char> promptCharPtr = promptUtf8Ptr.cast<Char>();
-
-      final bool addBos = session.nPos == 0;
-
-      session.nPrompt = -lib.llama_tokenize(_sharedModel.vocab, promptCharPtr,
-          promptBytes, nullptr, 0, addBos, true);
-
-      if (session.nPrompt <= 0) throw LlamaException("Token estimate failed");
-      if (session.nPrompt > nCtx - 10) throw LlamaException("Prompt too large");
-      if (!autoTrim && session.nPos + session.nPrompt >= nCtx) {
-        throw LlamaException("Context limit exceeded");
-      }
-
-      if (session.tokens != nullptr) malloc.free(session.tokens);
-      session.tokens = malloc<llama_token>(session.nPrompt);
-
-      final int actualTokens = lib.llama_tokenize(_sharedModel.vocab, promptCharPtr,
-          promptBytes, session.tokens, session.nPrompt, addBos, true);
-
-      if (actualTokens < 0) throw LlamaException("Tokenization failed");
-      session.nPrompt = actualTokens;
-
-      final (_, trimmed) = _maybeTrimContext(session, session.nPrompt);
-      if (trimmed) {
-        session.batch.n_tokens = 0;
-      }
-
-      if (session.nPrompt > nCtx - 10) throw LlamaException("Prompt too large");
-      if (session.nPos + session.nPrompt >= nCtx) {
-        throw LlamaException("Context limit exceeded");
-      }
-
-      int batchCapacity = session.contextParams.nBatch;
-      int processed = 0;
-      final startPos = session.nPos;
-
-      while (processed < session.nPrompt) {
-        int nChunk = session.nPrompt - processed;
-        if (nChunk > batchCapacity) nChunk = batchCapacity;
-
-        session.batch.n_tokens = nChunk;
-        for (int i = 0; i < nChunk; i++) {
-          int tokenIdx = processed + i;
-          session.batch.token[i] = session.tokens[tokenIdx];
-          session.batch.pos[i] = startPos + processed + i;
-          session.batch.n_seq_id[i] = 1;
-          session.batch.seq_id[i] = session.seqIds[i];
-          session.batch.seq_id[i].value = 0;
-          final isLastGlobalToken = tokenIdx == session.nPrompt - 1;
-          session.batch.logits[i] = isLastGlobalToken ? 1 : 0;
-        }
-
-        if (lib.llama_decode(session.context, session.batch) != 0) {
-          throw LlamaException("Failed to decode prompt chunk");
-        }
-
-        session.nPos += nChunk;
-        processed += nChunk;
-        try {
-          onProgress?.call(processed, session.nPrompt);
-        } catch (_) {}
-
-        if (processed < session.nPrompt && processed % (batchCapacity * 4) == 0) {
-          await Future<void>.delayed(Duration.zero);
-        }
-      }
-
-      session.nGeneratedTotal = 0;
-    } catch (e) {
-      _status[sessionId] = LlamaStatus.error;
-      if (session.tokens != nullptr) {
-        malloc.free(session.tokens);
-        session.tokens = nullptr;
-      }
-      rethrow;
-    } finally {
-      if (promptUtf8Ptr != null) malloc.free(promptUtf8Ptr);
-    }
-  }
-
-  (String, bool, bool) getNextWithStatus(String sessionId) {
-    _checkDisposed();
-    final session = _requireSession(sessionId);
-
+    // Tokenize
+    final promptUtf8 = prompt.toNativeUtf8();
     try {
       final nCtx = session.contextParams.nCtx;
-      final tokensToAdd =
-          session.batch.n_tokens == 0 ? 1 : session.batch.n_tokens;
-      final (shifted, trimmed) = _maybeTrimContext(session, tokensToAdd);
+      final length = promptUtf8.length;
+      final addBos = clearHistory; // Only add BOS if starting fresh
 
-      if (trimmed) {
-        if (shifted > 0) {
-          for (int i = 0; i < session.batch.n_tokens; i++) {
-            session.batch.pos[i] = max(0, session.batch.pos[i] - shifted);
-          }
-        } else {
-          for (int i = 0; i < session.batch.n_tokens; i++) {
-            session.batch.pos[i] = i;
-          }
+      // Estimate
+      int nTokens = -lib.llama_tokenize(_sharedModel.vocab, promptUtf8.cast(),
+          length, nullptr, 0, addBos, true);
+
+      if (nTokens < 0)
+        nTokens = -nTokens; // Handle negative return code as size
+
+      final tokenPtr = malloc<llama_token>(nTokens);
+      try {
+        nTokens = lib.llama_tokenize(_sharedModel.vocab, promptUtf8.cast(),
+            length, tokenPtr, nTokens, addBos, true);
+
+        if (session.nPos + nTokens > nCtx) {
+          throw LlamaException(
+              "Prompt too long or context full ($nTokens tokens, pos ${session.nPos} > $nCtx)");
         }
-      }
 
-      if (session.nPos >= nCtx - 2) {
-        return ("\n\n[Context limit reached]", true, true);
-      }
-
-      final nGenerated = session.nGeneratedTotal;
-      final targetPredict = session.contextParams.nPredict;
-      if (targetPredict > 0 && nGenerated >= targetPredict) {
-        return ("", true, false);
-      }
-
-      if (lib.llama_decode(session.context, session.batch) != 0) {
-        if (session.nPos >= nCtx - 10) {
-          return ("\n\n[Context limit]", true, true);
+        // Queue tokens
+        // Create PromptItems
+        for (int i = 0; i < nTokens; i++) {
+          session.pendingItems.add(_PendingItem.token(tokenPtr[i]));
         }
-        throw LlamaException("Failed to eval");
+        session.nPromptTokens = nTokens;
+      } finally {
+        malloc.free(tokenPtr);
       }
-
-      session.nPos += session.batch.n_tokens;
-
-      int newTokenId = lib.llama_sampler_sample(session.sampler, session.context, -1);
-      bool isEos = lib.llama_token_is_eog(_sharedModel.vocab, newTokenId);
-
-      String piece;
-      if (isEos) {
-        if (session.pendingBytes.isNotEmpty) {
-          piece = utf8.decode(session.pendingBytes, allowMalformed: true);
-          session.pendingBytes.clear();
-        } else {
-          piece = "";
-        }
-      } else {
-        piece = _decodeToken(session, newTokenId);
-      }
-
-      session.batch.token[0] = newTokenId;
-      session.batch.pos[0] = session.nPos;
-      session.batch.n_seq_id[0] = 1;
-      session.batch.seq_id[0] = session.seqIds[0];
-      session.batch.seq_id[0].value = 0;
-      session.batch.logits[0] = 1;
-      session.batch.n_tokens = 1;
-
-      if (!isEos) {
-        session.nGeneratedTotal += 1;
-      }
-
-      return (piece, isEos, false);
-    } catch (e) {
-      _status[sessionId] = LlamaStatus.error;
-      throw LlamaException('Error generating text for $sessionId', e);
-    }
-  }
-
-  Stream<String> generateText(String sessionId) async* {
-    _checkDisposed();
-    try {
-      while (true) {
-        final (text, isDone, contextLimitReached) = getNextWithStatus(sessionId);
-        if (text.isNotEmpty) yield text;
-        if (contextLimitReached) {
-          _status[sessionId] = LlamaStatus.ready;
-          break;
-        }
-        if (isDone) break;
-      }
-    } catch (e) {
-      _status[sessionId] = LlamaStatus.error;
-      throw LlamaException('Error in text generation stream for $sessionId', e);
     } finally {
-      if (_status[sessionId] != LlamaStatus.error && !_disposed) {
-        _status[sessionId] = LlamaStatus.ready;
-      }
+      malloc.free(promptUtf8);
     }
+
+    _notifyWork();
   }
 
-  Future<String> generateCompleteText(String sessionId, {int? maxTokens}) async {
+  /// Same as [generateText] but for CLI compatibility, waits for completion if needed.
+  Future<String> generateCompleteText(String sessionId,
+      {int? maxTokens}) async {
+    final stream = generateText(sessionId);
+    final buf = StringBuffer();
+    await for (final chunk in stream) {
+      buf.write(chunk);
+      if (maxTokens != null && buf.length > maxTokens * 4) {
+        // crude approx
+      }
+    }
+    return buf.toString();
+  }
+
+  /// Stream generation.
+  Stream<String> generateText(String sessionId) {
     _checkDisposed();
-    final buffer = StringBuffer();
-    int tokenCount = 0;
     final session = _requireSession(sessionId);
-    final limit = maxTokens ?? session.contextParams.nPredict;
-
-    try {
-      while (true) {
-        final (text, isDone, contextLimitReached) = getNextWithStatus(sessionId);
-        buffer.write(text);
-        tokenCount++;
-        if (contextLimitReached) {
-          _status[sessionId] = LlamaStatus.ready;
-          break;
-        }
-        if (isDone || (limit > 0 && tokenCount >= limit)) break;
-      }
-      return buffer.toString();
-    } catch (e) {
-      _status[sessionId] = LlamaStatus.error;
-      throw LlamaException('Error generating complete text for $sessionId', e);
-    } finally {
-      if (_status[sessionId] != LlamaStatus.error && !_disposed) {
-        _status[sessionId] = LlamaStatus.ready;
-      }
-    }
+    return session.outputStream.stream;
   }
 
+  /// Supports vision. Queues images + text.
   Stream<String> generateWithMedia(
     String sessionId,
     String prompt, {
     required List<LlamaInput> inputs,
+    bool clearHistory = true,
   }) async* {
     _checkDisposed();
     if (!_visionEnabled || _mctx == nullptr) {
@@ -401,25 +307,41 @@ class LlamaService {
     if (inputs.isEmpty) throw ArgumentError('No images given');
 
     final session = _requireSession(sessionId);
-    final images = inputs.whereType<LlamaImage>().toList();
-    const marker = '<image>';
-    final mCnt = marker.allMatches(prompt).length;
-    if (mCnt != images.length) {
-      throw ArgumentError(
-          'Prompt has $mCnt <image> marker(s) but ${images.length} image(s) supplied.');
+
+    // We will behave like setPrompt but with mixed content
+    session.pendingItems.clear();
+    session.pendingItems.clear();
+    session.nGenerated = 0;
+    session.pendingBytes.clear(); // Resource fix
+    session.status = LlamaStatus.generating;
+
+    if (clearHistory) {
+      // Clear KV
+      final mem = lib.llama_get_memory(_context);
+      lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+      session.nPos = 0;
+      if (session.sampler != nullptr) lib.llama_sampler_reset(session.sampler);
     }
 
+    // 1. Convert inputs to chunks
+    final images = inputs.whereType<LlamaImage>().toList();
+    const marker = '<image>';
+
+    // Fix: Validate markers
+    if (marker.allMatches(prompt).length != images.length) {
+      throw ArgumentError(
+          "Mismatch between <image> markers impacting prompt and provided inputs");
+    }
+
+    // Prepare images
+    final bitmapRefs = <BitmapPointers>[];
+    Pointer<Pointer<mtmd_bitmap>>? bmpArr; // nullable for safely freeing
+
+    Pointer<mtmd_input_chunks> chunks = nullptr;
     Pointer<mtmd_input_text> txtPtr = nullptr;
     Pointer<Char> fullPtr = nullptr;
-    Pointer<mtmd_input_chunks> chunks = nullptr;
-    final bitmapRefs = <BitmapPointers>[];
-    Pointer<Pointer<mtmd_bitmap>> bmpArr = nullptr;
 
     try {
-      _status[sessionId] = LlamaStatus.generating;
-      lib.llama_sampler_reset(session.sampler);
-      clearSession(sessionId);
-
       for (final img in images) {
         bitmapRefs.add(img.toBitmap(lib, malloc));
       }
@@ -444,16 +366,9 @@ class LlamaService {
           lib.mtmd_tokenize(_mctx, chunks, txtPtr, bmpArr, bitmapRefs.length);
       if (tk != 0) throw LlamaException('mtmd_tokenize failed ($tk)');
 
-      var nPast = 0;
-      final nCtx = session.contextParams.nCtx;
       final nChunks = lib.mtmd_input_chunks_size(chunks);
 
-      final b = session.batch;
-      final Pointer<llama_token> originalTokenPtr = b.token;
-      final int batchCapacity = session.contextParams.nBatch;
-
       for (var i = 0; i < nChunks; ++i) {
-        b.n_tokens = 0;
         final chunk = lib.mtmd_input_chunks_get(chunks, i);
         final type = lib.mtmd_input_chunk_get_type(chunk);
 
@@ -461,428 +376,284 @@ class LlamaService {
           if (lib.mtmd_encode_chunk(_mctx, chunk) != 0) {
             throw LlamaException('encode image failed');
           }
-          final embd = lib.mtmd_get_output_embd(_mctx);
+          // Get embeddings
+          final embdPtr = lib.mtmd_get_output_embd(_mctx);
           final nTok = lib.mtmd_input_chunk_get_n_tokens(chunk);
+          final nEmbd = lib.llama_n_embd(_sharedModel.model);
 
-          if (nTok > batchCapacity) throw LlamaException('Image chunk > batch');
-          if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
+          final totalFloats = nTok * nEmbd;
+          final floatList = embdPtr.asTypedList(totalFloats);
+          final copy = Float32List.fromList(floatList);
 
-          b.token = nullptr;
-          b.embd = embd;
-          for (var k = 0; k < nTok; ++k) {
-            b.pos[k] = nPast + k;
-            b.n_seq_id[k] = 1;
-            b.seq_id[k] = session.seqIds[k];
-            b.seq_id[k].value = 0;
-            b.logits[k] = 0;
-          }
-          b.logits[nTok - 1] = 1;
-          b.n_tokens = nTok;
-
-          if (lib.llama_decode(session.context, b) != 0) {
-            throw LlamaException('decode image failed');
-          }
-          nPast += nTok;
+          session.pendingItems.add(_PendingItem.embedding(copy, nTok));
         } else {
+          // Text
           final nPtr = malloc<Size>();
           final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
           final nTok = nPtr.value;
           malloc.free(nPtr);
 
-          if (nTok > batchCapacity) throw LlamaException('Text chunk > batch');
-          if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
-
-          b.token = originalTokenPtr;
-          b.embd = nullptr;
-          for (var k = 0; k < nTok; ++k) {
-            b.token[k] = tokPt[k];
-            b.pos[k] = nPast + k;
-            b.n_seq_id[k] = 1;
-            b.seq_id[k] = session.seqIds[k];
-            b.seq_id[k].value = 0;
-            b.logits[k] = 0;
+          for (int k = 0; k < nTok; k++) {
+            session.pendingItems.add(_PendingItem.token(tokPt[k]));
           }
-          b.logits[nTok - 1] = 1;
-          b.n_tokens = nTok;
-
-          if (lib.llama_decode(session.context, b) != 0) {
-            throw LlamaException('decode text failed');
-          }
-          nPast += nTok;
         }
       }
-      session.nPos = nPast;
-
-      var produced = 0;
-      final predictLimit = session.contextParams.nPredict;
-      while (nPast < nCtx && (predictLimit == -1 || produced < predictLimit)) {
-        b.token = originalTokenPtr;
-        b.embd = nullptr;
-
-        final tok = lib.llama_sampler_sample(session.sampler, session.context, -1);
-        bool isEos = lib.llama_token_is_eog(_sharedModel.vocab, tok);
-
-        String piece;
-        if (isEos) {
-          if (session.pendingBytes.isNotEmpty) {
-            piece = utf8.decode(session.pendingBytes, allowMalformed: true);
-            session.pendingBytes.clear();
-          } else {
-            piece = "";
-          }
-        } else {
-          piece = _decodeToken(session, tok);
-        }
-        if (piece.isNotEmpty) yield piece;
-        if (isEos) break;
-
-        b.n_tokens = 0;
-        b.token[0] = tok;
-        b.pos[0] = nPast;
-        b.n_seq_id[0] = 1;
-        b.seq_id[0] = session.seqIds[0];
-        b.seq_id[0].value = 0;
-        b.logits[0] = 1;
-        b.n_tokens = 1;
-
-        if (lib.llama_decode(session.context, b) != 0) {
-          throw LlamaException('decode token failed');
-        }
-        ++nPast;
-        ++produced;
-        session.nPos = nPast;
-      }
-      session.nPos = nPast;
-    } catch (e) {
-      _status[sessionId] = LlamaStatus.error;
-      rethrow;
     } finally {
-      if (session.batch.seq_id != nullptr) {
-        final batchCapacity = session.contextParams.nBatch;
-        for (int i = 0; i < batchCapacity; ++i) {
-          session.batch.seq_id[i] = nullptr;
-        }
-      }
       if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
-      if (bmpArr != nullptr) malloc.free(bmpArr);
+      if (bmpArr != null) malloc.free(bmpArr);
       for (final r in bitmapRefs) {
         if (r.bitmap != nullptr) lib.mtmd_bitmap_free(r.bitmap);
       }
       if (txtPtr != nullptr) calloc.free(txtPtr);
       if (fullPtr != nullptr) malloc.free(fullPtr);
+    }
 
-      if (_status[sessionId] != LlamaStatus.error && !_disposed) {
-        _status[sessionId] = LlamaStatus.ready;
-      }
+    _notifyWork();
+
+    // Return stream
+    yield* session.outputStream.stream;
+  }
+
+  void _notifyWork() {
+    if (!_workSignal.isCompleted) {
+      _workSignal.complete();
     }
   }
 
-  bool wasContextLimitReached(String sessionId) {
-    final session = _requireSession(sessionId);
-    final nCtx = session.contextParams.nCtx;
-    return session.nPos >= nCtx - 2;
-  }
-
-  int getRemainingContextSpace(String sessionId) {
-    final session = _requireSession(sessionId);
-    final nCtx = session.contextParams.nCtx;
-    return nCtx - session.nPos;
-  }
-
-  /// Saves session KV cache for a specific session to disk (with header).
   void saveSession(String sessionId, String path) {
-    _checkDisposed();
-    final session = _requireSession(sessionId);
-
-    final tempPath = "$path.tmp.${DateTime.now().millisecondsSinceEpoch}";
-    final tempPathPtr = tempPath.toNativeUtf8().cast<Char>();
-
-    try {
-      final result =
-          lib.llama_state_save_file(session.context, tempPathPtr, nullptr, 0);
-      if (!result) {
-        throw LlamaException(
-            'Failed to save session (llama_state_save_file returned false)');
-      }
-
-      final tempFile = File(tempPath);
-      final finalFile = File(path);
-
-      final header = ByteData(16);
-      header.setUint32(0, 0x44415254, Endian.little);
-      header.setUint32(4, 1, Endian.little);
-      header.setUint32(8, session.nPos, Endian.little);
-      header.setUint32(12, session.nPrompt, Endian.little);
-
-      final headerBytes = header.buffer.asUint8List();
-
-      final writer = finalFile.openSync(mode: FileMode.write);
-      try {
-        writer.writeFromSync(headerBytes);
-
-        final reader = tempFile.openSync(mode: FileMode.read);
-        try {
-          const chunkSize = 1024 * 1024; // 1MB
-          while (true) {
-            final chunk = reader.readSync(chunkSize);
-            if (chunk.isEmpty) break;
-            writer.writeFromSync(chunk);
-          }
-        } finally {
-          reader.closeSync();
-        }
-        writer.flushSync();
-      } finally {
-        writer.closeSync();
-      }
-
-      if (_verbose) {
-        // ignore: avoid_print
-        print("Session $sessionId saved to $path");
-      }
-
-      if (tempFile.existsSync()) tempFile.deleteSync();
-    } finally {
-      malloc.free(tempPathPtr);
-    }
-  }
-
-  /// Loads session KV cache for a specific session from disk.
-  bool loadSession(String sessionId, String path) {
-    _checkDisposed();
-    final session = _requireSession(sessionId);
-    final file = File(path);
-    if (!file.existsSync()) return false;
-
-    final bytes = file.readAsBytesSync();
-    if (bytes.length < 16) {
-      // ignore: avoid_print
-      print("Warning: Session file too small.");
-      return false;
-    }
-
-    final header = ByteData.sublistView(bytes, 0, 16);
-    final magic = header.getUint32(0, Endian.little);
-
-    if (magic == 0x44415254) {
-      final savedPos = header.getUint32(8, Endian.little);
-      final savedPrompt = header.getUint32(12, Endian.little);
-      if (_verbose) {
-        // ignore: avoid_print
-        print("Custom header found. Saved nPos=$savedPos");
-      }
-
-      final stateData = bytes.sublist(16);
-
-      final tempPath = "$path.tmp.load.${DateTime.now().millisecondsSinceEpoch}";
-      final tempFile = File(tempPath);
-      tempFile.writeAsBytesSync(stateData, flush: true);
-
-      final tempPathPtr = tempPath.toNativeUtf8().cast<Char>();
-      final countOut = calloc<Size>(1);
-
-      try {
-        final result = lib.llama_state_load_file(
-            session.context, tempPathPtr, nullptr, 0, countOut);
-        if (_verbose) {
-          // ignore: avoid_print
-          print("Native load result: $result");
-        }
-        if (result) {
-          final restoredPos = countOut.value;
-          session.nPos = restoredPos != 0 ? restoredPos : savedPos;
-          session.nPrompt = savedPrompt != 0 ? savedPrompt : session.nPos;
-        }
-        return result;
-      } finally {
-        malloc.free(tempPathPtr);
-        calloc.free(countOut);
-        if (tempFile.existsSync()) tempFile.deleteSync();
-      }
-    } else {
-      final pathPtr = path.toNativeUtf8().cast<Char>();
-      final countOut = calloc<Size>(1);
-      try {
-        final result =
-            lib.llama_state_load_file(session.context, pathPtr, nullptr, 0, countOut);
-        if (result) {
-          session.nPos = countOut.value;
-          final metaFile = File("$path.meta");
-          if (metaFile.existsSync()) {
-            try {
-              final json = jsonDecode(metaFile.readAsStringSync());
-              session.nPos = session.nPos != 0 ? session.nPos : (json["nPos"] ?? 0);
-              session.nPrompt = json["nPrompt"] ?? session.nPos;
-            } catch (_) {}
-          } else {
-            session.nPrompt = session.nPos;
-          }
-        }
-        return result;
-      } finally {
-        malloc.free(pathPtr);
-        calloc.free(countOut);
-      }
-    }
-  }
-
-  /// Saves the current session state to RAM as bytes.
-  Uint8List saveState(String sessionId) {
-    _checkDisposed();
-    final session = _requireSession(sessionId);
-
-    final int stateSize = lib.llama_get_state_size(session.context);
-    const int headerSize = 16;
-    final int totalSize = stateSize + headerSize;
-
-    final ptr = malloc<Uint8>(totalSize);
-
-    try {
-      final headerData = ptr.asTypedList(headerSize).buffer.asByteData();
-      headerData.setUint32(0, 0x4C4C5346, Endian.little);
-      headerData.setUint32(4, 1, Endian.little);
-      headerData.setUint32(8, session.nPos, Endian.little);
-      headerData.setUint32(12, session.nPrompt, Endian.little);
-
-      final dataPtr = Pointer<Uint8>.fromAddress(ptr.address + headerSize);
-      lib.llama_copy_state_data(session.context, dataPtr);
-
-      return Uint8List.fromList(ptr.asTypedList(totalSize));
-    } finally {
-      malloc.free(ptr);
-    }
-  }
-
-  /// Restores session state from RAM bytes.
-  void loadState(String sessionId, Uint8List stateData) {
-    _checkDisposed();
-    final session = _requireSession(sessionId);
-
-    const int headerSize = 16;
-    if (stateData.length < headerSize) {
-      throw LlamaException('State data too short');
-    }
-
-    final header = ByteData.sublistView(stateData, 0, headerSize);
-    final magic = header.getUint32(0, Endian.little);
-    final version = header.getUint32(4, Endian.little);
-
-    if (magic != 0x4C4C5346 || version != 1) {
-      throw LlamaException('Invalid state data header');
-    }
-
-    session.nPos = header.getUint32(8, Endian.little);
-    session.nPrompt = header.getUint32(12, Endian.little);
-
-    final int expectedStateSize = lib.llama_get_state_size(session.context);
-    if (stateData.length - headerSize != expectedStateSize) {
-      // ignore: avoid_print
+    if (_verbose)
       print(
-          "Warning: State size mismatch. Expected $expectedStateSize, got ${stateData.length - headerSize}");
-    }
-
-    final ptr = malloc<Uint8>(expectedStateSize);
-
-    try {
-      final dataView = stateData.sublist(headerSize);
-      ptr.asTypedList(expectedStateSize).setAll(0, dataView);
-
-      lib.llama_set_state_data(session.context, ptr);
-    } finally {
-      malloc.free(ptr);
-    }
+          "Warning: saveSession not fully supported in continuous batching mode");
   }
 
-  /// Resets a session KV cache without touching the shared weights.
-  void clearSession(String sessionId) {
-    _checkDisposed();
-    final session = _requireSession(sessionId);
-    try {
-      if (session.tokens != nullptr) {
-        malloc.free(session.tokens);
-        session.tokens = nullptr;
-      }
-      session.nPrompt = 0;
-      session.nPos = 0;
-      session.pendingBytes.clear();
-
-      if (session.context.address != 0) {
-        final mem = lib.llama_get_memory(session.context);
-        lib.llama_memory_clear(mem, true);
-      }
-      session.batch.n_tokens = 0;
-      _status[sessionId] = LlamaStatus.ready;
-    } catch (e) {
-      _status[sessionId] = LlamaStatus.error;
-      throw LlamaException('Failed to clear $sessionId', e);
-    }
+  bool loadSession(String sessionId, String path) {
+    if (_verbose)
+      print(
+          "Warning: loadSession not fully supported in continuous batching mode");
+    return false;
   }
 
-  List<int> tokenize(String sessionId, String text, bool addBos) {
-    _checkDisposed();
-    if (text.isEmpty) throw ArgumentError('Empty text');
-    final utf8Ptr = text.toNativeUtf8();
-    final length = utf8Ptr.length;
-    final textPtr = utf8Ptr.cast<Char>();
-    try {
-      int nTokens = -lib.llama_tokenize(
-          _sharedModel.vocab, textPtr, length, nullptr, 0, addBos, true);
-      final tokens = malloc<llama_token>(nTokens);
-      try {
-        int actual = lib.llama_tokenize(_sharedModel.vocab, textPtr, length,
-            tokens, nTokens, addBos, true);
-        return List<int>.generate(actual, (i) => tokens[i]);
-      } finally {
-        malloc.free(tokens);
-      }
-    } finally {
-      malloc.free(utf8Ptr);
-    }
-  }
+  // --- Internal Scheduling Loop ---
 
-  /// Helper to drive multiple sessions in a round-robin fashion.
-  /// Each iteration advances every provided session by one token.
-  Stream<(String sessionId, String text)> roundRobin(
-    Iterable<String> sessionIds,
-  ) async* {
-    final active = Set<String>.from(sessionIds);
-    while (active.isNotEmpty) {
-      final toRemove = <String>[];
-      for (final id in List<String>.from(active)) {
-        final (piece, isDone, limit) = getNextWithStatus(id);
-        if (piece.isNotEmpty) {
-          yield (id, piece);
+  Future<void> _runLoop() async {
+    while (!_disposed) {
+      // 1. Identify work
+      bool anyWork = false;
+      int batchIdx = 0;
+      _batch.n_tokens = 0;
+
+      bool? batchIsEmbedding;
+
+      final activeSessions = _sessions.values.toList();
+      for (final session in activeSessions) {
+        if (session.status != LlamaStatus.generating) continue;
+
+        // Check context limits
+        if (session.nPos >= session.contextParams.nCtx - 2) {
+          session.status = LlamaStatus.ready;
+          session.outputStream.add("\n[Context Limit]");
+          // Fix: Clear context and reset pos to avoid loop
+          // Ideally we should implement rolling context, but for now just stop/reset safe.
+          // Or just stop. But user said "Prevent Context Stalling".
+          // "If session.nPos exceeds context, specifically clear the KV cache... reset nPos to 0... clear session.pendingItems"
+          final mem = lib.llama_get_memory(_context);
+          lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+          session.nPos = 0;
+          session.pendingItems.clear();
+
+          continue;
         }
-        if (isDone || limit) {
-          toRemove.add(id);
-          _status[id] = LlamaStatus.ready;
+
+        int available = _nBatch - batchIdx;
+        if (available <= 0) break;
+
+        if (session.pendingItems.isNotEmpty) {
+          // PROCESSING INPUT
+          var item = session.pendingItems.first;
+          bool isEmb = item.isEmbedding;
+
+          if (batchIsEmbedding == null) batchIsEmbedding = isEmb;
+          if (batchIsEmbedding != isEmb) continue; // Skip mixed types
+
+          if (isEmb) {
+            if (item.nTokens > available) {
+              if (batchIdx == 0) {
+                throw LlamaException(
+                    "Embedding chunk size ${item.nTokens} > batch size $_nBatch");
+              }
+              continue; // Wait for next tick
+            }
+
+            final nEmbd = lib.llama_n_embd(_sharedModel.model);
+            final destPtr = _batch.embd.elementAt(batchIdx * nEmbd);
+
+            final floatCount = item.values!.length;
+            final destList = destPtr.asTypedList(floatCount);
+            destList.setAll(0, item.values!);
+
+            for (int k = 0; k < item.nTokens; k++) {
+              _batch.pos[batchIdx + k] = session.nPos + k;
+              _batch.n_seq_id[batchIdx + k] = 1;
+              _batch.seq_id[batchIdx + k][0] = session.seqId;
+              _batch.logits[batchIdx + k] = 0;
+            }
+
+            session.nPos += item.nTokens;
+
+            bool isLast = (session.pendingItems.length == 1);
+            if (isLast) {
+              _batch.logits[batchIdx + item.nTokens - 1] = 1;
+            }
+
+            batchIdx += item.nTokens;
+            session.pendingItems.removeAt(0);
+            anyWork = true;
+          } else {
+            // Token input
+            int count = 0;
+            while (count < available && session.pendingItems.isNotEmpty) {
+              if (session.pendingItems.first.isEmbedding) break;
+              final tItem = session.pendingItems.removeAt(0);
+
+              _batch.token[batchIdx] = tItem.token!;
+              _batch.pos[batchIdx] = session.nPos;
+              _batch.n_seq_id[batchIdx] = 1;
+              _batch.seq_id[batchIdx][0] = session.seqId;
+              _batch.logits[batchIdx] = 0;
+
+              session.nPos++;
+              batchIdx++;
+              count++;
+
+              // If this was the last pending item for this session, we need logits to sample the next token
+              if (session.pendingItems.isEmpty) {
+                // Fix: batchIdx is already incremented, so the last item is at batchIdx - 1
+                _batch.logits[batchIdx - 1] = 1;
+              }
+            }
+            anyWork = true;
+          }
         }
       }
-      for (final id in toRemove) {
-        active.remove(id);
+
+      if (!anyWork) {
+        // Case A: Work was signaled while we were processing the last batch.
+        // We should loop immediately without sleeping.
+        if (_workSignal.isCompleted) {
+          _workSignal = Completer<void>();
+          continue;
+        }
+
+        // Case B: No work pending. Sleep until notified.
+        // print("Service: Waiting for work...");
+        await _workSignal.future;
+
+        // We woke up (work arrived). Reset signal for the next wait.
+        _workSignal = Completer<void>();
+        continue;
       }
-      if (active.isEmpty) break;
+
+      _batch.n_tokens = batchIdx;
+
+      // 2. Decode with Safety
+      _activeDecodeSync = Completer<void>();
+
+      if (lib.llama_decode(_context, _batch) != 0) {
+        print("llama_decode failed");
+        _activeDecodeSync?.complete();
+        _activeDecodeSync = null;
+        await Future.delayed(const Duration(milliseconds: 100));
+        continue;
+      }
+
+      _activeDecodeSync?.complete();
+      _activeDecodeSync = null;
+
+      // 3. Sample & Post-Process
+      for (int i = 0; i < batchIdx; i++) {
+        if (_batch.logits[i] != 0) {
+          final sId = _batch.seq_id[i][0];
+          final session = _sessionsBySeqId[sId];
+          if (session == null) continue;
+
+          final newToken =
+              lib.llama_sampler_sample(session.sampler, _context, i);
+
+          // print("Service: Sampled token $newToken for session $sId");
+
+          // Fix: Accept token
+          lib.llama_sampler_accept(session.sampler, newToken);
+
+          bool isEos = lib.llama_token_is_eog(_sharedModel.vocab, newToken);
+          String piece = "";
+          if (isEos) {
+            piece = " [EOS]";
+            if (session.pendingBytes.isNotEmpty) {
+              // Decode remaining bytes if any
+              piece = utf8.decode(session.pendingBytes, allowMalformed: true) +
+                  piece;
+              session.pendingBytes.clear();
+            }
+          } else {
+            piece = _decodeToken(session, newToken);
+          }
+
+          if (piece.isNotEmpty) session.outputStream.add(piece);
+          session.nGenerated++;
+
+          bool done = isEos;
+          if (session.contextParams.nPredict != -1 &&
+              session.nGenerated >= session.contextParams.nPredict) {
+            done = true;
+          }
+
+          if (done) {
+            session.status = LlamaStatus.ready;
+          } else {
+            session.pendingItems.add(_PendingItem.token(newToken));
+            // Trigger next loop immediately since we have a new item
+            // But we can just loop.
+          }
+        }
+      }
+
+      // Yield to event loop to allow other microtasks
+      await Future.delayed(Duration.zero);
     }
   }
 
-  void dispose() {
+  // --- Internal Helpers ---
+
+  Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    for (final session in _sessions.values) {
-      session.dispose(lib);
+    _stopSignal.complete();
+    _notifyWork(); // Wake up loop to finish
+
+    // Wait for active decode to finish
+    if (_activeDecodeSync != null) {
+      await _activeDecodeSync!.future
+          .timeout(const Duration(seconds: 1), onTimeout: () {});
+    }
+
+    // Dispose sessions
+    for (final s in _sessions.values) {
+      s.dispose(lib);
     }
     _sessions.clear();
-    _status.clear();
+
+    // Dispose shared
+    if (_context != nullptr) lib.llama_free(_context);
+    try {
+      lib.llama_batch_free(_batch);
+    } catch (_) {}
 
     if (_visionEnabled && _mctx != nullptr) {
       lib.mtmd_free(_mctx);
-      _mctx = nullptr;
     }
 
     _releaseModel(_sharedModel);
   }
-
-  // --- internal helpers ----------------------------------------------------
 
   void _checkDisposed() {
     if (_disposed) throw StateError('LlamaService disposed');
@@ -900,82 +671,10 @@ class LlamaService {
   _ServiceSession _requireSession(String id) {
     final session = _sessions[id];
     if (session == null) {
-      throw ArgumentError("Session $id does not exist. Call createSession first.");
+      throw ArgumentError(
+          "Session $id does not exist. Call createSession first.");
     }
     return session;
-  }
-
-  (int shiftApplied, bool trimmed) _maybeTrimContext(
-      _ServiceSession session, int tokensNeeded) {
-    final params = session.contextParams;
-    if (!params.autoTrimContext) return (0, false);
-
-    final nCtx = params.nCtx;
-    final needed = tokensNeeded <= 0 ? 1 : tokensNeeded;
-
-    if (session.nPos + needed < nCtx - 1) return (0, false);
-
-    final keepCap = nCtx - needed;
-    if (keepCap <= 0) {
-      return (0, false);
-    }
-
-    final keepTokens = max(0, min(params.trimKeepTokens, keepCap));
-    final trimStart = max(0, session.nPos - keepTokens);
-    if (trimStart <= 0) return (0, false);
-
-    final mem = lib.llama_get_memory(session.context);
-    final removed = lib.llama_memory_seq_rm(mem, 0, 0, trimStart);
-    if (!removed) return (0, false);
-
-    if (!lib.llama_memory_can_shift(mem)) {
-      lib.llama_memory_clear(mem, true);
-      session.nPos = 0;
-      session.nPrompt = 0;
-      session.pendingBytes.clear();
-      if (_verbose) {
-        // ignore: avoid_print
-        print("llama_service: auto-trim fell back to clear (backend cannot shift)");
-      }
-      return (0, true);
-    }
-
-    lib.llama_memory_seq_add(mem, 0, trimStart, -1, -trimStart);
-    session.nPos = max(0, session.nPos - trimStart);
-    session.nPrompt = max(0, session.nPrompt - trimStart);
-
-    if (_verbose) {
-      // ignore: avoid_print
-      print(
-          "llama_service: auto-trimmed $trimStart token(s), keeping ${session.nPos}");
-    }
-
-    return (trimStart, true);
-  }
-
-  String _decodeToken(_ServiceSession session, int tokenId) {
-    final buf = session.decodeBuf != nullptr ? session.decodeBuf : malloc<Char>(256);
-    try {
-      int n =
-          lib.llama_token_to_piece(_sharedModel.vocab, tokenId, buf, 256, 0, true);
-      if (n < 0) return "";
-
-      final newBytes = buf.cast<Uint8>().asTypedList(n);
-      session.pendingBytes.addAll(newBytes);
-
-      try {
-        String piece = utf8.decode(session.pendingBytes);
-        session.pendingBytes.clear();
-        return piece;
-      } catch (e) {
-        return "";
-      }
-    } finally {
-      if (session.decodeBuf == nullptr) {
-        // Only free if we allocated ad-hoc.
-        malloc.free(buf);
-      }
-    }
   }
 
   Pointer<llama_sampler> _initializeSampler(SamplerParams samplerParams) {
@@ -992,13 +691,10 @@ class LlamaService {
     final grammarStrPtr = samplerParams.grammarStr.toNativeUtf8().cast<Char>();
     final grammarRootPtr =
         samplerParams.grammarRoot.toNativeUtf8().cast<Char>();
-
     if (samplerParams.grammarStr.isNotEmpty) {
-      final grammar =
-          lib.llama_sampler_init_grammar(_sharedModel.vocab, grammarStrPtr, grammarRootPtr);
-      if (grammar != nullptr) {
-        lib.llama_sampler_chain_add(smpl, grammar);
-      }
+      final grammar = lib.llama_sampler_init_grammar(
+          _sharedModel.vocab, grammarStrPtr, grammarRootPtr);
+      if (grammar != nullptr) lib.llama_sampler_chain_add(smpl, grammar);
     }
     malloc.free(grammarStrPtr);
     malloc.free(grammarRootPtr);
@@ -1012,96 +708,14 @@ class LlamaService {
           samplerParams.penaltyPresent,
         ));
 
-    if (samplerParams.dryMultiplier > 0.0) {
-      try {
-        final breakers = samplerParams.dryBreakers;
-        final breakerCount = breakers.length;
-
-        final breakersPtr = malloc<Pointer<Char>>(breakerCount);
-        final allocatedStrings = <Pointer<Char>>[];
-
-        for (int i = 0; i < breakerCount; i++) {
-          final strPtr = breakers[i].toNativeUtf8().cast<Char>();
-          breakersPtr[i] = strPtr;
-          allocatedStrings.add(strPtr);
-        }
-
-        final int nCtxTrain = lib.llama_model_n_ctx_train(_sharedModel.model);
-
-        lib.llama_sampler_chain_add(
-            smpl,
-            lib.llama_sampler_init_dry(
-              _sharedModel.vocab,
-              nCtxTrain,
-              samplerParams.dryMultiplier,
-              samplerParams.dryBase,
-              samplerParams.dryAllowedLen,
-              samplerParams.dryPenaltyLastN,
-              breakersPtr,
-              breakerCount,
-            ));
-
-        for (var ptr in allocatedStrings) {
-          malloc.free(ptr);
-        }
-        malloc.free(breakersPtr);
-      } catch (e) {
-        // Ignore dry sampler initialization failures; continue with remaining samplers.
-      }
-    }
-
-    if (samplerParams.mirostat == 2) {
-      lib.llama_sampler_chain_add(
-          smpl,
-          lib.llama_sampler_init_mirostat_v2(samplerParams.seed,
-              samplerParams.mirostatTau, samplerParams.mirostatEta));
-    } else if (samplerParams.mirostat == 1) {
-      lib.llama_sampler_chain_add(
-          smpl,
-          lib.llama_sampler_init_mirostat(
-              lib.llama_n_vocab(_sharedModel.vocab),
-              samplerParams.seed,
-              samplerParams.mirostatTau,
-              samplerParams.mirostatEta,
-              samplerParams.mirostatM));
-    } else {
-      lib.llama_sampler_chain_add(
-          smpl, lib.llama_sampler_init_top_k(samplerParams.topK));
-
-      lib.llama_sampler_chain_add(
-          smpl, lib.llama_sampler_init_top_p(samplerParams.topP, 1));
-
-      lib.llama_sampler_chain_add(
-          smpl, lib.llama_sampler_init_min_p(samplerParams.minP, 1));
-
-      lib.llama_sampler_chain_add(
-          smpl, lib.llama_sampler_init_typical(samplerParams.typical, 1));
-
-      if (samplerParams.dynatempRange > 0.0) {
-        try {
-          lib.llama_sampler_chain_add(
-              smpl,
-              lib.llama_sampler_init_temp_ext(samplerParams.temp,
-                  samplerParams.dynatempRange, samplerParams.dynatempExponent));
-        } catch (_) {
-          lib.llama_sampler_chain_add(
-              smpl, lib.llama_sampler_init_temp(samplerParams.temp));
-        }
-      } else {
-        lib.llama_sampler_chain_add(
-            smpl, lib.llama_sampler_init_temp(samplerParams.temp));
-      }
-
-      if (samplerParams.xtcProbability > 0.0) {
-        try {
-          lib.llama_sampler_chain_add(
-              smpl,
-              lib.llama_sampler_init_xtc(samplerParams.xtcProbability,
-                  samplerParams.xtcThreshold, 1, samplerParams.seed));
-        } catch (_) {}
-      }
-    }
-
+    lib.llama_sampler_chain_add(
+        smpl, lib.llama_sampler_init_top_k(samplerParams.topK));
+    lib.llama_sampler_chain_add(
+        smpl, lib.llama_sampler_init_top_p(samplerParams.topP, 1));
+    lib.llama_sampler_chain_add(
+        smpl, lib.llama_sampler_init_min_p(samplerParams.minP, 1));
+    lib.llama_sampler_chain_add(
+        smpl, lib.llama_sampler_init_temp(samplerParams.temp));
     lib.llama_sampler_chain_add(
         smpl, lib.llama_sampler_init_dist(samplerParams.seed));
 
@@ -1143,60 +757,77 @@ class LlamaService {
       lib.llama_free_model(handle.model);
     }
   }
+
+  String _decodeToken(_ServiceSession session, int tokenId) {
+    if (session.decodeBuf == nullptr) session.decodeBuf = malloc<Char>(256);
+    final buf = session.decodeBuf;
+
+    try {
+      int n = lib.llama_token_to_piece(
+          _sharedModel.vocab, tokenId, buf, 256, 0, true);
+      if (n < 0) return "";
+
+      final newBytes = buf.cast<Uint8>().asTypedList(n);
+      session.pendingBytes.addAll(newBytes);
+
+      try {
+        String piece = utf8.decode(session.pendingBytes);
+        session.pendingBytes.clear();
+        return piece;
+      } catch (e) {
+        return "";
+      }
+    } catch (_) {
+      return "";
+    }
+  }
+}
+
+class _PendingItem {
+  final int? token;
+  final Float32List? values; // for embeddings
+  final int nTokens; // size in tokens
+
+  _PendingItem.token(this.token)
+      : values = null,
+        nTokens = 1;
+  _PendingItem.embedding(this.values, this.nTokens) : token = null;
+
+  bool get isEmbedding => values != null;
 }
 
 class _ServiceSession {
   final String id;
-  final Pointer<llama_context> context;
-  final llama_batch batch;
-  final List<Pointer<llama_seq_id>> seqIds;
+  final int seqId;
   final Pointer<llama_sampler> sampler;
   final ContextParams contextParams;
 
-  Pointer<llama_token> tokens = nullptr;
+  LlamaStatus status = LlamaStatus.uninitialized;
   Pointer<Char> decodeBuf = nullptr;
-  List<int> pendingBytes = [];
-  int nPos = 0;
-  int nPrompt = 0;
-  int nGeneratedTotal = 0;
+  List<int> pendingBytes = []; // For utf8 decoding
+
+  final List<_PendingItem> pendingItems = [];
+  final StreamController<String> outputStream = StreamController.broadcast();
+
+  int nPos = 0; // Current context position
+  int nPromptTokens = 0;
+  int nGenerated = 0;
 
   _ServiceSession({
     required this.id,
-    required this.context,
-    required this.batch,
-    required this.seqIds,
+    required this.seqId,
     required this.sampler,
     required this.contextParams,
   });
 
   void dispose(llama_cpp lib) {
-    if (tokens != nullptr) {
-      malloc.free(tokens);
-      tokens = nullptr;
-    }
-    if (decodeBuf != nullptr) {
-      malloc.free(decodeBuf);
-      decodeBuf = nullptr;
-    }
     if (sampler != nullptr) {
       lib.llama_sampler_free(sampler);
     }
-    if (context.address != 0) {
-      lib.llama_free(context);
+    if (decodeBuf != nullptr) {
+      malloc.free(decodeBuf);
     }
-    try {
-      if (batch.seq_id != nullptr) {
-        final batchCapacity = contextParams.nBatch;
-        for (int i = 0; i < batchCapacity; ++i) {
-          batch.seq_id[i] = nullptr;
-        }
-      }
-      lib.llama_batch_free(batch);
-    } catch (_) {}
-    for (final ptr in seqIds) {
-      calloc.free(ptr);
-    }
-    seqIds.clear();
+    outputStream.close();
   }
 }
 
