@@ -27,6 +27,7 @@ class LlamaService {
   final String modelPath;
   final ModelParams modelParams;
   final ContextParams defaultContextParams;
+  final ContextParams _ctxConfig;
   final SamplerParams defaultSamplerParams;
   final bool _verbose;
 
@@ -70,7 +71,8 @@ class LlamaService {
     SamplerParams? samplerParams,
     bool verbose = false,
   })  : modelParams = modelParams ?? ModelParams(),
-        defaultContextParams = contextParams ?? ContextParams(),
+        _ctxConfig = contextParams ?? ContextParams(),
+        defaultContextParams = _ctxConfig,
         defaultSamplerParams = samplerParams ?? SamplerParams(),
         _verbose = verbose {
     _ensureBackend();
@@ -101,9 +103,9 @@ class LlamaService {
       }
     }
 
-    final ctxParams = defaultContextParams.get();
+    final ctxParams = _ctxConfig.get();
     _contextNCtx = ctxParams.n_ctx;
-    _contextNPredict = defaultContextParams.nPredict;
+    _contextNPredict = _ctxConfig.nPredict;
     _maxParallel = max(1, ctxParams.n_seq_max);
 
     for (int i = 0; i < _maxParallel; i++) {
@@ -229,6 +231,10 @@ class LlamaService {
     _checkDisposed();
     final session = _requireSession(sessionId);
     if (prompt.isEmpty) throw ArgumentError('Prompt cannot be empty');
+    if (session.status == LlamaStatus.generating) {
+      throw LlamaException(
+          "Session $sessionId already generating. Finish or cancel before starting a new request.");
+    }
 
     session.pendingItems.clear();
     session.nGenerated = 0;
@@ -292,11 +298,6 @@ class LlamaService {
   Stream<String> generateText(String sessionId) {
     _checkDisposed();
     final session = _requireSession(sessionId);
-    // Ensure stream is open and ready for listeners
-    if (session.outputStream.isClosed) {
-      session.outputStream = StreamController();
-      session._hasStream = true;
-    }
     return session.outputStream.stream;
   }
 
@@ -313,6 +314,10 @@ class LlamaService {
     if (inputs.isEmpty) throw ArgumentError('No images given');
 
     final session = _requireSession(sessionId);
+    if (session.status == LlamaStatus.generating) {
+      throw LlamaException(
+          "Session $sessionId already generating. Finish or cancel before starting a new request.");
+    }
 
     session.pendingItems.clear();
     session.nGenerated = 0;
@@ -442,6 +447,10 @@ class LlamaService {
         _workSignal = Completer<void>();
         continue;
       }
+      final Map<_ServiceSession, int> sessionIndex = {};
+      for (var i = 0; i < activeSessions.length; i++) {
+        sessionIndex[activeSessions[i]] = i;
+      }
 
       // Round-Robin Rotation
       int rotateStart =
@@ -479,13 +488,15 @@ class LlamaService {
           if (available <= 0) break;
 
           if (session.pendingItems.isEmpty) {
-            _lastScheduledSessionIndex = activeSessions.indexOf(session);
+            _lastScheduledSessionIndex =
+                sessionIndex[session] ?? _lastScheduledSessionIndex;
             continue;
           }
 
           final item = session.pendingItems.first;
           if (item.isEmbedding != isEmbeddingPass) {
-            _lastScheduledSessionIndex = activeSessions.indexOf(session);
+            _lastScheduledSessionIndex =
+                sessionIndex[session] ?? _lastScheduledSessionIndex;
             continue;
           }
 
@@ -496,7 +507,8 @@ class LlamaService {
             final remaining = item.remainingEmbeddingTokens;
             if (remaining <= 0) {
               session.pendingItems.removeFirst();
-              _lastScheduledSessionIndex = activeSessions.indexOf(session);
+              _lastScheduledSessionIndex =
+                  sessionIndex[session] ?? _lastScheduledSessionIndex;
               continue;
             }
 
@@ -519,7 +531,7 @@ class LlamaService {
             session.nPos += sendTokens;
             batchSeqIds.add(session.seqId);
 
-            if (remaining == sendTokens && session.pendingItems.length == 1) {
+            if (remaining == sendTokens) {
               currentBatch.logits[batchIdx + sendTokens - 1] = 1;
             }
 
@@ -559,7 +571,8 @@ class LlamaService {
             if (filledCount > 0) didWork = true;
           }
 
-          _lastScheduledSessionIndex = activeSessions.indexOf(session);
+          _lastScheduledSessionIndex =
+              sessionIndex[session] ?? _lastScheduledSessionIndex;
           if (batchIdx >= _nBatch) break;
         }
 
