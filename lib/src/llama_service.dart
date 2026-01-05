@@ -229,13 +229,10 @@ class LlamaService {
     final session = _sessions[sessionId];
     if (session == null) return;
 
-    // Stop generating
     session.status = LlamaStatus.ready;
     session.pendingItems.clear();
-
-    // We don't close the stream here as we want to reuse it,
-    // but we can send a "cancelled" event or just leave it.
-    // Usually cancelling implies we are done with *current* generation.
+    session._outputBuffer.clear();
+    session._completeGeneration();
   }
 
   Future<void> freeSession(String sessionId) async {
@@ -272,87 +269,71 @@ class LlamaService {
     session.nPromptTokens = 0;
 
     session.status = LlamaStatus.generating;
-    _startRequest(session);
 
-    if (clearHistory) {
-      final mem = lib.llama_get_memory(_context);
-      lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
-      session.nPos = 0;
-      if (session.sampler != nullptr) lib.llama_sampler_reset(session.sampler);
-    }
-
-    final promptUtf8 = prompt.toNativeUtf8();
     try {
-      final nCtx = _contextNCtx;
-      final length = promptUtf8.length;
-      final addBos = clearHistory;
+      _startRequest(session);
 
-      int nTokens = -lib.llama_tokenize(_sharedModel.vocab, promptUtf8.cast(),
-          length, nullptr, 0, addBos, true);
-
-      if (nTokens < 0) nTokens = -nTokens;
-
-      final tokenPtr = malloc<llama_token>(nTokens);
-      try {
-        nTokens = lib.llama_tokenize(_sharedModel.vocab, promptUtf8.cast(),
-            length, tokenPtr, nTokens, addBos, true);
-
-        if (session.nPos + nTokens > nCtx) {
-          throw LlamaException(
-              "Prompt too long or context full ($nTokens tokens, pos ${session.nPos} > $nCtx)");
-        }
-
-        for (int i = 0; i < nTokens; i++) {
-          session.pendingItems.addLast(_PendingItem.token(tokenPtr[i]));
-        }
-        session.nPromptTokens = nTokens;
-      } finally {
-        malloc.free(tokenPtr);
+      if (clearHistory) {
+        final mem = lib.llama_get_memory(_context);
+        lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+        session.nPos = 0;
+        if (session.sampler != nullptr)
+          lib.llama_sampler_reset(session.sampler);
       }
-    } finally {
-      malloc.free(promptUtf8);
-    }
 
-    _notifyWork();
+      final promptUtf8 = prompt.toNativeUtf8();
+      try {
+        final nCtx = _contextNCtx;
+        final length = promptUtf8.length;
+        final addBos = clearHistory;
+
+        int nTokens = -lib.llama_tokenize(_sharedModel.vocab, promptUtf8.cast(),
+            length, nullptr, 0, addBos, true);
+
+        if (nTokens < 0) nTokens = -nTokens;
+
+        final tokenPtr = malloc<llama_token>(nTokens);
+        try {
+          nTokens = lib.llama_tokenize(_sharedModel.vocab, promptUtf8.cast(),
+              length, tokenPtr, nTokens, addBos, true);
+
+          if (session.nPos + nTokens > nCtx) {
+            throw LlamaException(
+                "Prompt too long or context full ($nTokens tokens, pos ${session.nPos} > $nCtx)");
+          }
+
+          for (int i = 0; i < nTokens; i++) {
+            session.pendingItems.addLast(_PendingItem.token(tokenPtr[i]));
+          }
+          session.nPromptTokens = nTokens;
+        } finally {
+          malloc.free(tokenPtr);
+        }
+      } finally {
+        malloc.free(promptUtf8);
+      }
+
+      _notifyWork();
+    } catch (e) {
+      session.status = LlamaStatus.ready;
+      session.pendingItems.clear();
+      session._outputBuffer.clear();
+      session._completeGeneration();
+      rethrow;
+    }
   }
 
   Future<String> generateCompleteText(String sessionId) async {
     final session = _requireSession(sessionId);
-    final completer = Completer<String>();
     final buf = StringBuffer();
+    final sub = session.stream.listen((chunk) => buf.write(chunk));
 
-    StreamSubscription? sub;
-    // We listen to the session stream. Be careful if others are listening (Single-Subscription).
-    // If we want to support both, we'd need broadcast, but backpressure is hard.
-    // Assuming single-owner for the stream:
+    try {
+      await session.generationDone.future;
+    } finally {
+      await sub.cancel();
+    }
 
-    sub = session.stream.listen((chunk) {
-      buf.write(chunk);
-      // We can also check specific end tokens if needed,
-      // but relying on status check loop or custom event is safer
-    }, onError: (e) {
-      sub?.cancel();
-      if (!completer.isCompleted) completer.completeError(e);
-    }, onDone: () {
-      // Stream closed (session freed?)
-      if (!completer.isCompleted) completer.complete(buf.toString());
-    });
-
-    // Polling or hook for "done generating"
-    // Since we don't close the stream, we hack:
-    // Future.doWhile check status? No, expensive.
-    // Better: _ServiceSession exposes a "generationDone" future or callbacks?
-    // Using a simple polling for now to avoid breaking API too much,
-    // OR just rely on logic:
-    // Actually, let's make generateCompleteText wait for status change via polling helper
-    // or add a specialized waiter.
-
-    // For now, let's assume the user handles it or we rely on some other signal.
-    // But to be correct per task:
-    // Let's modify _runLoop to complete a future in the session when done.
-
-    await session.generationDone.future;
-    await sub.cancel();
     return buf.toString();
   }
 
@@ -398,106 +379,123 @@ class LlamaService {
     session.nGenerated = 0;
 
     session.status = LlamaStatus.generating;
-    _startRequest(session);
-
-    if (clearHistory) {
-      final mem = lib.llama_get_memory(_context);
-      lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
-      session.nPos = 0;
-      if (session.sampler != nullptr) lib.llama_sampler_reset(session.sampler);
-    }
-
-    final images = inputs.whereType<LlamaImage>().toList();
-    const marker = '<image>';
-
-    if (marker.allMatches(prompt).length != images.length) {
-      throw ArgumentError(
-          "Mismatch between <image> markers impacting prompt and provided inputs");
-    }
-
-    final bitmapRefs = <BitmapPointers>[];
-    Pointer<Pointer<mtmd_bitmap>>? bmpArr;
-
-    Pointer<mtmd_input_chunks> chunks = nullptr;
-    Pointer<mtmd_input_text> txtPtr = nullptr;
-    Pointer<Char> fullPtr = nullptr;
 
     try {
-      for (final img in images) {
-        bitmapRefs.add(img.toBitmap(lib, malloc));
-      }
-      bmpArr = malloc<Pointer<mtmd_bitmap>>(bitmapRefs.length);
-      for (var i = 0; i < bitmapRefs.length; ++i) {
-        bmpArr[i] = bitmapRefs[i].bitmap;
-      }
+      _startRequest(session);
 
-      final modelMark = lib.mtmd_default_marker().cast<Utf8>().toDartString();
-      final fullPrompt = prompt.replaceAll(marker, modelMark);
-      fullPtr = fullPrompt.toNativeUtf8().cast<Char>();
-
-      txtPtr = calloc<mtmd_input_text>();
-      txtPtr.ref
-        ..text = fullPtr
-        ..add_special = true
-        ..parse_special = true;
-
-      chunks = lib.mtmd_input_chunks_init();
-
-      final tk =
-          lib.mtmd_tokenize(_mctx, chunks, txtPtr, bmpArr, bitmapRefs.length);
-      if (tk != 0) throw LlamaException('mtmd_tokenize failed ($tk)');
-
-      final nChunks = lib.mtmd_input_chunks_size(chunks);
-
-      for (var i = 0; i < nChunks; ++i) {
-        final chunk = lib.mtmd_input_chunks_get(chunks, i);
-        final type = lib.mtmd_input_chunk_get_type(chunk);
-
-        if (type == mtmd_input_chunk_type.MTMD_INPUT_CHUNK_TYPE_IMAGE) {
-          if (lib.mtmd_encode_chunk(_mctx, chunk) != 0) {
-            throw LlamaException('encode image failed');
-          }
-          final embdPtr = lib.mtmd_get_output_embd(_mctx);
-          final nTok = lib.mtmd_input_chunk_get_n_tokens(chunk);
-          final nEmbd = lib.llama_n_embd(_sharedModel.model);
-
-          final totalFloats = nTok * nEmbd;
-          final floatList = embdPtr.asTypedList(totalFloats);
-          final copy = Float32List.fromList(floatList);
-
-          session.pendingItems.addLast(_PendingItem.embedding(copy, nTok));
-        } else {
-          final nPtr = malloc<Size>();
-          final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
-          final nTok = nPtr.value;
-          malloc.free(nPtr);
-
-          for (int k = 0; k < nTok; k++) {
-            session.pendingItems.addLast(_PendingItem.token(tokPt[k]));
-          }
+      if (clearHistory) {
+        final mem = lib.llama_get_memory(_context);
+        lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+        session.nPos = 0;
+        if (session.sampler != nullptr) {
+          lib.llama_sampler_reset(session.sampler);
         }
       }
-    } finally {
-      if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
-      if (bmpArr != null) malloc.free(bmpArr);
-      for (final r in bitmapRefs) {
-        if (r.bitmap != nullptr) lib.mtmd_bitmap_free(r.bitmap);
+
+      final images = inputs.whereType<LlamaImage>().toList();
+      const marker = '<image>';
+
+      if (marker.allMatches(prompt).length != images.length) {
+        throw ArgumentError(
+            "Mismatch between <image> markers impacting prompt and provided inputs");
       }
-      if (txtPtr != nullptr) calloc.free(txtPtr);
-      if (fullPtr != nullptr) malloc.free(fullPtr);
+
+      final bitmapRefs = <BitmapPointers>[];
+      Pointer<Pointer<mtmd_bitmap>>? bmpArr;
+
+      Pointer<mtmd_input_chunks> chunks = nullptr;
+      Pointer<mtmd_input_text> txtPtr = nullptr;
+      Pointer<Char> fullPtr = nullptr;
+
+      try {
+        for (final img in images) {
+          bitmapRefs.add(img.toBitmap(lib, malloc));
+        }
+        bmpArr = malloc<Pointer<mtmd_bitmap>>(bitmapRefs.length);
+        for (var i = 0; i < bitmapRefs.length; ++i) {
+          bmpArr[i] = bitmapRefs[i].bitmap;
+        }
+
+        final modelMark = lib.mtmd_default_marker().cast<Utf8>().toDartString();
+        final fullPrompt = prompt.replaceAll(marker, modelMark);
+        fullPtr = fullPrompt.toNativeUtf8().cast<Char>();
+
+        txtPtr = calloc<mtmd_input_text>();
+        txtPtr.ref
+          ..text = fullPtr
+          ..add_special = true
+          ..parse_special = true;
+
+        chunks = lib.mtmd_input_chunks_init();
+
+        final tk =
+            lib.mtmd_tokenize(_mctx, chunks, txtPtr, bmpArr, bitmapRefs.length);
+        if (tk != 0) throw LlamaException('mtmd_tokenize failed ($tk)');
+
+        final nChunks = lib.mtmd_input_chunks_size(chunks);
+
+        for (var i = 0; i < nChunks; ++i) {
+          final chunk = lib.mtmd_input_chunks_get(chunks, i);
+          final type = lib.mtmd_input_chunk_get_type(chunk);
+
+          if (type == mtmd_input_chunk_type.MTMD_INPUT_CHUNK_TYPE_IMAGE) {
+            if (lib.mtmd_encode_chunk(_mctx, chunk) != 0) {
+              throw LlamaException('encode image failed');
+            }
+            final embdPtr = lib.mtmd_get_output_embd(_mctx);
+            final nTok = lib.mtmd_input_chunk_get_n_tokens(chunk);
+            final nEmbd = lib.llama_n_embd(_sharedModel.model);
+
+            final totalFloats = nTok * nEmbd;
+            final floatList = embdPtr.asTypedList(totalFloats);
+            final copy = Float32List.fromList(floatList);
+
+            session.pendingItems.addLast(_PendingItem.embedding(copy, nTok));
+          } else {
+            final nPtr = malloc<Size>();
+            final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
+            final nTok = nPtr.value;
+            malloc.free(nPtr);
+
+            for (int k = 0; k < nTok; k++) {
+              session.pendingItems.addLast(_PendingItem.token(tokPt[k]));
+            }
+          }
+        }
+      } finally {
+        if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
+        if (bmpArr != null) malloc.free(bmpArr);
+        for (final r in bitmapRefs) {
+          if (r.bitmap != nullptr) lib.mtmd_bitmap_free(r.bitmap);
+        }
+        if (txtPtr != nullptr) calloc.free(txtPtr);
+        if (fullPtr != nullptr) malloc.free(fullPtr);
+      }
+
+      _notifyWork();
+
+      yield* _streamRequest(session);
+    } catch (e) {
+      session.status = LlamaStatus.ready;
+      session.pendingItems.clear();
+      session._outputBuffer.clear();
+      session._completeGeneration();
+      rethrow;
     }
-
-    _notifyWork();
-
-    yield* _streamRequest(session);
   }
 
   Stream<String> _streamRequest(_ServiceSession session) {
     // Current generation future
     final done = session.generationDone.future;
-    // Create a controller to forward events until done
-    final controller = StreamController<String>();
+
     StreamSubscription<String>? sub;
+
+    // Create a controller to forward events until done, with onCancel cleanup
+    final controller = StreamController<String>(
+      onCancel: () {
+        sub?.cancel();
+      },
+    );
 
     sub = session.stream.listen(
       (data) {
@@ -733,11 +731,14 @@ class LlamaService {
               String piece = "";
               if (isEos) {
                 piece = " [EOS]";
-                session.controller.add(piece);
+                session._outputBuffer.write(piece);
               } else {
                 piece = _decodeToken(session, newToken);
-                if (piece.isNotEmpty) session.controller.add(piece);
+                if (piece.isNotEmpty) session._outputBuffer.write(piece);
               }
+
+              // Flush check
+              session.flush();
 
               session.nGenerated++;
 
@@ -1072,7 +1073,27 @@ class _ServiceSession {
 
   Stream<String> get stream => controller.stream;
 
+  // Backpressure buffering
+  final StringBuffer _outputBuffer = StringBuffer();
+  DateTime _lastFlushTime = DateTime.now();
+
+  void flush({bool force = false}) {
+    if (_outputBuffer.isEmpty) return;
+    final now = DateTime.now();
+    // Flush if forced, buffer too large (>1KB), or time elapsed (>50ms)
+    if (force ||
+        _outputBuffer.length > 1024 ||
+        now.difference(_lastFlushTime).inMilliseconds > 50) {
+      if (!controller.isClosed) {
+        controller.add(_outputBuffer.toString());
+      }
+      _outputBuffer.clear();
+      _lastFlushTime = now;
+    }
+  }
+
   void _completeGeneration() {
+    flush(force: true); // Ensure pending data is sent
     if (!generationDone.isCompleted) generationDone.complete();
   }
 
