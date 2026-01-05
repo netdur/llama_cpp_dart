@@ -136,6 +136,8 @@ class LlamaService {
       contextParams: ctxParams,
     );
 
+    session.decodeBuf = malloc<Char>(256);
+
     _sessions[sessionId] = session;
     _status[sessionId] = LlamaStatus.ready;
   }
@@ -149,7 +151,7 @@ class LlamaService {
   }
 
   /// Sets the prompt for a specific session.
-  void setPrompt(
+  Future<void> setPrompt(
     String sessionId,
     String prompt, {
     void Function(int current, int total)? onProgress,
@@ -214,20 +216,38 @@ class LlamaService {
       }
 
       int batchCapacity = session.contextParams.nBatch;
-      if (session.nPrompt > batchCapacity) {
-        throw LlamaException(
-            "Prompt tokens (${session.nPrompt}) > batch capacity ($batchCapacity)");
+      int processed = 0;
+      final startPos = session.nPos;
+
+      while (processed < session.nPrompt) {
+        int nChunk = session.nPrompt - processed;
+        if (nChunk > batchCapacity) nChunk = batchCapacity;
+
+        session.batch.n_tokens = nChunk;
+        for (int i = 0; i < nChunk; i++) {
+          int tokenIdx = processed + i;
+          session.batch.token[i] = session.tokens[tokenIdx];
+          session.batch.pos[i] = startPos + processed + i;
+          session.batch.n_seq_id[i] = 1;
+          session.batch.seq_id[i] = session.seqIds[i];
+          session.batch.seq_id[i].value = 0;
+          final isLastGlobalToken = tokenIdx == session.nPrompt - 1;
+          session.batch.logits[i] = isLastGlobalToken ? 1 : 0;
+        }
+
+        if (lib.llama_decode(session.context, session.batch) != 0) {
+          throw LlamaException("Failed to decode prompt chunk");
+        }
+
+        session.nPos += nChunk;
+        processed += nChunk;
+        onProgress?.call(processed, session.nPrompt);
+
+        if (processed < session.nPrompt && processed % (batchCapacity * 4) == 0) {
+          await Future<void>.delayed(Duration.zero);
+        }
       }
 
-      for (int i = 0; i < session.nPrompt; i++) {
-        session.batch.token[i] = session.tokens[i];
-        session.batch.pos[i] = session.nPos + i;
-        session.batch.n_seq_id[i] = 1;
-        session.batch.seq_id[i] = session.seqIds[i];
-        session.batch.seq_id[i].value = 0;
-        session.batch.logits[i] = i == session.nPrompt - 1 ? 1 : 0;
-      }
-      session.batch.n_tokens = session.nPrompt;
       session.nGeneratedTotal = 0;
     } catch (e) {
       _status[sessionId] = LlamaStatus.error;
@@ -584,27 +604,42 @@ class LlamaService {
       }
 
       final tempFile = File(tempPath);
-      final stateData = tempFile.readAsBytesSync();
+      final finalFile = File(path);
 
-      final file = File(path);
       final header = ByteData(16);
       header.setUint32(0, 0x44415254, Endian.little);
       header.setUint32(4, 1, Endian.little);
       header.setUint32(8, session.nPos, Endian.little);
       header.setUint32(12, session.nPrompt, Endian.little);
 
-      final allBytes = Uint8List(16 + stateData.length);
-      allBytes.setAll(0, header.buffer.asUint8List());
-      allBytes.setAll(16, stateData);
+      final headerBytes = header.buffer.asUint8List();
 
-      file.writeAsBytesSync(allBytes, flush: true);
+      final writer = finalFile.openSync(mode: FileMode.write);
+      try {
+        writer.writeFromSync(headerBytes);
+
+        final reader = tempFile.openSync(mode: FileMode.read);
+        try {
+          const chunkSize = 1024 * 1024; // 1MB
+          while (true) {
+            final chunk = reader.readSync(chunkSize);
+            if (chunk.isEmpty) break;
+            writer.writeFromSync(chunk);
+          }
+        } finally {
+          reader.closeSync();
+        }
+        writer.flushSync();
+      } finally {
+        writer.closeSync();
+      }
 
       if (_verbose) {
         // ignore: avoid_print
-        print("Session $sessionId saved. Size: ${allBytes.length}");
+        print("Session $sessionId saved to $path");
       }
 
-      tempFile.deleteSync();
+      if (tempFile.existsSync()) tempFile.deleteSync();
     } finally {
       malloc.free(tempPathPtr);
     }
@@ -919,7 +954,7 @@ class LlamaService {
   }
 
   String _decodeToken(_ServiceSession session, int tokenId) {
-    final buf = malloc<Char>(256);
+    final buf = session.decodeBuf != nullptr ? session.decodeBuf : malloc<Char>(256);
     try {
       int n =
           lib.llama_token_to_piece(_sharedModel.vocab, tokenId, buf, 256, 0, true);
@@ -936,7 +971,10 @@ class LlamaService {
         return "";
       }
     } finally {
-      malloc.free(buf);
+      if (session.decodeBuf == nullptr) {
+        // Only free if we allocated ad-hoc.
+        malloc.free(buf);
+      }
     }
   }
 
@@ -1114,6 +1152,7 @@ class _ServiceSession {
   final ContextParams contextParams;
 
   Pointer<llama_token> tokens = nullptr;
+  Pointer<Char> decodeBuf = nullptr;
   List<int> pendingBytes = [];
   int nPos = 0;
   int nPrompt = 0;
@@ -1132,6 +1171,10 @@ class _ServiceSession {
     if (tokens != nullptr) {
       malloc.free(tokens);
       tokens = nullptr;
+    }
+    if (decodeBuf != nullptr) {
+      malloc.free(decodeBuf);
+      decodeBuf = nullptr;
     }
     if (sampler != nullptr) {
       lib.llama_sampler_free(sampler);
