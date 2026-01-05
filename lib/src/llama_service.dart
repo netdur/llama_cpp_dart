@@ -241,7 +241,9 @@ class LlamaService {
 
         session.nPos += nChunk;
         processed += nChunk;
-        onProgress?.call(processed, session.nPrompt);
+        try {
+          onProgress?.call(processed, session.nPrompt);
+        } catch (_) {}
 
         if (processed < session.nPrompt && processed % (batchCapacity * 4) == 0) {
           await Future<void>.delayed(Duration.zero);
