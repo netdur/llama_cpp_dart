@@ -5,6 +5,7 @@ export 'src/model_params.dart';
 export 'src/context_params.dart';
 export 'src/sampler_params.dart';
 export 'src/llama.dart';
+export 'src/llama_service.dart';
 
 export 'src/prompt_format.dart';
 export 'src/alpaca_format.dart';
