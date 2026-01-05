@@ -38,9 +38,10 @@ class LlamaService {
   late final _SharedModelHandle _sharedModel;
 
   // Shared context and batch
+  // Shared context and batch
   Pointer<llama_context> _context = nullptr;
-  late llama_batch _batch;
-  late llama_batch _batchEmbd;
+  llama_batch? _batch;
+  llama_batch? _batchEmbd;
 
   // Storage for the token pointer we hide from llama_decode
   Pointer<llama_token> _hiddenTokenPtr = nullptr;
@@ -59,6 +60,7 @@ class LlamaService {
   final _stopSignal = Completer<void>();
   Completer<void> _workSignal = Completer<void>();
   Completer<void>? _activeDecodeSync;
+  Future<void>? _loopFuture; // Track the loop
 
   final List<int> _freeSeqIds = [];
   int _maxParallel = 1;
@@ -123,11 +125,10 @@ class LlamaService {
 
       // Initialize Text Batch
       // We pass 0 for n_embd so the library sets batch.embd = nullptr
-      _batch = lib.llama_batch_init(_nBatch, 0, _maxParallel);
+      final b = lib.llama_batch_init(_nBatch, 0, _maxParallel);
+      _batch = b;
 
-      if (_batch.token.address == 0 ||
-          _batch.pos.address == 0 ||
-          _batch.seq_id.address == 0) {
+      if (b.token.address == 0 || b.pos.address == 0 || b.seq_id.address == 0) {
         throw LlamaException("llama_batch_init failed to allocate memory");
       }
 
@@ -135,28 +136,44 @@ class LlamaService {
       if (_visionEnabled) {
         final nEmbd = lib.llama_n_embd(_sharedModel.model);
         // We allocate with _nBatch tokens to ensure 'pos', 'seq_id' arrays are allocated
-        _batchEmbd = lib.llama_batch_init(_nBatch, nEmbd, _maxParallel);
+        final eb = lib.llama_batch_init(_nBatch, nEmbd, _maxParallel);
+        _batchEmbd = eb;
 
         // FIX: Hide the token pointer so llama_decode works, but don't free it
-        _hiddenTokenPtr = _batchEmbd.token;
-        _batchEmbd.token = nullptr;
+        _hiddenTokenPtr = eb.token;
+        eb.token =
+            nullptr; // This is safe because we saved it in _hiddenTokenPtr
       }
     } catch (e) {
       if (_context != nullptr) lib.llama_free(_context);
-      try {
-        // Attempt to clean up batches if they were initialized
-        if (_batch.token.address != 0) lib.llama_batch_free(_batch);
-      } catch (_) {}
-      try {
-        if (_visionEnabled &&
-            _batchEmbd.token.address != 0 && // Check structure validity
-            _batchEmbd.token != nullptr) {
-          // Check pointer validity (though we hid it)
-          // If we hid the pointer in _hiddenTokenPtr, we must restore it to free
-          if (_hiddenTokenPtr != nullptr) _batchEmbd.token = _hiddenTokenPtr;
-          lib.llama_batch_free(_batchEmbd);
+
+      // Cleanup _batch
+      if (_batch != null) {
+        // llama_batch_free handles the cleanup, assuming init succeeded enough to give pointers
+        // But if init failed partially inside C (unlikely to return struct with nulls but possible),
+        // we check token address if prudent, but llama_batch_free is usually robust if struct is valid.
+        // The checking logic in original code was: if (.token.address != 0)
+        final b = _batch!;
+        if (b.token.address != 0) lib.llama_batch_free(b);
+      }
+
+      // Cleanup _batchEmbd
+      if (_visionEnabled && _batchEmbd != null) {
+        final eb = _batchEmbd!;
+        // Restore hidden pointer if we hid it
+        if (_hiddenTokenPtr != nullptr) {
+          eb.token = _hiddenTokenPtr;
         }
-      } catch (_) {}
+
+        // Only free if we have a token pointer (meaning allocation happened)
+        // Original issue: if eb.token was nullptr (because we set it), and _hiddenTokenPtr was null (init failed before hiding?),
+        // calling free might be weird if library expects tokens.
+        // But here we restored it.
+        // We also check address != 0 to be sure it's not a zero-initialized struct.
+        if (eb.token.address != 0 && eb.token != nullptr) {
+          lib.llama_batch_free(eb);
+        }
+      }
 
       if (_visionEnabled && _mctx != nullptr) {
         lib.mtmd_free(_mctx);
@@ -166,7 +183,7 @@ class LlamaService {
       rethrow;
     }
 
-    _runLoop();
+    _loopFuture = _runLoop();
   }
 
   bool get isDisposed => _disposed;
@@ -204,7 +221,21 @@ class LlamaService {
     _sessions[sessionId] = session;
     _sessionsBySeqId[seqId] = session;
     session.status = LlamaStatus.ready;
-    _startRequest(session);
+
+    // We do NOT start request here automatically, wait for setPrompt
+  }
+
+  Future<void> cancel(String sessionId) async {
+    final session = _sessions[sessionId];
+    if (session == null) return;
+
+    // Stop generating
+    session.status = LlamaStatus.ready;
+    session.pendingItems.clear();
+
+    // We don't close the stream here as we want to reuse it,
+    // but we can send a "cancelled" event or just leave it.
+    // Usually cancelling implies we are done with *current* generation.
   }
 
   Future<void> freeSession(String sessionId) async {
@@ -285,20 +316,64 @@ class LlamaService {
     _notifyWork();
   }
 
-  Future<String> generateCompleteText(String sessionId,
-      {int? maxTokens}) async {
-    final stream = generateText(sessionId);
+  Future<String> generateCompleteText(String sessionId) async {
+    final session = _requireSession(sessionId);
+    final completer = Completer<String>();
     final buf = StringBuffer();
-    await for (final chunk in stream) {
+
+    StreamSubscription? sub;
+    // We listen to the session stream. Be careful if others are listening (Single-Subscription).
+    // If we want to support both, we'd need broadcast, but backpressure is hard.
+    // Assuming single-owner for the stream:
+
+    sub = session.stream.listen((chunk) {
       buf.write(chunk);
-    }
+      // We can also check specific end tokens if needed,
+      // but relying on status check loop or custom event is safer
+    }, onError: (e) {
+      sub?.cancel();
+      if (!completer.isCompleted) completer.completeError(e);
+    }, onDone: () {
+      // Stream closed (session freed?)
+      if (!completer.isCompleted) completer.complete(buf.toString());
+    });
+
+    // Polling or hook for "done generating"
+    // Since we don't close the stream, we hack:
+    // Future.doWhile check status? No, expensive.
+    // Better: _ServiceSession exposes a "generationDone" future or callbacks?
+    // Using a simple polling for now to avoid breaking API too much,
+    // OR just rely on logic:
+    // Actually, let's make generateCompleteText wait for status change via polling helper
+    // or add a specialized waiter.
+
+    // For now, let's assume the user handles it or we rely on some other signal.
+    // But to be correct per task:
+    // Let's modify _runLoop to complete a future in the session when done.
+
+    await session.generationDone.future;
+    await sub.cancel();
     return buf.toString();
   }
 
-  Stream<String> generateText(String sessionId) {
+  Stream<String> generateText(String sessionId, {String? prompt}) {
     _checkDisposed();
     final session = _requireSession(sessionId);
-    return session.outputStream.stream;
+
+    // Legacy/Manual mode: return persistent stream
+    if (prompt == null) {
+      return session.stream;
+    }
+
+    // Scoped mode: set prompt and return finite stream
+    return _generateTextWithPrompt(sessionId, prompt);
+  }
+
+  Stream<String> _generateTextWithPrompt(
+      String sessionId, String prompt) async* {
+    final session = _requireSession(sessionId);
+    await setPrompt(sessionId, prompt);
+    yield* _streamRequest(session);
   }
 
   Stream<String> generateWithMedia(
@@ -414,7 +489,35 @@ class LlamaService {
 
     _notifyWork();
 
-    yield* session.outputStream.stream;
+    yield* _streamRequest(session);
+  }
+
+  Stream<String> _streamRequest(_ServiceSession session) {
+    // Current generation future
+    final done = session.generationDone.future;
+    // Create a controller to forward events until done
+    final controller = StreamController<String>();
+    StreamSubscription<String>? sub;
+
+    sub = session.stream.listen(
+      (data) {
+        if (!controller.isClosed) controller.add(data);
+      },
+      onError: (e, s) {
+        if (!controller.isClosed) controller.addError(e, s);
+      },
+      onDone: () {
+        // Persistent stream shouldn't close, but if it does:
+        if (!controller.isClosed) controller.close();
+      },
+    );
+
+    done.then((_) {
+      sub?.cancel();
+      if (!controller.isClosed) controller.close();
+    });
+
+    return controller.stream;
   }
 
   void _notifyWork() {
@@ -432,232 +535,248 @@ class LlamaService {
   // --- Internal Scheduling Loop ---
 
   Future<void> _runLoop() async {
-    while (!_disposed) {
-      if (_loopTimer.elapsedMilliseconds >= 16) {
-        await Future.delayed(Duration.zero);
-        _loopTimer.reset();
-      }
+    try {
+      while (!_disposed) {
+        if (_stopSignal.isCompleted) break;
 
-      final activeSessions = _sessions.values.toList();
-      if (activeSessions.isEmpty) {
-        if (_workSignal.isCompleted) {
-          _workSignal = Completer<void>();
+        if (_loopTimer.elapsedMilliseconds >= 16) {
+          await Future.delayed(Duration.zero);
+          _loopTimer.reset();
         }
-        await _workSignal.future;
-        _workSignal = Completer<void>();
-        continue;
-      }
-      final Map<_ServiceSession, int> sessionIndex = {};
-      for (var i = 0; i < activeSessions.length; i++) {
-        sessionIndex[activeSessions[i]] = i;
-      }
 
-      // Round-Robin Rotation
-      int rotateStart =
-          (_lastScheduledSessionIndex + 1) % activeSessions.length;
-      final rotatedSessions = [
-        ...activeSessions.sublist(rotateStart),
-        ...activeSessions.sublist(0, rotateStart)
-      ];
+        final activeSessions = _sessions.values.toList();
 
-      final passes = _visionEnabled ? [false, true] : [false];
-
-      bool didWork = false;
-
-      for (final isEmbeddingPass in passes) {
-        int batchIdx = 0;
-        llama_batch currentBatch = isEmbeddingPass ? _batchEmbd : _batch;
-        currentBatch.n_tokens = 0;
-        final Set<int> batchSeqIds = {};
-
-        for (final session in rotatedSessions) {
-          if (session.status != LlamaStatus.generating) continue;
-
-          if (session.nPos >= _contextNCtx - 2) {
-            session.status = LlamaStatus.ready;
-            session.outputStream.add("\n[Context Limit]");
-            final mem = lib.llama_get_memory(_context);
-            lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
-            session.nPos = 0;
-            session.pendingItems.clear();
-            session.outputStream.close();
-            continue;
+        // Wait for work if nothing to do
+        if (activeSessions.isEmpty) {
+          if (!_workSignal.isCompleted && !_stopSignal.isCompleted) {
+            await Future.any([_workSignal.future, _stopSignal.future]);
           }
-
-          int available = _nBatch - batchIdx;
-          if (available <= 0) break;
-
-          if (session.pendingItems.isEmpty) {
-            _lastScheduledSessionIndex =
-                sessionIndex[session] ?? _lastScheduledSessionIndex;
-            continue;
+          // Reset signal only if we consumed it (it was completed)
+          if (_workSignal.isCompleted) {
+            _workSignal = Completer<void>();
           }
+          continue;
+        }
+        final Map<_ServiceSession, int> sessionIndex = {};
+        for (var i = 0; i < activeSessions.length; i++) {
+          sessionIndex[activeSessions[i]] = i;
+        }
 
-          final item = session.pendingItems.first;
-          if (item.isEmbedding != isEmbeddingPass) {
-            _lastScheduledSessionIndex =
-                sessionIndex[session] ?? _lastScheduledSessionIndex;
-            continue;
-          }
+        // Round-Robin Rotation
+        int rotateStart =
+            (_lastScheduledSessionIndex + 1) % activeSessions.length;
+        final rotatedSessions = [
+          ...activeSessions.sublist(rotateStart),
+          ...activeSessions.sublist(0, rotateStart)
+        ];
 
-          final int perSessionQuota =
-              min(available, _maxTokensPerSessionPerBatch);
+        final passes = _visionEnabled ? [false, true] : [false];
 
-          if (isEmbeddingPass) {
-            final remaining = item.remainingEmbeddingTokens;
-            if (remaining <= 0) {
-              session.pendingItems.removeFirst();
+        bool didWork = false;
+
+        for (final isEmbeddingPass in passes) {
+          int batchIdx = 0;
+          final currentBatch = isEmbeddingPass ? _batchEmbd! : _batch!;
+          currentBatch.n_tokens = 0;
+          final Set<int> batchSeqIds = {};
+
+          for (final session in rotatedSessions) {
+            if (session.status != LlamaStatus.generating) continue;
+
+            if (session.nPos >= _contextNCtx - 2) {
+              session.status = LlamaStatus.ready;
+              session.controller.add("\n[Context Limit]");
+              final mem = lib.llama_get_memory(_context);
+              lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+              session.nPos = 0;
+              session.pendingItems.clear();
+              session._completeGeneration();
+              continue;
+            }
+
+            int available = _nBatch - batchIdx;
+            if (available <= 0) break;
+
+            if (session.pendingItems.isEmpty) {
               _lastScheduledSessionIndex =
                   sessionIndex[session] ?? _lastScheduledSessionIndex;
               continue;
             }
 
-            final sendTokens = min(perSessionQuota, remaining);
-            final nEmbd = lib.llama_n_embd(_sharedModel.model);
-            final start = item.embdOffsetTokens * nEmbd;
-            final floatCount = sendTokens * nEmbd;
-
-            final destPtr = currentBatch.embd.elementAt(batchIdx * nEmbd);
-            final destList = destPtr.asTypedList(floatCount);
-            destList.setRange(0, floatCount, item.values!, start);
-
-            for (int k = 0; k < sendTokens; k++) {
-              currentBatch.pos[batchIdx + k] = session.nPos + k;
-              currentBatch.n_seq_id[batchIdx + k] = 1;
-              currentBatch.seq_id[batchIdx + k][0] = session.seqId;
-              currentBatch.logits[batchIdx + k] = 0;
+            final item = session.pendingItems.first;
+            if (item.isEmbedding != isEmbeddingPass) {
+              _lastScheduledSessionIndex =
+                  sessionIndex[session] ?? _lastScheduledSessionIndex;
+              continue;
             }
 
-            session.nPos += sendTokens;
-            batchSeqIds.add(session.seqId);
+            final int perSessionQuota =
+                min(available, _maxTokensPerSessionPerBatch);
 
-            if (remaining == sendTokens) {
-              currentBatch.logits[batchIdx + sendTokens - 1] = 1;
-            }
+            if (isEmbeddingPass) {
+              final remaining = item.remainingEmbeddingTokens;
+              if (remaining <= 0) {
+                session.pendingItems.removeFirst();
+                _lastScheduledSessionIndex =
+                    sessionIndex[session] ?? _lastScheduledSessionIndex;
+                continue;
+              }
 
-            batchIdx += sendTokens;
+              final sendTokens = min(perSessionQuota, remaining);
+              final nEmbd = lib.llama_n_embd(_sharedModel.model);
+              final start = item.embdOffsetTokens * nEmbd;
+              final floatCount = sendTokens * nEmbd;
 
-            if (remaining == sendTokens) {
-              session.pendingItems.removeFirst();
-            } else {
-              item.embdOffsetTokens += sendTokens;
-            }
+              final destPtr = currentBatch.embd.elementAt(batchIdx * nEmbd);
+              final destList = destPtr.asTypedList(floatCount);
+              destList.setRange(0, floatCount, item.values!, start);
 
-            didWork = true;
-          } else {
-            int filledCount = 0;
+              for (int k = 0; k < sendTokens; k++) {
+                currentBatch.pos[batchIdx + k] = session.nPos + k;
+                currentBatch.n_seq_id[batchIdx + k] = 1;
+                currentBatch.seq_id[batchIdx + k][0] = session.seqId;
+                currentBatch.logits[batchIdx + k] = 0;
+              }
 
-            while (filledCount < perSessionQuota &&
-                session.pendingItems.isNotEmpty &&
-                !session.pendingItems.first.isEmbedding &&
-                batchIdx < _nBatch) {
-              final tItem = session.pendingItems.removeFirst();
-
-              currentBatch.token[batchIdx] = tItem.token!;
-              currentBatch.pos[batchIdx] = session.nPos;
-              currentBatch.n_seq_id[batchIdx] = 1;
-              currentBatch.seq_id[batchIdx][0] = session.seqId;
-              currentBatch.logits[batchIdx] = 0;
-
-              session.nPos++;
-              batchIdx++;
-              filledCount++;
+              session.nPos += sendTokens;
               batchSeqIds.add(session.seqId);
 
-              if (session.pendingItems.isEmpty) {
-                currentBatch.logits[batchIdx - 1] = 1;
+              if (remaining == sendTokens) {
+                currentBatch.logits[batchIdx + sendTokens - 1] = 1;
               }
+
+              batchIdx += sendTokens;
+
+              if (remaining == sendTokens) {
+                session.pendingItems.removeFirst();
+              } else {
+                item.embdOffsetTokens += sendTokens;
+              }
+
+              didWork = true;
+            } else {
+              int filledCount = 0;
+
+              while (filledCount < perSessionQuota &&
+                  session.pendingItems.isNotEmpty &&
+                  !session.pendingItems.first.isEmbedding &&
+                  batchIdx < _nBatch) {
+                final tItem = session.pendingItems.removeFirst();
+
+                currentBatch.token[batchIdx] = tItem.token!;
+                currentBatch.pos[batchIdx] = session.nPos;
+                currentBatch.n_seq_id[batchIdx] = 1;
+                currentBatch.seq_id[batchIdx][0] = session.seqId;
+                currentBatch.logits[batchIdx] = 0;
+
+                session.nPos++;
+                batchIdx++;
+                filledCount++;
+                batchSeqIds.add(session.seqId);
+
+                if (session.pendingItems.isEmpty) {
+                  currentBatch.logits[batchIdx - 1] = 1;
+                }
+              }
+              if (filledCount > 0) didWork = true;
             }
-            if (filledCount > 0) didWork = true;
+
+            _lastScheduledSessionIndex =
+                sessionIndex[session] ?? _lastScheduledSessionIndex;
+            if (batchIdx >= _nBatch) break;
           }
 
-          _lastScheduledSessionIndex =
-              sessionIndex[session] ?? _lastScheduledSessionIndex;
-          if (batchIdx >= _nBatch) break;
-        }
+          if (batchIdx == 0) {
+            continue;
+          }
 
-        if (batchIdx == 0) {
-          continue;
-        }
+          currentBatch.n_tokens = batchIdx;
 
-        currentBatch.n_tokens = batchIdx;
+          _activeDecodeSync = Completer<void>();
 
-        _activeDecodeSync = Completer<void>();
+          if (lib.llama_decode(_context, currentBatch) != 0) {
+            _activeDecodeSync?.complete();
+            _activeDecodeSync = null;
 
-        if (lib.llama_decode(_context, currentBatch) != 0) {
+            for (final seqId in batchSeqIds) {
+              final session = _sessionsBySeqId[seqId];
+              if (session != null) {
+                session.status = LlamaStatus.error;
+                session.pendingItems.clear();
+                if (!session.controller.isClosed) {
+                  session.controller.addError(LlamaException(
+                      "llama_decode failed for session ${session.id}"));
+                  session._completeGeneration();
+                }
+              }
+            }
+
+            await Future.delayed(const Duration(milliseconds: 100));
+            continue;
+          }
+
           _activeDecodeSync?.complete();
           _activeDecodeSync = null;
 
-          for (final seqId in batchSeqIds) {
-            final session = _sessionsBySeqId[seqId];
-            if (session != null) {
-              session.status = LlamaStatus.error;
-              session.pendingItems.clear();
-              if (!session.outputStream.isClosed) {
-                session.outputStream.addError(LlamaException(
-                    "llama_decode failed for session ${session.id}"));
-                session.outputStream.close();
+          for (int i = 0; i < batchIdx; i++) {
+            if (currentBatch.logits[i] != 0) {
+              final sId = currentBatch.seq_id[i][0];
+              final session = _sessionsBySeqId[sId];
+              if (session == null) continue;
+
+              final newToken =
+                  lib.llama_sampler_sample(session.sampler, _context, i);
+
+              lib.llama_sampler_accept(session.sampler, newToken);
+
+              bool isEos = lib.llama_token_is_eog(_sharedModel.vocab, newToken);
+              String piece = "";
+              if (isEos) {
+                piece = " [EOS]";
+                session.controller.add(piece);
+              } else {
+                piece = _decodeToken(session, newToken);
+                if (piece.isNotEmpty) session.controller.add(piece);
+              }
+
+              session.nGenerated++;
+
+              bool done = isEos;
+              if (_contextNPredict != -1 &&
+                  session.nGenerated >= _contextNPredict) {
+                done = true;
+              }
+
+              if (done) {
+                session.status = LlamaStatus.ready;
+
+                if (!session.controller.isClosed) {
+                  session._completeGeneration();
+                }
+              } else {
+                session.pendingItems.addLast(_PendingItem.token(newToken));
               }
             }
           }
-
-          await Future.delayed(const Duration(milliseconds: 100));
-          continue;
         }
 
-        _activeDecodeSync?.complete();
-        _activeDecodeSync = null;
-
-        for (int i = 0; i < batchIdx; i++) {
-          if (currentBatch.logits[i] != 0) {
-            final sId = currentBatch.seq_id[i][0];
-            final session = _sessionsBySeqId[sId];
-            if (session == null) continue;
-
-            final newToken =
-                lib.llama_sampler_sample(session.sampler, _context, i);
-
-            lib.llama_sampler_accept(session.sampler, newToken);
-
-            bool isEos = lib.llama_token_is_eog(_sharedModel.vocab, newToken);
-            String piece = "";
-            if (isEos) {
-              piece = " [EOS]";
-              session.outputStream.add(piece);
-            } else {
-              piece = _decodeToken(session, newToken);
-              if (piece.isNotEmpty) session.outputStream.add(piece);
-            }
-
-            session.nGenerated++;
-
-            bool done = isEos;
-            if (_contextNPredict != -1 &&
-                session.nGenerated >= _contextNPredict) {
-              done = true;
-            }
-
-            if (done) {
-              session.status = LlamaStatus.ready;
-
-              if (!session.outputStream.isClosed) {
-                session.outputStream.close();
-              }
-            } else {
-              session.pendingItems.addLast(_PendingItem.token(newToken));
-            }
+        if (!didWork) {
+          // No work found in this pass, wait for new work signal
+          if (!_workSignal.isCompleted && !_stopSignal.isCompleted) {
+            // We use Future.any to ensure we wake up on stop too
+            await Future.any([_workSignal.future, _stopSignal.future]);
+          }
+          // Reset signal
+          if (_workSignal.isCompleted) {
+            _workSignal = Completer<void>();
           }
         }
       }
-
-      if (!didWork) {
-        if (_workSignal.isCompleted) {
-          _workSignal = Completer<void>();
-          continue;
-        }
-        await _workSignal.future;
-        _workSignal = Completer<void>();
-      }
+    } catch (e, stack) {
+      // Unobserved error in run loop! Log it.
+      // In a real app we might want to surface this or restart, but at least don't crash silently.
+      // ignore: avoid_print
+      print("Error in LlamaService run loop: $e\n$stack");
     }
   }
 
@@ -667,7 +786,12 @@ class LlamaService {
     if (_disposed) return;
     _disposed = true;
     _stopSignal.complete();
-    _notifyWork();
+    // No need to notify work, the loop wakes on stopSignal
+
+    // Wait for loop to finish
+    if (_loopFuture != null) {
+      await _loopFuture!;
+    }
 
     if (_activeDecodeSync != null) {
       await _activeDecodeSync!.future
@@ -680,16 +804,23 @@ class LlamaService {
     _sessions.clear();
 
     if (_context != nullptr) lib.llama_free(_context);
-    try {
-      lib.llama_batch_free(_batch);
-      if (_visionEnabled) {
+
+    if (_batch != null) {
+      try {
+        lib.llama_batch_free(_batch!);
+      } catch (_) {}
+    }
+
+    if (_visionEnabled && _batchEmbd != null) {
+      try {
+        final eb = _batchEmbd!;
         // FIX: Restore the hidden pointer before freeing
         if (_hiddenTokenPtr != nullptr) {
-          _batchEmbd.token = _hiddenTokenPtr;
+          eb.token = _hiddenTokenPtr;
         }
-        lib.llama_batch_free(_batchEmbd);
-      }
-    } catch (_) {}
+        lib.llama_batch_free(eb);
+      } catch (_) {}
+    }
 
     if (_visionEnabled && _mctx != nullptr) {
       lib.mtmd_free(_mctx);
@@ -697,6 +828,8 @@ class LlamaService {
 
     _releaseModel(_sharedModel);
 
+    // Ensure global backends are torn down to release Metal residency sets
+    // before process exit, otherwise ggml asserts when the runtime unloads.
     // Ensure global backends are torn down to release Metal residency sets
     // before process exit, otherwise ggml asserts when the runtime unloads.
     if (_modelCache.isEmpty && _backendInitialized) {
@@ -707,22 +840,15 @@ class LlamaService {
 
   // ... rest of private helpers (_checkDisposed, _ensureBackend, etc) same as before
   void _startRequest(_ServiceSession session) {
-    // Reuse existing stream if open to prevent disconnecting listeners
-    // But only if we are currently generating (attaching to active work).
-    // If we are starting fresh (e.g. from Ready state), ensure we have a fresh stream
-    // to avoid race conditions with previous run closing logic.
-    bool canReuse = session._hasStream &&
-        !session.outputStream.isClosed &&
-        session.status == LlamaStatus.generating;
+    if (session.status != LlamaStatus.generating) return;
 
-    if (canReuse) {
-      // Keep using it
-    } else {
-      session.outputStream = StreamController.broadcast();
-      session._hasStream = true;
-    }
-    // Always reset accumulator for new request
+    // Reset accumulator for new request
     session.accumulator = _Utf8Accumulator();
+
+    // Create a new completion future for this request
+    if (session.generationDone.isCompleted) {
+      session.generationDone = Completer<void>();
+    }
   }
 
   void _checkDisposed() {
@@ -814,7 +940,8 @@ class LlamaService {
       malloc.free(modelPathPtr);
     }
 
-    final handle = _SharedModelHandle(model: loadedModel, vocab: vocab);
+    final handle =
+        _SharedModelHandle(model: loadedModel, vocab: vocab, key: key);
     _modelCache[key] = handle;
     return handle;
   }
@@ -822,7 +949,15 @@ class LlamaService {
   void _releaseModel(_SharedModelHandle handle) {
     handle.refs--;
     if (handle.refs > 0) return;
-    _modelCache.removeWhere((_, h) => identical(h, handle));
+
+    // Optimized removal using the key stored in the handle
+    if (handle.key != null) {
+      _modelCache.remove(handle.key);
+    } else {
+      // Fallback or legacy (shouldn't happen with new handles)
+      _modelCache.removeWhere((_, h) => identical(h, handle));
+    }
+
     if (handle.model.address != 0) {
       lib.llama_free_model(handle.model);
     }
@@ -915,8 +1050,11 @@ class _ServiceSession {
   _Utf8Accumulator accumulator = _Utf8Accumulator();
 
   final ListQueue<_PendingItem> pendingItems = ListQueue<_PendingItem>();
-  late StreamController<String> outputStream;
-  bool _hasStream = false;
+  late final StreamController<String> controller;
+  bool paused = false;
+
+  // Future to signal completion of *current* generation request
+  Completer<void> generationDone = Completer<void>()..complete();
 
   int nPos = 0;
   int nPromptTokens = 0;
@@ -926,7 +1064,17 @@ class _ServiceSession {
     required this.id,
     required this.seqId,
     required this.sampler,
-  });
+  }) {
+    // Persistent controller (Broadcast)
+    // Note: Broadcast streams do not support onPause/onResume backpressure hooks by default.
+    controller = StreamController<String>.broadcast();
+  }
+
+  Stream<String> get stream => controller.stream;
+
+  void _completeGeneration() {
+    if (!generationDone.isCompleted) generationDone.complete();
+  }
 
   void dispose(llama_cpp lib) {
     if (sampler != nullptr) {
@@ -935,19 +1083,17 @@ class _ServiceSession {
     if (decodeBuf != nullptr) {
       malloc.free(decodeBuf);
     }
-
-    if (_hasStream && !outputStream.isClosed) {
-      outputStream.close();
-    }
+    controller.close();
   }
 }
 
 class _SharedModelHandle {
   final Pointer<llama_model> model;
   final Pointer<llama_vocab> vocab;
+  final _ModelCacheKey? key;
   int refs = 1;
 
-  _SharedModelHandle({required this.model, required this.vocab});
+  _SharedModelHandle({required this.model, required this.vocab, this.key});
 }
 
 class _ModelCacheKey {
