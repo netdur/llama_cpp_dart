@@ -453,16 +453,17 @@ class LlamaService {
         if (session.status != LlamaStatus.generating) continue;
 
         // Zombie Check
-        if (!session.outputStream.hasListener) {
-          session.status = LlamaStatus.ready;
-          session.pendingItems.clear();
-          session.outputStream.close();
-          // Free memory immediately
-          final mem = lib.llama_get_memory(_context);
-          lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
-          session.nPos = 0;
-          continue;
-        }
+        // Zombie Check - DISABLED (Causes regression in benchmarks due to race condition)
+        // if (!session.outputStream.hasListener) {
+        //   session.status = LlamaStatus.ready;
+        //   session.pendingItems.clear();
+        //   session.outputStream.close();
+        //   // Free memory immediately
+        //   final mem = lib.llama_get_memory(_context);
+        //   lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+        //   session.nPos = 0;
+        //   continue;
+        // }
 
         if (session.nPos >= session.contextParams.nCtx - 2) {
           session.status = LlamaStatus.ready;
@@ -576,7 +577,7 @@ class LlamaService {
       _activeDecodeSync = Completer<void>();
 
       if (lib.llama_decode(_context, currentBatch) != 0) {
-        print("llama_decode failed");
+        // print("llama_decode failed");
         _activeDecodeSync?.complete();
         _activeDecodeSync = null;
         await Future.delayed(const Duration(milliseconds: 100));
@@ -601,12 +602,10 @@ class LlamaService {
           String piece = "";
           if (isEos) {
             piece = " [EOS]";
-            // Flush anything remaining?
-            // Usually EOS implies clean break.
-            session.decoderSink.add(utf8.encode(
-                piece)); // Send EOS marker explicitly if needed, or close
+            session.outputStream.add(piece);
           } else {
-            _decodeToken(session, newToken);
+            piece = _decodeToken(session, newToken);
+            if (piece.isNotEmpty) session.outputStream.add(piece);
           }
 
           // if (piece.isNotEmpty) session.outputStream.add(piece); // Handled by sink now
@@ -620,6 +619,7 @@ class LlamaService {
 
           if (done) {
             session.status = LlamaStatus.ready;
+
             if (!session.outputStream.isClosed) {
               session.outputStream.close();
             }
@@ -680,12 +680,8 @@ class LlamaService {
     if (session._hasStream && !session.outputStream.isClosed) {
       session.outputStream.close();
     }
-    session.outputStream = StreamController.broadcast();
+    session.outputStream = StreamController();
     session._hasStream = true;
-
-    // Initialize chunked decoder hooked to the stream
-    session.decoderSink =
-        utf8.decoder.startChunkedConversion(session.outputStream.sink);
   }
 
   void _checkDisposed() {
@@ -791,20 +787,88 @@ class LlamaService {
     }
   }
 
-  void _decodeToken(_ServiceSession session, int tokenId) {
+  String _decodeToken(_ServiceSession session, int tokenId) {
     if (session.decodeBuf == nullptr) session.decodeBuf = malloc<Char>(256);
     final buf = session.decodeBuf;
 
     try {
       int n = lib.llama_token_to_piece(
           _sharedModel.vocab, tokenId, buf, 256, 0, true);
-      if (n < 0) return;
+      if (n < 0) return "";
 
       final newBytes = buf.cast<Uint8>().asTypedList(n);
-      session.decoderSink.add(newBytes);
+      return session.accumulator.process(newBytes);
     } catch (_) {
-      // Ignore decoding errors?
+      return "";
     }
+  }
+}
+
+/// Helper to accumulate bytes and decode only when valid UTF-8 is available.
+class _Utf8Accumulator {
+  final List<int> _buffer = [];
+
+  String process(List<int> newBytes) {
+    _buffer.addAll(newBytes);
+    if (_buffer.isEmpty) return "";
+
+    // Check if the buffer ends with a partial sequence
+    if (_isPartial(_buffer)) {
+      return "";
+    }
+
+    try {
+      String result = utf8.decode(_buffer);
+      _buffer.clear();
+      return result;
+    } catch (e) {
+      String result = utf8.decode(_buffer, allowMalformed: true);
+      _buffer.clear();
+      return result;
+    }
+  }
+
+  bool _isPartial(List<int> bytes) {
+    if (bytes.isEmpty) return false;
+    int last = bytes.last;
+
+    // 1-byte sequence (0xxxxxxx) - Complete
+    if ((last & 0x80) == 0) return false;
+
+    // Check suffix length logic
+    // We scan backwards to find the start byte
+    int len = bytes.length;
+    int lookback = 0;
+    // Max lookback for UTF8 is 4 bytes
+    while (lookback < 4 && lookback < len) {
+      int b = bytes[len - 1 - lookback];
+
+      if ((b & 0xC0) == 0xC0) {
+        // Found start byte: 11xxxxxx
+        // Count how many bytes it expects
+        int expected = 0;
+        if ((b & 0xE0) == 0xC0)
+          expected = 2; // 110xxxxx
+        else if ((b & 0xF0) == 0xE0)
+          expected = 3; // 1110xxxx
+        else if ((b & 0xF8) == 0xF0) expected = 4; // 11110xxx
+
+        // We have (lookback + 1) bytes including start
+        if ((lookback + 1) < expected) {
+          return true; // Partial
+        }
+        return false; // Complete
+      }
+
+      if ((b & 0x80) == 0) {
+        // Found ASCII in the middle of looking for start?
+        // That means the tail was orphan continuation bytes, or valid.
+        return false;
+      }
+      lookback++;
+    }
+    // If we didn't find a start byte within 4 bytes, assume valid/recoverable
+    return false;
   }
 }
 
@@ -829,7 +893,7 @@ class _ServiceSession {
 
   LlamaStatus status = LlamaStatus.uninitialized;
   Pointer<Char> decodeBuf = nullptr;
-  late ByteConversionSink decoderSink;
+  _Utf8Accumulator accumulator = _Utf8Accumulator();
 
   final List<_PendingItem> pendingItems = [];
   late StreamController<String> outputStream;
@@ -853,11 +917,6 @@ class _ServiceSession {
     if (decodeBuf != nullptr) {
       malloc.free(decodeBuf);
     }
-    // We should close the sink to flush valid pending bytes,
-    // but often we just close the stream.
-    try {
-      decoderSink.close();
-    } catch (_) {}
 
     if (_hasStream && !outputStream.isClosed) {
       outputStream.close();
