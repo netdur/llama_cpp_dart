@@ -74,10 +74,56 @@ class Llama {
 
   static llama_cpp get lib {
     if (_lib == null) {
+      DynamicLibrary mainLib;
+      DynamicLibrary? mtmdLib;
+
       if (libraryPath != null) {
-        _lib = llama_cpp(DynamicLibrary.open(libraryPath!));
+        mainLib = DynamicLibrary.open(libraryPath!);
+
+        // Try to load libmtmd adjacent to libllama
+        // We assume libraryPath ends with the binary name
+        // e.g. .../libllama.dylib -> .../libmtmd.dylib
+        final path = libraryPath!;
+        final sep = Platform.pathSeparator;
+        final parts = path.split(sep);
+        if (parts.isNotEmpty) {
+          final filename = parts.last;
+          if (filename.contains("llama")) {
+            final mtmdName = filename.replaceFirst("llama", "mtmd");
+            final mtmdPath =
+                path.substring(0, path.length - filename.length) + mtmdName;
+            if (File(mtmdPath).existsSync()) {
+              try {
+                mtmdLib = DynamicLibrary.open(mtmdPath);
+              } catch (_) {
+                // Ignore if fails to load
+              }
+            }
+          }
+        }
       } else {
-        _lib = llama_cpp(DynamicLibrary.process());
+        mainLib = DynamicLibrary.process();
+        // If using process, maybe mtmd is already loaded or we can try to open it by name?
+        if (Platform.isMacOS) {
+          try {
+            mtmdLib = DynamicLibrary.open("libmtmd.dylib");
+          } catch (_) {}
+        }
+      }
+
+      if (mtmdLib != null) {
+        // Use composite lookup
+        Pointer<T> lookup<T extends NativeType>(String symbolName) {
+          try {
+            return mainLib.lookup<T>(symbolName);
+          } catch (_) {
+            return mtmdLib!.lookup<T>(symbolName);
+          }
+        }
+
+        _lib = llama_cpp.fromLookup(lookup);
+      } else {
+        _lib = llama_cpp(mainLib);
       }
     }
     return _lib!;

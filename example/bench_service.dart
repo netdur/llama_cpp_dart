@@ -36,7 +36,8 @@ Future<void> main(List<String> args) async {
 
   print("Loading model from $modelPath...");
   print("Using library: ${Llama.libraryPath ?? 'system default'}");
-  final service = LlamaService(modelPath, contextParams: contextParams);
+  final service =
+      LlamaService(modelPath, contextParams: contextParams, verbose: false);
 
   // Create sessions
   print("Creating $kConcurrency sessions...");
@@ -131,9 +132,6 @@ Future<BenchResult> _runRequest(
 
   final fullOutput = outputBuffer.toString();
   final integrityCheck = fullOutput.contains("20") ? "PASS" : "FAIL";
-
-  // Write actual output to file for verification
-  await File("bench_output_$sessionId.txt").writeAsString(fullOutput);
 
   if (!silent) {
     // Print stats row immediately upon completion
