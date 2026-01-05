@@ -250,7 +250,7 @@ class LlamaService {
     _freeSeqIds.add(session.seqId);
   }
 
-  Future<void> setPrompt(
+  Future<int> setPrompt(
     String sessionId,
     String prompt, {
     bool clearHistory = true,
@@ -268,10 +268,15 @@ class LlamaService {
     session.nGenerated = 0;
     session.nPromptTokens = 0;
 
+    // Reset status from previous errors or ready
     session.status = LlamaStatus.generating;
 
+    // Assign new request ID to isolate this request's stream events
+    _startRequest(session);
+    final currentRequestId = session.requestId;
+
     try {
-      _startRequest(session);
+      // _startRequest(session); // Moved up
 
       if (clearHistory) {
         final mem = lib.llama_get_memory(_context);
@@ -314,22 +319,57 @@ class LlamaService {
       }
 
       _notifyWork();
-    } catch (e) {
-      session.status = LlamaStatus.ready;
+    } catch (e, s) {
+      session.status = LlamaStatus.error;
       session.pendingItems.clear();
       session._outputBuffer.clear();
+      if (!session.controller.isClosed) {
+        session.controller.addError(e, s);
+      }
       session._completeGeneration();
       rethrow;
     }
+    return currentRequestId;
   }
 
   Future<String> generateCompleteText(String sessionId) async {
     final session = _requireSession(sessionId);
     final buf = StringBuffer();
-    final sub = session.stream.listen((chunk) => buf.write(chunk));
+    final sub =
+        session.stream.listen((chunk) => buf.write(chunk), onError: (e, s) {});
+
+    // Capture errors to rethrow them
+    Object? error;
+    StackTrace? stack;
+
+    sub.onError((e, s) {
+      error = e;
+      stack = s;
+    });
 
     try {
-      await session.generationDone.future;
+      final reqId = session.requestId;
+      // Wait for specific request if possible, or just the latest future
+      if (session.requestCompleters.containsKey(reqId)) {
+        await session.requestCompleters[reqId]!.future;
+      } else {
+        // Fallback if no specific completer (unlikely if called after start)
+        // or verify if we should just wait for next signal.
+        // Actually, if we just came from _requireSession, we might not have started?
+        // generateCompleteText assumes the request is running or about to run?
+        // NO, generateCompleteText usually wraps setPrompt itself OR is called on a running session?
+        // The legacy method didn't call setPrompt.
+        // If called manually, we rely on streams.
+        // Let's assume the user calls setPrompt separately?
+        // Actually, this method waits for "session.generationDone.future" in old code.
+        // We should probably wait for the *latest* request's completion.
+        final latest = session.requestCompleters[session.requestId]?.future;
+        if (latest != null) await latest;
+      }
+
+      if (error != null) {
+        Error.throwWithStackTrace(error!, stack ?? StackTrace.empty);
+      }
     } finally {
       await sub.cancel();
     }
@@ -353,8 +393,8 @@ class LlamaService {
   Stream<String> _generateTextWithPrompt(
       String sessionId, String prompt) async* {
     final session = _requireSession(sessionId);
-    await setPrompt(sessionId, prompt);
-    yield* _streamRequest(session);
+    final reqId = await setPrompt(sessionId, prompt);
+    yield* _streamRequest(session, requestId: reqId);
   }
 
   Stream<String> generateWithMedia(
@@ -378,11 +418,13 @@ class LlamaService {
     session.pendingItems.clear();
     session.nGenerated = 0;
 
+    // Reset status from previous errors or ready
     session.status = LlamaStatus.generating;
 
-    try {
-      _startRequest(session);
+    _startRequest(session);
+    final currentRequestId = session.requestId;
 
+    try {
       if (clearHistory) {
         final mem = lib.llama_get_memory(_context);
         lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
@@ -474,19 +516,29 @@ class LlamaService {
 
       _notifyWork();
 
-      yield* _streamRequest(session);
-    } catch (e) {
-      session.status = LlamaStatus.ready;
+      yield* _streamRequest(session, requestId: currentRequestId);
+    } catch (e, s) {
+      session.status = LlamaStatus.error;
       session.pendingItems.clear();
       session._outputBuffer.clear();
+      if (!session.controller.isClosed) {
+        session.controller.addError(e, s);
+      }
+      session.lastError = e;
+      session.lastStackTrace = s;
+      session.lastErrorTime = DateTime.now();
       session._completeGeneration();
       rethrow;
     }
   }
 
-  Stream<String> _streamRequest(_ServiceSession session) {
-    // Current generation future
-    final done = session.generationDone.future;
+  Stream<String> _streamRequest(_ServiceSession session, {int? requestId}) {
+    // Determine which request to listen to
+    final targetReqId = requestId ?? session.requestId;
+
+    // Check if that request has a completer
+    final doneFuture =
+        session.requestCompleters[targetReqId]?.future ?? Future.value();
 
     StreamSubscription<String>? sub;
 
@@ -499,6 +551,8 @@ class LlamaService {
 
     sub = session.stream.listen(
       (data) {
+        // Filter out events from other requests (race condition protection)
+        if (session.requestId != targetReqId) return;
         if (!controller.isClosed) controller.add(data);
       },
       onError: (e, s) {
@@ -510,7 +564,7 @@ class LlamaService {
       },
     );
 
-    done.then((_) {
+    doneFuture.then((_) {
       sub?.cancel();
       if (!controller.isClosed) controller.close();
     });
@@ -704,6 +758,9 @@ class LlamaService {
                 if (!session.controller.isClosed) {
                   session.controller.addError(LlamaException(
                       "llama_decode failed for session ${session.id}"));
+
+                  session.lastError = LlamaException("llama_decode failed");
+                  session.lastErrorTime = DateTime.now();
                   session._completeGeneration();
                 }
               }
@@ -738,7 +795,10 @@ class LlamaService {
               }
 
               // Flush check
-              session.flush();
+              // Late cancellation check: don't buffer if cancelled
+              if (session.status == LlamaStatus.generating) {
+                session.flush();
+              }
 
               session.nGenerated++;
 
@@ -847,9 +907,8 @@ class LlamaService {
     session.accumulator = _Utf8Accumulator();
 
     // Create a new completion future for this request
-    if (session.generationDone.isCompleted) {
-      session.generationDone = Completer<void>();
-    }
+    session.requestId++;
+    session.requestCompleters[session.requestId] = Completer<void>();
   }
 
   void _checkDisposed() {
@@ -1044,8 +1103,15 @@ class _ServiceSession {
   final String id;
   final int seqId;
   final Pointer<llama_sampler> sampler;
+  int requestId = 0; // Monotonically increasing request ID
 
   LlamaStatus status = LlamaStatus.uninitialized;
+
+  // Last error info
+  Object? lastError;
+  StackTrace? lastStackTrace;
+  DateTime? lastErrorTime;
+
   Pointer<Char> decodeBuf = nullptr;
   int decodeCapacity = 0;
   _Utf8Accumulator accumulator = _Utf8Accumulator();
@@ -1054,8 +1120,12 @@ class _ServiceSession {
   late final StreamController<String> controller;
   bool paused = false;
 
-  // Future to signal completion of *current* generation request
-  Completer<void> generationDone = Completer<void>()..complete();
+  // Map of requestID -> Completer
+  final Map<int, Completer<void>> requestCompleters = {};
+
+  // Legacy single completer shim if needed, or just remove it.
+  // We keep the old field name but deprecate or remove usage if possible.
+  // Actually, let's remove generationDone and use requestCompleters logic.
 
   int nPos = 0;
   int nPromptTokens = 0;
@@ -1079,6 +1149,28 @@ class _ServiceSession {
 
   void flush({bool force = false}) {
     if (_outputBuffer.isEmpty) return;
+
+    // Broadcast buffering policy:
+    // If no listeners, we buffer up to a cap (e.g. 5MB).
+    // If listeners exist, we emit.
+
+    if (!controller.hasListener) {
+      // Check cap
+      if (_outputBuffer.length > 5 * 1024 * 1024) {
+        // 5MB char count roughly
+        // Cap exceeded.
+        // We could clear, or error.
+        _outputBuffer.clear();
+        _outputBuffer.write(
+            "[Error: Output buffer exceeded 5MB with no listeners. Stream dropped.]");
+        // We might want to cancel the session too?
+        // For now just dropping old data is "safe" enough to prevent OOM.
+        return;
+      }
+      // Just return, keep buffering (replay logic)
+      return;
+    }
+
     final now = DateTime.now();
     // Flush if forced, buffer too large (>1KB), or time elapsed (>50ms)
     if (force ||
@@ -1094,7 +1186,14 @@ class _ServiceSession {
 
   void _completeGeneration() {
     flush(force: true); // Ensure pending data is sent
-    if (!generationDone.isCompleted) generationDone.complete();
+
+    // Complete the completer for the CURRENT request ID
+    if (requestCompleters.containsKey(requestId)) {
+      final c = requestCompleters[requestId]!;
+      if (!c.isCompleted) c.complete();
+      // We can clean up old completers here or periodically
+      requestCompleters.removeWhere((k, v) => k < requestId);
+    }
   }
 
   void dispose(llama_cpp lib) {
