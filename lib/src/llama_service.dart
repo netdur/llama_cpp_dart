@@ -26,7 +26,7 @@ class LlamaService {
 
   final String modelPath;
   final ModelParams modelParams;
-  final ContextParams defaultContextParams;
+  late final ContextParams defaultContextParams;
   final ContextParams _ctxConfig;
   final SamplerParams defaultSamplerParams;
   final bool _verbose;
@@ -72,9 +72,9 @@ class LlamaService {
     bool verbose = false,
   })  : modelParams = modelParams ?? ModelParams(),
         _ctxConfig = contextParams ?? ContextParams(),
-        defaultContextParams = _ctxConfig,
         defaultSamplerParams = samplerParams ?? SamplerParams(),
         _verbose = verbose {
+    defaultContextParams = _ctxConfig;
     _ensureBackend();
     _sharedModel = _acquireModel(modelPath, this.modelParams);
 
@@ -708,12 +708,21 @@ class LlamaService {
   // ... rest of private helpers (_checkDisposed, _ensureBackend, etc) same as before
   void _startRequest(_ServiceSession session) {
     // Reuse existing stream if open to prevent disconnecting listeners
-    if (session._hasStream && !session.outputStream.isClosed) {
+    // But only if we are currently generating (attaching to active work).
+    // If we are starting fresh (e.g. from Ready state), ensure we have a fresh stream
+    // to avoid race conditions with previous run closing logic.
+    bool canReuse = session._hasStream &&
+        !session.outputStream.isClosed &&
+        session.status == LlamaStatus.generating;
+
+    if (canReuse) {
       // Keep using it
     } else {
-      session.outputStream = StreamController();
+      session.outputStream = StreamController.broadcast();
       session._hasStream = true;
     }
+    // Always reset accumulator for new request
+    session.accumulator = _Utf8Accumulator();
   }
 
   void _checkDisposed() {
@@ -887,8 +896,7 @@ class _PendingItem {
       : values = null,
         nTokens = 1,
         embdOffsetTokens = 0;
-  _PendingItem.embedding(this.values, this.nTokens,
-      {this.embdOffsetTokens = 0})
+  _PendingItem.embedding(this.values, this.nTokens, {this.embdOffsetTokens = 0})
       : token = null;
 
   bool get isEmbedding => values != null;

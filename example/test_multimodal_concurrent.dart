@@ -68,7 +68,9 @@ Future<void> main() async {
   // Note: The prompt must contain <image> for each image provided if the model requires it
   // Most valid multimodal models behave like this.
   // We prepend <image> to the user prompt.
-  final fullPrompt = "<image>\n$kPrompt";
+  // Gemma 3 Instruction format
+  final fullPrompt =
+      "<start_of_turn>user\n<image>\n$kPrompt<end_of_turn>\n<start_of_turn>model\n";
 
   // 4. Run Requests in Parallel
   final futures = <Future<void>>[];
