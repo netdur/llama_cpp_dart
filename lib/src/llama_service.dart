@@ -288,6 +288,11 @@ class LlamaService {
   Stream<String> generateText(String sessionId) {
     _checkDisposed();
     final session = _requireSession(sessionId);
+    // Ensure stream is open and ready for listeners
+    if (session.outputStream.isClosed) {
+      session.outputStream = StreamController();
+      session._hasStream = true;
+    }
     return session.outputStream.stream;
   }
 
@@ -534,8 +539,9 @@ class LlamaService {
             anyWork = true;
           } else {
             // Token input
-            int count = 0;
-            while (count < available && session.pendingItems.isNotEmpty) {
+            int filledCount = 0;
+
+            while (filledCount < available && session.pendingItems.isNotEmpty) {
               if (session.pendingItems.first.isEmbedding) break;
               final tItem = session.pendingItems.removeAt(0);
 
@@ -547,7 +553,7 @@ class LlamaService {
 
               session.nPos++;
               batchIdx++;
-              count++;
+              filledCount++;
 
               if (session.pendingItems.isEmpty) {
                 currentBatch.logits[batchIdx - 1] = 1;
@@ -677,11 +683,13 @@ class LlamaService {
 
   // ... rest of private helpers (_checkDisposed, _ensureBackend, etc) same as before
   void _startRequest(_ServiceSession session) {
+    // Reuse existing stream if open to prevent disconnecting listeners
     if (session._hasStream && !session.outputStream.isClosed) {
-      session.outputStream.close();
+      // Keep using it
+    } else {
+      session.outputStream = StreamController();
+      session._hasStream = true;
     }
-    session.outputStream = StreamController();
-    session._hasStream = true;
   }
 
   void _checkDisposed() {
