@@ -308,6 +308,9 @@ class LlamaService {
       // ignore: avoid_print
       print("Restoring session $sessionId from ${session.tier}...");
       await _restoreSession(session);
+      if (session.status != LlamaStatus.generating) {
+        throw LlamaException("Request cancelled during session restore.");
+      }
     }
 
     _startRequest(session);
@@ -487,6 +490,9 @@ class LlamaService {
       // ignore: avoid_print
       print("Restoring session $sessionId from ${session.tier}...");
       await _restoreSession(session);
+      if (session.status != LlamaStatus.generating) {
+        throw LlamaException("Request cancelled during session restore.");
+      }
     }
 
     _startRequest(session);
