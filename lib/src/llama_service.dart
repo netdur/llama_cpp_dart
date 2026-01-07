@@ -20,6 +20,12 @@ class _SessionEvent {
   _SessionEvent(this.requestId, this.text);
 }
 
+enum SessionTier {
+  hot, // In VRAM (Active)
+  warm, // In RAM (Uint8List snapshot)
+  cold, // On Disk (File path)
+}
+
 class TokenUsage {
   int promptTokens = 0;
   int completionTokens = 0;
@@ -59,6 +65,8 @@ class LlamaService {
   final ContextParams _ctxConfig;
   final SamplerParams defaultSamplerParams;
   final bool _verbose;
+  final String sessionHome;
+  final int maxSystemRamMb;
 
   final Map<String, _ServiceSession> _sessions = {};
   final Map<int, _ServiceSession> _sessionsBySeqId = {};
@@ -89,6 +97,7 @@ class LlamaService {
   Completer<void>? _activeDecodeSync;
   Future<void>? _loopFuture;
   final Stopwatch _loopTimer = Stopwatch()..start();
+  final Stopwatch _memoryJanitorTimer = Stopwatch()..start();
 
   // Seq allocation
   final List<int> _freeSeqIds = [];
@@ -101,10 +110,15 @@ class LlamaService {
     ContextParams? contextParams,
     SamplerParams? samplerParams,
     bool verbose = false,
+    String? sessionHome,
+    int? maxSystemRamMb,
   })  : modelParams = modelParams ?? ModelParams(),
         _ctxConfig = contextParams ?? ContextParams(),
         defaultSamplerParams = samplerParams ?? SamplerParams(),
-        _verbose = verbose {
+        _verbose = verbose,
+        sessionHome = sessionHome ?? './sessions',
+        maxSystemRamMb = maxSystemRamMb ?? 8192 {
+    Directory(this.sessionHome).createSync(recursive: true);
     if (!_verbose) {
       final nullCallbackPointer =
           Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackNull);
@@ -197,29 +211,29 @@ class LlamaService {
     _checkDisposed();
     if (_sessions.containsKey(sessionId)) return;
 
-    if (_freeSeqIds.isEmpty) {
-      throw LlamaException(
-        "Max parallel sessions ($_maxParallel) reached. Cannot create session $sessionId.",
-      );
-    }
-
-    final seqId = _freeSeqIds.removeLast();
     final sampler = _initializeSampler(samplerParams ?? defaultSamplerParams);
-
-    final mem = lib.llama_get_memory(_context);
-    lib.llama_memory_seq_rm(mem, seqId, -1, -1);
 
     final session = _ServiceSession(
       id: sessionId,
-      seqId: seqId,
+      seqId: null,
       sampler: sampler,
     );
+
+    final savedPath = '$sessionHome/$sessionId.state';
+    final savedFile = File(savedPath);
+    if (savedFile.existsSync()) {
+      session.tier = SessionTier.cold;
+      session.coldFilePath = savedPath;
+      // ignore: avoid_print
+      print("Found persisted session $sessionId at $savedPath");
+    } else {
+      session.tier = SessionTier.warm;
+    }
 
     session.decodeCapacity = 256;
     session.decodeBuf = malloc<Char>(session.decodeCapacity);
 
     _sessions[sessionId] = session;
-    _sessionsBySeqId[seqId] = session;
     session.status = LlamaStatus.ready;
   }
 
@@ -235,19 +249,37 @@ class LlamaService {
     session._completeGeneration(rid);
   }
 
-  Future<void> freeSession(String sessionId) async {
+  Future<void> freeSession(
+    String sessionId, {
+    bool deleteDiskFile = false,
+  }) async {
     final session = _sessions.remove(sessionId);
     if (session == null) return;
 
-    _sessionsBySeqId.remove(session.seqId);
+    if (session.seqId != null) {
+      _sessionsBySeqId.remove(session.seqId);
+    }
 
     if (_context != nullptr) {
-      final mem = lib.llama_get_memory(_context);
-      lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+      final seqId = session.seqId;
+      if (seqId != null) {
+        final mem = lib.llama_get_memory(_context);
+        lib.llama_memory_seq_rm(mem, seqId, -1, -1);
+      }
     }
 
     session.dispose(lib);
-    _freeSeqIds.add(session.seqId);
+    final seqId = session.seqId;
+    if (seqId != null) {
+      _freeSeqIds.add(seqId);
+    }
+
+    if (deleteDiskFile && session.coldFilePath != null) {
+      final file = File(session.coldFilePath!);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
   }
 
   Future<int> setPrompt(
@@ -271,13 +303,24 @@ class LlamaService {
     session.nPromptTokens = 0;
     session.status = LlamaStatus.generating;
 
+    session.lastActiveTime = DateTime.now();
+    if (session.tier != SessionTier.hot) {
+      // ignore: avoid_print
+      print("Restoring session $sessionId from ${session.tier}...");
+      await _restoreSession(session);
+    }
+
     _startRequest(session);
     final currentRequestId = session.requestId;
 
     try {
       if (clearHistory) {
+        final seqId = session.seqId;
+        if (seqId == null) {
+          throw LlamaException("Session $sessionId is not hot");
+        }
         final mem = lib.llama_get_memory(_context);
-        lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+        lib.llama_memory_seq_rm(mem, seqId, -1, -1);
         session.nPos = 0;
         if (session.sampler != nullptr) {
           lib.llama_sampler_reset(session.sampler);
@@ -439,13 +482,24 @@ class LlamaService {
     session.nGenerated = 0;
     session.status = LlamaStatus.generating;
 
+    session.lastActiveTime = DateTime.now();
+    if (session.tier != SessionTier.hot) {
+      // ignore: avoid_print
+      print("Restoring session $sessionId from ${session.tier}...");
+      await _restoreSession(session);
+    }
+
     _startRequest(session);
     final currentRequestId = session.requestId;
 
     try {
       if (clearHistory) {
+        final seqId = session.seqId;
+        if (seqId == null) {
+          throw LlamaException("Session $sessionId is not hot");
+        }
         final mem = lib.llama_get_memory(_context);
-        lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
+        lib.llama_memory_seq_rm(mem, seqId, -1, -1);
         session.nPos = 0;
         if (session.sampler != nullptr) {
           lib.llama_sampler_reset(session.sampler);
@@ -613,6 +667,32 @@ class LlamaService {
           _loopTimer.reset();
         }
 
+        if (_memoryJanitorTimer.elapsed.inSeconds >= 5) {
+          _memoryJanitorTimer.reset();
+
+          final currentRssMb = ProcessInfo.currentRss / (1024 * 1024);
+          if (currentRssMb > maxSystemRamMb) {
+            if (_verbose) {
+              // ignore: avoid_print
+              print(
+                "RAM Pressure: ${currentRssMb.round()}MB > ${maxSystemRamMb}MB. Archiving warm sessions...",
+              );
+            }
+
+            final candidates = _sessions.values
+                .where((s) => s.tier == SessionTier.warm)
+                .toList()
+              ..sort((a, b) => a.lastActiveTime.compareTo(b.lastActiveTime));
+
+            for (final session in candidates) {
+              await _archiveSession(session);
+
+              final newRss = ProcessInfo.currentRss / (1024 * 1024);
+              if (newRss <= maxSystemRamMb) break;
+            }
+          }
+        }
+
         final activeSessions = _sessions.values.toList();
 
         if (activeSessions.isEmpty) {
@@ -655,6 +735,17 @@ class LlamaService {
             if (session.status != LlamaStatus.generating) continue;
 
             final ridAtSchedule = session.requestId;
+            final seqId = session.seqId;
+            if (seqId == null) {
+              session.status = LlamaStatus.error;
+              if (!session.controller.isClosed) {
+                session.controller.addError(
+                  LlamaException("Session ${session.id} is not hot"),
+                );
+              }
+              session._completeGeneration(ridAtSchedule);
+              continue;
+            }
 
             // Context shift guard
             if (session.nPos >= _contextNCtx - 10) {
@@ -664,13 +755,13 @@ class LlamaService {
               if (nShift > 0) {
                 lib.llama_memory_seq_rm(
                   mem,
-                  session.seqId,
+                  seqId,
                   session.nKeep,
                   session.nKeep + nShift,
                 );
                 lib.llama_memory_seq_add(
                   mem,
-                  session.seqId,
+                  seqId,
                   session.nKeep + nShift,
                   -1,
                   -nShift,
@@ -721,13 +812,13 @@ class LlamaService {
               for (int k = 0; k < sendTokens; k++) {
                 currentBatch.pos[batchIdx + k] = session.nPos + k;
                 currentBatch.n_seq_id[batchIdx + k] = 1;
-                currentBatch.seq_id[batchIdx + k][0] = session.seqId;
+                currentBatch.seq_id[batchIdx + k][0] = seqId;
                 currentBatch.logits[batchIdx + k] = 0;
               }
 
               session.nPos += sendTokens;
-              batchSeqIds.add(session.seqId);
-              batchRidBySeqId[session.seqId] = ridAtSchedule;
+              batchSeqIds.add(seqId);
+              batchRidBySeqId[seqId] = ridAtSchedule;
 
               if (remaining == sendTokens) {
                 // request logits on final token of this item
@@ -755,14 +846,14 @@ class LlamaService {
                 currentBatch.token[batchIdx] = tItem.token!;
                 currentBatch.pos[batchIdx] = session.nPos;
                 currentBatch.n_seq_id[batchIdx] = 1;
-                currentBatch.seq_id[batchIdx][0] = session.seqId;
+                currentBatch.seq_id[batchIdx][0] = seqId;
                 currentBatch.logits[batchIdx] = 0;
 
                 session.nPos++;
                 batchIdx++;
                 filled++;
-                batchSeqIds.add(session.seqId);
-                batchRidBySeqId[session.seqId] = ridAtSchedule;
+                batchSeqIds.add(seqId);
+                batchRidBySeqId[seqId] = ridAtSchedule;
 
                 // If that was the last pending item for now, request logits
                 if (session.pendingItems.isEmpty) {
@@ -967,6 +1058,107 @@ class LlamaService {
       lib.ggml_backend_load_all();
     }
     _backendInitialized = true;
+  }
+
+  void _evictSession(_ServiceSession session) {
+    final seqId = session.seqId;
+    if (session.tier != SessionTier.hot || seqId == null) return;
+
+    final size = lib.llama_state_seq_get_size(_context, seqId);
+    if (size > 0) {
+      final dataPtr = malloc<Uint8>(size);
+      try {
+        lib.llama_state_seq_get_data(_context, dataPtr, size, seqId);
+        final snapshot = dataPtr.asTypedList(size);
+        session.stateBuffer = Uint8List.fromList(snapshot);
+      } finally {
+        malloc.free(dataPtr);
+      }
+    } else {
+      session.stateBuffer = Uint8List(0);
+    }
+
+    final mem = lib.llama_get_memory(_context);
+    lib.llama_memory_seq_rm(mem, seqId, -1, -1);
+
+    _sessionsBySeqId.remove(seqId);
+    _freeSeqIds.add(seqId);
+
+    session.seqId = null;
+    session.tier = SessionTier.warm;
+  }
+
+  Future<void> _archiveSession(_ServiceSession session) async {
+    if (session.stateBuffer == null || session.stateBuffer!.isEmpty) return;
+
+    final path = '$sessionHome/${session.id}.state';
+    final file = File(path);
+    if (_verbose) {
+      // ignore: avoid_print
+      print("Archiving ${session.id} to disk ($path)...");
+    }
+    await file.writeAsBytes(session.stateBuffer!, flush: true);
+
+    session.coldFilePath = path;
+    session.stateBuffer = null;
+    session.tier = SessionTier.cold;
+  }
+
+  Future<void> _restoreSession(_ServiceSession session) async {
+    if (session.tier == SessionTier.hot && session.seqId != null) return;
+
+    if (_freeSeqIds.isEmpty) {
+      final candidates = _sessions.values
+          .where((s) =>
+              s.tier == SessionTier.hot &&
+              s.status != LlamaStatus.generating)
+          .toList()
+        ..sort((a, b) => a.lastActiveTime.compareTo(b.lastActiveTime));
+
+      if (candidates.isEmpty) {
+        throw LlamaException("No available session slots to restore");
+      }
+      _evictSession(candidates.first);
+    }
+
+    final newSeqId = _freeSeqIds.removeLast();
+
+    Uint8List? data;
+    if (session.tier == SessionTier.cold) {
+      final path = session.coldFilePath;
+      if (path == null) {
+        throw LlamaException("Session ${session.id} has no archive path");
+      }
+      data = await File(path).readAsBytes();
+    } else {
+      data = session.stateBuffer;
+    }
+
+    if (data == null) {
+      if (session.tier == SessionTier.warm) {
+        final mem = lib.llama_get_memory(_context);
+        lib.llama_memory_seq_rm(mem, newSeqId, -1, -1);
+        session.seqId = newSeqId;
+        session.tier = SessionTier.hot;
+        _sessionsBySeqId[newSeqId] = session;
+        return;
+      }
+      throw LlamaException("Session ${session.id} has no state to restore");
+    }
+
+    final size = data.length;
+    final dataPtr = malloc<Uint8>(size);
+    try {
+      dataPtr.asTypedList(size).setAll(0, data);
+      lib.llama_state_seq_set_data(_context, dataPtr, size, newSeqId);
+    } finally {
+      malloc.free(dataPtr);
+    }
+
+    session.seqId = newSeqId;
+    session.tier = SessionTier.hot;
+    session.stateBuffer = null;
+    _sessionsBySeqId[newSeqId] = session;
   }
 
   void _printMetrics(String sessionId, _ServiceSession session) {
@@ -1235,7 +1427,7 @@ class _PendingItem {
 
 class _ServiceSession {
   final String id;
-  final int seqId;
+  int? seqId;
   final Pointer<llama_sampler> sampler;
 
   int requestId = 0;
@@ -1263,6 +1455,11 @@ class _ServiceSession {
   int nGenerated = 0;
   int nKeep = 0; // Number of tokens to preserve (System Prompt)
   TokenUsage usage = TokenUsage();
+
+  SessionTier tier = SessionTier.warm; // Start warm (waiting for slot)
+  Uint8List? stateBuffer;
+  String? coldFilePath;
+  DateTime lastActiveTime = DateTime.now();
 
   // Output buffering
   final StringBuffer _outputBuffer = StringBuffer();
