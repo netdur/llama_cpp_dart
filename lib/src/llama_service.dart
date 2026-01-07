@@ -7,7 +7,8 @@ import 'dart:math' show max, min;
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'context_params.dart';
-import 'llama.dart' show Llama, LlamaException, LlamaStatus;
+import 'llama.dart'
+    show Llama, LlamaException, LlamaLogCallback, LlamaStatus;
 import 'llama_cpp.dart';
 import 'llama_input.dart';
 import 'model_params.dart';
@@ -17,6 +18,22 @@ class _SessionEvent {
   final int requestId;
   final String text;
   _SessionEvent(this.requestId, this.text);
+}
+
+class TokenUsage {
+  int promptTokens = 0;
+  int completionTokens = 0;
+  final DateTime startTime = DateTime.now();
+  DateTime? endTime;
+
+  int get total => promptTokens + completionTokens;
+
+  double get tokensPerSecond {
+    final end = endTime ?? DateTime.now();
+    final duration = end.difference(startTime).inMilliseconds / 1000.0;
+    if (duration <= 0) return 0.0;
+    return completionTokens / duration;
+  }
 }
 
 /// Multi-user friendly wrapper around llama.cpp.
@@ -88,17 +105,20 @@ class LlamaService {
         _ctxConfig = contextParams ?? ContextParams(),
         defaultSamplerParams = samplerParams ?? SamplerParams(),
         _verbose = verbose {
+    if (!_verbose) {
+      final nullCallbackPointer =
+          Pointer.fromFunction<LlamaLogCallback>(Llama.llamaLogCallbackNull);
+      lib.llama_log_set(nullCallbackPointer, nullptr);
+    }
     defaultContextParams = _ctxConfig;
 
     _ensureBackend();
     _sharedModel = _acquireModel(modelPath, this.modelParams);
 
-    if (_verbose) {
-      final ptr = lib.llama_print_system_info();
-      final sysInfo = ptr.cast<Utf8>().toDartString();
-      // ignore: avoid_print
-      print(sysInfo);
-    }
+    final ptr = lib.llama_print_system_info();
+    final sysInfo = ptr.cast<Utf8>().toDartString();
+    // ignore: avoid_print
+    print(sysInfo);
 
     // Vision (optional)
     if (mmprojPath != null && mmprojPath.isNotEmpty) {
@@ -303,6 +323,7 @@ class LlamaService {
             session.pendingItems.addLast(_PendingItem.token(tokenPtr[i]));
           }
           session.nPromptTokens = nTokens;
+          session.usage.promptTokens = nTokens;
           if (clearHistory) {
             session.nKeep = nTokens;
           }
@@ -655,10 +676,8 @@ class LlamaService {
                   -nShift,
                 );
                 session.nPos -= nShift;
-                if (_verbose) {
-                  // ignore: avoid_print
-                  print("Context Shifted");
-                }
+                // ignore: avoid_print
+                print("Context Shifted");
               }
             }
 
@@ -812,6 +831,7 @@ class LlamaService {
             final newToken =
                 lib.llama_sampler_sample(session.sampler, _context, i);
             lib.llama_sampler_accept(session.sampler, newToken);
+            session.usage.completionTokens++;
 
             final isEos = lib.llama_token_is_eog(_sharedModel.vocab, newToken);
 
@@ -835,6 +855,7 @@ class LlamaService {
 
             if (done) {
               session.status = LlamaStatus.ready;
+              _printMetrics(session.id, session);
               session._completeGeneration(rid);
             } else {
               session.pendingItems.addLast(_PendingItem.token(newToken));
@@ -850,10 +871,8 @@ class LlamaService {
         }
       }
     } catch (e, s) {
-      if (_verbose) {
-        // ignore: avoid_print
-        print("Error in LlamaService run loop: $e\n$s");
-      }
+      // ignore: avoid_print
+      print("Error in LlamaService run loop: $e\n$s");
     }
   }
 
@@ -870,10 +889,8 @@ class LlamaService {
       try {
         await _loopFuture!.timeout(const Duration(seconds: 2));
       } on TimeoutException {
-        if (_verbose) {
-          // ignore: avoid_print
-          print("Warning: run loop did not exit cleanly");
-        }
+        // ignore: avoid_print
+        print("Warning: run loop did not exit cleanly");
       }
     }
 
@@ -933,6 +950,7 @@ class LlamaService {
 
     session.requestId++;
     session.requestCompleters[session.requestId] = Completer<void>();
+    session.usage = TokenUsage();
 
     // If someone subscribes after output started, we want to replay buffered content.
     session._bufferRequestId = session.requestId;
@@ -949,6 +967,27 @@ class LlamaService {
       lib.ggml_backend_load_all();
     }
     _backendInitialized = true;
+  }
+
+  void _printMetrics(String sessionId, _ServiceSession session) {
+    session.usage.endTime = DateTime.now();
+    final tps = session.usage.tokensPerSecond.toStringAsFixed(2);
+    final usage = session.usage;
+
+    final currentRss = ProcessInfo.currentRss / (1024 * 1024);
+    final ctxBytes = lib.llama_get_state_size(_context);
+    final ctxMb = ctxBytes / (1024 * 1024);
+
+    // ASCII-only output to keep logs compatible with restricted consoles.
+    print("""
+[Metrics: $sessionId]
+------------------------------------------
+Speed:       $tps t/s
+Tokens:      ${usage.promptTokens} prompt + ${usage.completionTokens} completion = ${usage.total} total
+Context Mem: ${ctxMb.toStringAsFixed(1)} MB (KV Cache)
+App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
+------------------------------------------
+""");
   }
 
   _ServiceSession _requireSession(String id) {
@@ -1223,6 +1262,7 @@ class _ServiceSession {
   int nPromptTokens = 0;
   int nGenerated = 0;
   int nKeep = 0; // Number of tokens to preserve (System Prompt)
+  TokenUsage usage = TokenUsage();
 
   // Output buffering
   final StringBuffer _outputBuffer = StringBuffer();

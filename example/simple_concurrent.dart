@@ -21,7 +21,7 @@ Future<void> main(List<String> args) async {
   contextParams.nCtx = 2048; // Shared context window
 
   // 2. Initialize Service
-  final service = LlamaService(args[0], contextParams: contextParams);
+  final service = LlamaService(args[0], contextParams: contextParams, verbose: false);
 
   print("Service initialized. Creating sessions...");
 
