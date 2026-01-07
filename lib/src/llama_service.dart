@@ -5,9 +5,7 @@ import 'dart:ffi';
 import 'dart:io';
 import 'dart:math' show max, min;
 import 'dart:typed_data';
-
 import 'package:ffi/ffi.dart';
-
 import 'context_params.dart';
 import 'llama.dart' show Llama, LlamaException, LlamaStatus;
 import 'llama_cpp.dart';
@@ -305,6 +303,9 @@ class LlamaService {
             session.pendingItems.addLast(_PendingItem.token(tokenPtr[i]));
           }
           session.nPromptTokens = nTokens;
+          if (clearHistory) {
+            session.nKeep = nTokens;
+          }
         } finally {
           malloc.free(tokenPtr);
         }
@@ -634,17 +635,31 @@ class LlamaService {
 
             final ridAtSchedule = session.requestId;
 
-            // Context limit guard
-            if (session.nPos >= _contextNCtx - 2) {
-              session.status = LlamaStatus.ready;
-              session.controller
-                  .add(_SessionEvent(ridAtSchedule, "\n[Context Limit]"));
+            // Context shift guard
+            if (session.nPos >= _contextNCtx - 10) {
               final mem = lib.llama_get_memory(_context);
-              lib.llama_memory_seq_rm(mem, session.seqId, -1, -1);
-              session.nPos = 0;
-              session.pendingItems.clear();
-              session._completeGeneration(ridAtSchedule);
-              continue;
+              final nLeft = session.nPos - session.nKeep;
+              final nShift = nLeft ~/ 2;
+              if (nShift > 0) {
+                lib.llama_memory_seq_rm(
+                  mem,
+                  session.seqId,
+                  session.nKeep,
+                  session.nKeep + nShift,
+                );
+                lib.llama_memory_seq_add(
+                  mem,
+                  session.seqId,
+                  session.nKeep + nShift,
+                  -1,
+                  -nShift,
+                );
+                session.nPos -= nShift;
+                if (_verbose) {
+                  // ignore: avoid_print
+                  print("Context Shifted");
+                }
+              }
             }
 
             final available = _nBatch - batchIdx;
@@ -1207,6 +1222,7 @@ class _ServiceSession {
   int nPos = 0;
   int nPromptTokens = 0;
   int nGenerated = 0;
+  int nKeep = 0; // Number of tokens to preserve (System Prompt)
 
   // Output buffering
   final StringBuffer _outputBuffer = StringBuffer();
