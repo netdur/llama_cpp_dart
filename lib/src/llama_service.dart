@@ -975,6 +975,54 @@ class LlamaService {
 
   // -------------------- Disposal --------------------
 
+  /// Gracefully shuts down the service.
+  /// 1. Stops the generation loop.
+  /// 2. Moves all active VRAM sessions to RAM (evict).
+  /// 3. Writes all RAM sessions to Disk (.state files).
+  /// 4. Frees all C resources.
+  Future<void> persistAllAndDispose() async {
+    if (_disposed) return;
+
+    // ignore: avoid_print
+    print("Initiating graceful shutdown...");
+
+    if (!_stopSignal.isCompleted) _stopSignal.complete();
+
+    await Future.delayed(const Duration(milliseconds: 50));
+
+    for (final session in _sessions.values) {
+      if (session.tier == SessionTier.hot) {
+        try {
+          _evictSession(session);
+        } catch (e) {
+          // ignore: avoid_print
+          print("Error evicting session ${session.id}: $e");
+        }
+      }
+    }
+
+    final saveFutures = <Future<void>>[];
+    for (final session in _sessions.values) {
+      if (session.tier == SessionTier.warm) {
+        saveFutures.add(_archiveSession(session).catchError((e) {
+          // ignore: avoid_print
+          print("Error saving session ${session.id} to disk: $e");
+        }));
+      }
+    }
+
+    if (saveFutures.isNotEmpty) {
+      // ignore: avoid_print
+      print("Persisting ${saveFutures.length} sessions to disk...");
+      await Future.wait(saveFutures);
+    }
+
+    // ignore: avoid_print
+    print("All states saved. Disposing resources.");
+
+    await dispose();
+  }
+
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
