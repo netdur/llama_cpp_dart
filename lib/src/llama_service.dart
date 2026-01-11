@@ -57,7 +57,7 @@ class LlamaService {
   static bool _backendInitialized = false;
 
   // Per-batch fairness: cap tokens per session per scheduling pass
-  static const int _maxTokensPerSessionPerBatch = 16;
+  static const int _maxTokensPerSessionPerBatch = 64;
 
   final String modelPath;
   final ModelParams modelParams;
@@ -622,36 +622,30 @@ class LlamaService {
         session.requestCompleters[targetReqId]?.future ?? Future.value();
 
     StreamSubscription<_SessionEvent>? sub;
+    late final StreamController<_SessionEvent> controller;
 
-    final controller = StreamController<_SessionEvent>(
+    controller = StreamController<_SessionEvent>(
+      onListen: () {
+        sub = session.stream
+            .where((event) => event.requestId == targetReqId)
+            .listen(
+          (event) {
+            if (!controller.isClosed) controller.add(event);
+          },
+          onError: (e, s) {
+            if (!controller.isClosed) controller.addError(e, s);
+          },
+        );
+
+        doneFuture.then((_) async {
+          await sub?.cancel();
+          if (!controller.isClosed) await controller.close();
+        });
+      },
       onCancel: () async {
         await sub?.cancel();
-        // Don't reference controller here; no need to close it manually.
       },
     );
-
-    sub = session.stream.listen(
-      (data) {
-        if (data.requestId != targetReqId) return;
-        if (!controller.isClosed) controller.add(data);
-      },
-      onError: (e, s) {
-        if (!controller.isClosed) controller.addError(e, s);
-      },
-      onDone: () async {
-        if (!controller.isClosed) await controller.close();
-      },
-    );
-
-    Future<void> cleanup() async {
-      await sub?.cancel();
-      if (!controller.isClosed) await controller.close();
-    }
-
-    doneFuture.then((_) => cleanup());/*.timeout(
-          const Duration(seconds: 60),
-          onTimeout: () => cleanup(),
-        );*/
 
     return controller.stream;
   }
@@ -668,10 +662,7 @@ class LlamaService {
         if (_stopSignal.isCompleted) break;
 
         // Cooperative yield
-        if (_loopTimer.elapsedMilliseconds >= 16) {
-          await Future.delayed(Duration.zero);
-          _loopTimer.reset();
-        }
+        await Future.delayed(Duration.zero);
 
         if (_memoryJanitorTimer.elapsed.inSeconds >= 5) {
           _memoryJanitorTimer.reset();
@@ -911,6 +902,19 @@ class LlamaService {
           _activeDecodeSync?.complete();
           _activeDecodeSync = null;
 
+          if (!isEmbeddingPass) {
+            for (int i = 0; i < batchIdx; i++) {
+              final seqId = currentBatch.seq_id[i][0];
+              final session = _sessionsBySeqId[seqId];
+              if (session != null) {
+                lib.llama_sampler_accept(
+                  session.sampler,
+                  currentBatch.token[i],
+                );
+              }
+            }
+          }
+
           // Sample logits per token where currentBatch.logits[i] == 1
           for (int i = 0; i < batchIdx; i++) {
             if (currentBatch.logits[i] == 0) continue;
@@ -927,7 +931,6 @@ class LlamaService {
 
             final newToken =
                 lib.llama_sampler_sample(session.sampler, _context, i);
-            lib.llama_sampler_accept(session.sampler, newToken);
             session.usage.completionTokens++;
 
             final isEos = lib.llama_token_is_eog(_sharedModel.vocab, newToken);
@@ -1151,7 +1154,12 @@ class LlamaService {
       // ignore: avoid_print
       print("Archiving ${session.id} to disk ($path)...");
     }
-    await file.writeAsBytes(session.stateBuffer!, flush: true);
+    final wrapped = _encodeStateWithHeader(
+      session.stateBuffer!,
+      nPos: session.nPos,
+      nKeep: session.nKeep,
+    );
+    await file.writeAsBytes(wrapped, flush: true);
 
     session.coldFilePath = path;
     session.stateBuffer = null;
@@ -1183,7 +1191,13 @@ class LlamaService {
       if (path == null) {
         throw LlamaException("Session ${session.id} has no archive path");
       }
-      data = await File(path).readAsBytes();
+      final bytes = await File(path).readAsBytes();
+      final decoded = _decodeStateFile(bytes);
+      data = decoded.payload;
+      if (decoded.hasHeader) {
+        session.nPos = decoded.nPos ?? session.nPos;
+        session.nKeep = decoded.nKeep ?? session.nKeep;
+      }
     } else {
       data = session.stateBuffer;
     }
@@ -1234,6 +1248,43 @@ Context Mem: ${ctxMb.toStringAsFixed(1)} MB (KV Cache)
 App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
 ------------------------------------------
 """);
+  }
+
+  _StatePayload _decodeStateFile(Uint8List bytes) {
+    const int headerSize = 16;
+    if (bytes.length < headerSize) {
+      return _StatePayload(bytes, null, null, false);
+    }
+
+    final header = ByteData.sublistView(bytes, 0, headerSize);
+    final magic = header.getUint32(0, Endian.little);
+    final version = header.getUint32(4, Endian.little);
+    if (magic != 0x44415254 || version != 1) {
+      return _StatePayload(bytes, null, null, false);
+    }
+
+    final nPos = header.getUint32(8, Endian.little);
+    final nKeep = header.getUint32(12, Endian.little);
+    final payload = bytes.sublist(headerSize);
+    return _StatePayload(payload, nPos, nKeep, true);
+  }
+
+  Uint8List _encodeStateWithHeader(
+    Uint8List payload, {
+    required int nPos,
+    required int nKeep,
+  }) {
+    const int headerSize = 16;
+    final header = ByteData(headerSize);
+    header.setUint32(0, 0x44415254, Endian.little); // "DART" magic
+    header.setUint32(4, 1, Endian.little); // Version 1
+    header.setUint32(8, nPos, Endian.little);
+    header.setUint32(12, nKeep, Endian.little);
+
+    final allBytes = Uint8List(headerSize + payload.length);
+    allBytes.setAll(0, header.buffer.asUint8List());
+    allBytes.setAll(headerSize, payload);
+    return allBytes;
   }
 
   _ServiceSession _requireSession(String id) {
@@ -1433,8 +1484,110 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
     _releaseModel(_sharedModel);
   }
 
-  void saveSession(String sessionId, String path) {}
-  bool loadSession(String sessionId, String path) => false;
+/// Manually saves the current state of a session to a specific file path.
+  Future<void> saveSession(String sessionId, String path) async {
+    _checkDisposed();
+    final session = _requireSession(sessionId);
+
+    if (session.status == LlamaStatus.generating) {
+      throw LlamaException("Cannot save session while generating");
+    }
+
+    // Case 1: Session is HOT (Currently in VRAM/KV Cache)
+    if (session.tier == SessionTier.hot && session.seqId != null) {
+      final seqId = session.seqId!;
+      final size = lib.llama_state_seq_get_size(_context, seqId);
+      final dataPtr = malloc<Uint8>(size);
+      try {
+        // Extract directly from C++ context
+        lib.llama_state_seq_get_data(_context, dataPtr, size, seqId);
+        final payload = dataPtr.asTypedList(size);
+        final wrapped = _encodeStateWithHeader(
+          payload,
+          nPos: session.nPos,
+          nKeep: session.nKeep,
+        );
+        await File(path).writeAsBytes(wrapped, flush: true);
+      } finally {
+        malloc.free(dataPtr);
+      }
+    }
+    // Case 2: Session is WARM (Currently in RAM buffer)
+    else if (session.tier == SessionTier.warm && session.stateBuffer != null) {
+      final wrapped = _encodeStateWithHeader(
+        session.stateBuffer!,
+        nPos: session.nPos,
+        nKeep: session.nKeep,
+      );
+      await File(path).writeAsBytes(wrapped, flush: true);
+    }
+    // Case 3: Session is COLD (Already on disk in the default location)
+    else if (session.tier == SessionTier.cold && session.coldFilePath != null) {
+      final bytes = await File(session.coldFilePath!).readAsBytes();
+      final decoded = _decodeStateFile(bytes);
+      final wrapped = _encodeStateWithHeader(
+        decoded.payload,
+        nPos: decoded.nPos ?? session.nPos,
+        nKeep: decoded.nKeep ?? session.nKeep,
+      );
+      await File(path).writeAsBytes(wrapped, flush: true);
+    }
+  }
+
+  /// Manually loads a session from a specific file path.
+  /// Returns true if successful.
+  Future<bool> loadSession(String sessionId, String path) async {
+    _checkDisposed();
+    final file = File(path);
+    if (!await file.exists()) return false;
+
+    // If a session with this ID already exists, remove it first.
+    if (_sessions.containsKey(sessionId)) {
+      await freeSession(sessionId);
+    }
+
+    try {
+      final bytes = await file.readAsBytes();
+      final decoded = _decodeStateFile(bytes);
+
+      // Initialize a new WARM session (it will be moved to HOT when a prompt is sent)
+      final sampler = _initializeSampler(defaultSamplerParams);
+      
+      final session = _ServiceSession(
+        id: sessionId,
+        seqId: null,
+        sampler: sampler,
+      );
+
+      session.tier = SessionTier.warm;
+      session.stateBuffer = decoded.payload; // Store raw seq bytes
+      if (decoded.hasHeader) {
+        session.nPos = decoded.nPos ?? session.nPos;
+        session.nKeep = decoded.nKeep ?? session.nKeep;
+      }
+      
+      // Allocate decode buffer
+      session.decodeCapacity = 256;
+      session.decodeBuf = malloc<Char>(session.decodeCapacity);
+      
+      session.status = LlamaStatus.ready;
+      
+      _sessions[sessionId] = session;
+      return true;
+    } catch (e) {
+      print("Error loading session from $path: $e");
+      return false;
+    }
+  }
+}
+
+class _StatePayload {
+  final Uint8List payload;
+  final int? nPos;
+  final int? nKeep;
+  final bool hasHeader;
+
+  _StatePayload(this.payload, this.nPos, this.nKeep, this.hasHeader);
 }
 
 /// Accumulates UTF-8 bytes until they decode cleanly.
