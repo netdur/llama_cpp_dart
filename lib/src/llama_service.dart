@@ -7,8 +7,7 @@ import 'dart:math' show max, min;
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'context_params.dart';
-import 'llama.dart'
-    show Llama, LlamaException, LlamaLogCallback, LlamaStatus;
+import 'llama.dart' show Llama, LlamaException, LlamaLogCallback, LlamaStatus;
 import 'llama_cpp.dart';
 import 'llama_input.dart';
 import 'model_params.dart';
@@ -43,12 +42,6 @@ class TokenUsage {
 }
 
 /// Multi-user friendly wrapper around llama.cpp.
-///
-/// Key properties:
-/// - Multiple concurrent sessions share a single llama_context using seq_id.
-/// - Request-scoped streaming: every output chunk is tagged with requestId.
-/// - Avoid "zombie tokens": tokens emitted only while session is generating AND match requestId.
-/// - Optional multimodal (vision) via mtmd_* APIs.
 class LlamaService {
   static final Map<_ModelCacheKey, _SharedModelHandle> _modelCache = {};
 
@@ -244,6 +237,9 @@ class LlamaService {
     // End the current request (if any) and return to ready.
     final rid = session.requestId;
     session.status = LlamaStatus.ready;
+    for (var item in session.pendingItems) {
+      item.dispose();
+    }
     session.pendingItems.clear();
     session._outputBuffer.clear();
     session._completeGeneration(rid);
@@ -255,6 +251,11 @@ class LlamaService {
   }) async {
     final session = _sessions.remove(sessionId);
     if (session == null) return;
+
+    for (var item in session.pendingItems) {
+      item.dispose();
+    }
+    session.pendingItems.clear();
 
     if (session.seqId != null) {
       _sessionsBySeqId.remove(session.seqId);
@@ -395,10 +396,6 @@ class LlamaService {
   }
 
   /// Collects the full text for the currently-running request for this session.
-  ///
-  /// Expected use:
-  ///   await setPrompt(...)
-  ///   final text = await generateCompleteText(...)
   Future<String> generateCompleteText(String sessionId) async {
     _checkDisposed();
     final session = _requireSession(sessionId);
@@ -441,9 +438,6 @@ class LlamaService {
   }
 
   /// Streaming API.
-  ///
-  /// - If [prompt] is null: returns the persistent session stream (all outputs).
-  /// - If [prompt] is provided: starts a request and returns a finite stream for that request only.
   Stream<String> generateText(String sessionId, {String? prompt}) {
     _checkDisposed();
     final session = _requireSession(sessionId);
@@ -467,7 +461,13 @@ class LlamaService {
     String prompt, {
     required List<LlamaInput> inputs,
     bool clearHistory = true,
-  }) async* {
+  }) {
+    // FIX: Race Condition Check
+    // We must perform validation and state transitions SYNCHRONOUSLY.
+    // If we use async*, the function body doesn't run until the first listener
+    // attaches and the microtask queue flushes. By that time, the Isolate
+    // might have already checked 'status' and found it still 'Ready'.
+
     _checkDisposed();
     if (!_visionEnabled || _mctx == nullptr) {
       throw LlamaException('Vision disabled – construct with mmprojPath.');
@@ -481,14 +481,25 @@ class LlamaService {
       );
     }
 
+    // Set status immediately to block concurrent saves/requests
     session.pendingItems.clear();
     session.nGenerated = 0;
     session.status = LlamaStatus.generating;
 
+    // Delegate to the async generator
+    return _generateWithMediaBody(session, prompt, inputs, clearHistory);
+  }
+
+  Stream<String> _generateWithMediaBody(
+    _ServiceSession session,
+    String prompt,
+    List<LlamaInput> inputs,
+    bool clearHistory,
+  ) async* {
     session.lastActiveTime = DateTime.now();
     if (session.tier != SessionTier.hot) {
       // ignore: avoid_print
-      print("Restoring session $sessionId from ${session.tier}...");
+      print("Restoring session ${session.id} from ${session.tier}...");
       await _restoreSession(session);
       if (session.status != LlamaStatus.generating) {
         throw LlamaException("Request cancelled during session restore.");
@@ -502,7 +513,7 @@ class LlamaService {
       if (clearHistory) {
         final seqId = session.seqId;
         if (seqId == null) {
-          throw LlamaException("Session $sessionId is not hot");
+          throw LlamaException("Session ${session.id} is not hot");
         }
         final mem = lib.llama_get_memory(_context);
         lib.llama_memory_seq_rm(mem, seqId, -1, -1);
@@ -526,6 +537,9 @@ class LlamaService {
       Pointer<mtmd_input_chunks> chunks = nullptr;
       Pointer<mtmd_input_text> txtPtr = nullptr;
       Pointer<Char> fullPtr = nullptr;
+
+      // FIX: Track total prompt tokens for correct Metrics
+      int totalPromptTokens = 0;
 
       try {
         for (final img in images) {
@@ -567,21 +581,41 @@ class LlamaService {
             final nTok = lib.mtmd_input_chunk_get_n_tokens(chunk);
             final nEmbd = lib.llama_n_embd(_sharedModel.model);
 
-            final totalFloats = nTok * nEmbd;
-            final floatList = embdPtr.asTypedList(totalFloats);
-            final copy = Float32List.fromList(floatList);
+            // Fix: Accumulate
+            totalPromptTokens += nTok;
 
-            session.pendingItems.addLast(_PendingItem.embedding(copy, nTok));
+            final totalFloats = nTok * nEmbd;
+
+            // FIX: Allocate Native Memory (off the Dart Heap)
+            final nativeStore = malloc<Float>(totalFloats);
+
+            // Efficient Memory Copy (C++ -> C++)
+            final srcList = embdPtr.asTypedList(totalFloats);
+            final dstList = nativeStore.asTypedList(totalFloats);
+            dstList.setAll(0, srcList);
+
+            session.pendingItems
+                .addLast(_PendingItem.embedding(nativeStore, nTok));
           } else {
             final nPtr = malloc<Size>();
             final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
             final nTok = nPtr.value;
             malloc.free(nPtr);
 
+            // Fix: Accumulate
+            totalPromptTokens += nTok;
+
             for (int k = 0; k < nTok; k++) {
               session.pendingItems.addLast(_PendingItem.token(tokPt[k]));
             }
           }
+        }
+
+        // Fix: Update session metrics
+        session.nPromptTokens = totalPromptTokens;
+        session.usage.promptTokens = totalPromptTokens;
+        if (clearHistory) {
+          session.nKeep = totalPromptTokens;
         }
       } finally {
         if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
@@ -618,8 +652,9 @@ class LlamaService {
     required int requestId,
   }) {
     final targetReqId = requestId;
-    final doneFuture =
-        session.requestCompleters[targetReqId]?.future ?? Future.value();
+    // We must grab the completer synchronously
+    final completer = session.requestCompleters[targetReqId];
+    final doneFuture = completer?.future ?? Future.value();
 
     StreamSubscription<_SessionEvent>? sub;
     late final StreamController<_SessionEvent> controller;
@@ -637,6 +672,7 @@ class LlamaService {
           },
         );
 
+        // When the request completes (via _completeGeneration), close this controller.
         doneFuture.then((_) async {
           await sub?.cancel();
           if (!controller.isClosed) await controller.close();
@@ -732,6 +768,23 @@ class LlamaService {
             if (session.status != LlamaStatus.generating) continue;
 
             final ridAtSchedule = session.requestId;
+
+            final available = _nBatch - batchIdx;
+            if (available <= 0) break;
+
+            if (session.pendingItems.isEmpty) {
+              _lastScheduledSessionIndex =
+                  sessionIndex[session] ?? _lastScheduledSessionIndex;
+              continue;
+            }
+
+            final item = session.pendingItems.first;
+            if (item.isEmbedding != isEmbeddingPass) {
+              _lastScheduledSessionIndex =
+                  sessionIndex[session] ?? _lastScheduledSessionIndex;
+              continue;
+            }
+
             final seqId = session.seqId;
             if (seqId == null) {
               session.status = LlamaStatus.error;
@@ -769,22 +822,6 @@ class LlamaService {
               }
             }
 
-            final available = _nBatch - batchIdx;
-            if (available <= 0) break;
-
-            if (session.pendingItems.isEmpty) {
-              _lastScheduledSessionIndex =
-                  sessionIndex[session] ?? _lastScheduledSessionIndex;
-              continue;
-            }
-
-            final item = session.pendingItems.first;
-            if (item.isEmbedding != isEmbeddingPass) {
-              _lastScheduledSessionIndex =
-                  sessionIndex[session] ?? _lastScheduledSessionIndex;
-              continue;
-            }
-
             final int quota = min(available, _maxTokensPerSessionPerBatch);
 
             if (isEmbeddingPass) {
@@ -801,10 +838,15 @@ class LlamaService {
               final start = item.embdOffsetTokens * nEmbd;
               final floatCount = sendTokens * nEmbd;
 
-              // Copy embeddings into batch.embd
+              // FIX: Copy from Native Store -> Batch
+              // item.nativeValues is our malloc'd pointer
+              final srcPtr = item.nativeValues!.elementAt(start);
               final destPtr = currentBatch.embd.elementAt(batchIdx * nEmbd);
+
+              // Low-level memory copy (fastest)
+              final srcList = srcPtr.asTypedList(floatCount);
               final destList = destPtr.asTypedList(floatCount);
-              destList.setRange(0, floatCount, item.values!, start);
+              destList.setAll(0, srcList); // Copies raw bytes directly
 
               for (int k = 0; k < sendTokens; k++) {
                 currentBatch.pos[batchIdx + k] = session.nPos + k;
@@ -818,18 +860,21 @@ class LlamaService {
               batchRidBySeqId[seqId] = ridAtSchedule;
 
               if (remaining == sendTokens) {
-                // request logits on final token of this item
-                currentBatch.logits[batchIdx + sendTokens - 1] = 1;
-              }
+                final finishedItem = session.pendingItems.removeFirst();
 
-              batchIdx += sendTokens;
+                // IMPORTANT: Free the native memory now!
+                finishedItem.dispose();
 
-              if (remaining == sendTokens) {
-                session.pendingItems.removeFirst();
+                // FIX: Order of generation
+                // Only request logits if this is the last pending item (text included)
+                if (session.pendingItems.isEmpty) {
+                  currentBatch.logits[batchIdx + sendTokens - 1] = 1;
+                }
               } else {
                 item.embdOffsetTokens += sendTokens;
               }
 
+              batchIdx += sendTokens;
               didWork = true;
             } else {
               int filled = 0;
@@ -1172,8 +1217,7 @@ class LlamaService {
     if (_freeSeqIds.isEmpty) {
       final candidates = _sessions.values
           .where((s) =>
-              s.tier == SessionTier.hot &&
-              s.status != LlamaStatus.generating)
+              s.tier == SessionTier.hot && s.status != LlamaStatus.generating)
           .toList()
         ..sort((a, b) => a.lastActiveTime.compareTo(b.lastActiveTime));
 
@@ -1484,7 +1528,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
     _releaseModel(_sharedModel);
   }
 
-/// Manually saves the current state of a session to a specific file path.
+  /// Manually saves the current state of a session to a specific file path.
   Future<void> saveSession(String sessionId, String path) async {
     _checkDisposed();
     final session = _requireSession(sessionId);
@@ -1552,7 +1596,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
 
       // Initialize a new WARM session (it will be moved to HOT when a prompt is sent)
       final sampler = _initializeSampler(defaultSamplerParams);
-      
+
       final session = _ServiceSession(
         id: sessionId,
         seqId: null,
@@ -1565,13 +1609,13 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
         session.nPos = decoded.nPos ?? session.nPos;
         session.nKeep = decoded.nKeep ?? session.nKeep;
       }
-      
+
       // Allocate decode buffer
       session.decodeCapacity = 256;
       session.decodeBuf = malloc<Char>(session.decodeCapacity);
-      
+
       session.status = LlamaStatus.ready;
-      
+
       _sessions[sessionId] = session;
       return true;
     } catch (e) {
@@ -1616,20 +1660,27 @@ class _Utf8Accumulator {
 
 class _PendingItem {
   final int? token;
-  final Float32List? values; // embeddings
+  final Pointer<Float>? nativeValues; // embeddings in native memory
   final int nTokens;
   int embdOffsetTokens;
 
   _PendingItem.token(this.token)
-      : values = null,
+      : nativeValues = null,
         nTokens = 1,
         embdOffsetTokens = 0;
 
-  _PendingItem.embedding(this.values, this.nTokens, {this.embdOffsetTokens = 0})
+  _PendingItem.embedding(this.nativeValues, this.nTokens,
+      {this.embdOffsetTokens = 0})
       : token = null;
 
-  bool get isEmbedding => values != null;
+  bool get isEmbedding => nativeValues != null;
   int get remainingEmbeddingTokens => nTokens - embdOffsetTokens;
+
+  void dispose() {
+    if (nativeValues != null && nativeValues != nullptr) {
+      malloc.free(nativeValues!);
+    }
+  }
 }
 
 class _ServiceSession {

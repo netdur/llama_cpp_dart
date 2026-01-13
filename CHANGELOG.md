@@ -1,3 +1,7 @@
+## 0.2.3
+*  **Performance**: Moved image embedding storage to native memory (C heap) to reduce Dart GC pressure and improve stability with high-resolution images.
+*  Fix memory leaks in session cancellation and disposal logic.
+
 ## 0.2.2- allow freeing the active slot by switching/detaching and reselecting a fallback
 *  ensure isolate child always replies on dispose/free, even when already torn down
 *  keep parent subscription alive through shutdown so free-slot confirmations are received
