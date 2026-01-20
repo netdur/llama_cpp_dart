@@ -39,3 +39,5 @@ dist
 neo
 
 *.bin
+
+bin/linux-cuda

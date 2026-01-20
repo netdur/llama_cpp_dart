@@ -90,3 +90,26 @@ You can build for various Apple platforms by uncommenting the relevant lines in 
 - The built libraries will be placed in the `bin/[PLATFORM]` directory
 - The build process automatically handles fixing rpaths and code signing for each platform
 - Model compatibility depends on the llama.cpp version - ensure you're using a version that supports your target models
+
+## Ubuntu CUDA Build
+
+Use the Ubuntu helper script to produce CUDA-enabled shared libraries:
+
+1. Install the CUDA toolkit (with `nvcc` on your PATH), CMake ≥ 3.22, and optionally Ninja for faster builds.
+2. Make sure the `src/llama.cpp` submodule is initialized.
+3. Run the build script from the repo root (it defaults to `src/llama.cpp` but you can pass a custom path as the first argument):
+   ```bash
+   ./ubuntu/run_build.sh \
+       --cuda-arch "86;89" \
+       --output linux-cuda
+   ```
+
+Key flags:
+
+- `--cuda-arch` sets `CMAKE_CUDA_ARCHITECTURES` (default `native`).
+- `--output` chooses the subdirectory inside `bin/` (default `linux-cuda`).
+- `--clean` forces a rebuild, and `--cmake-arg` lets you forward extra `-D` options.
+
+The resulting `.so` files (including `libllama.so`, `libggml*.so`, `libggml-cuda.so`, and `libmtmd.so`) are copied to `bin/<output>`. Point the Dart bindings at that directory when running on Ubuntu with NVIDIA GPUs.
+
+The build script now sets each shared library's `RPATH` to `$ORIGIN`, so the libraries find their peers automatically without exporting `LD_LIBRARY_PATH` or using `dart-run.sh`.

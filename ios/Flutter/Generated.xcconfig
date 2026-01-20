@@ -1,11 +1,11 @@
 // This is a generated file; do not edit or check into version control.
-FLUTTER_ROOT=/Users/adel/development/flutter
-FLUTTER_APPLICATION_PATH=/Users/adel/Workspace/llama_cpp_dart
+FLUTTER_ROOT=/home/netdur/snap/flutter/common/flutter
+FLUTTER_APPLICATION_PATH=/home/netdur/Workspace/netdur/llama_cpp_dart
 COCOAPODS_PARALLEL_CODE_SIGN=true
 FLUTTER_TARGET=lib/main.dart
 FLUTTER_BUILD_DIR=build
-FLUTTER_BUILD_NAME=0.2.1
-FLUTTER_BUILD_NUMBER=0.2.1
+FLUTTER_BUILD_NAME=0.2.3
+FLUTTER_BUILD_NUMBER=0.2.3
 EXCLUDED_ARCHS[sdk=iphonesimulator*]=i386
 EXCLUDED_ARCHS[sdk=iphoneos*]=armv7
 DART_OBFUSCATION=false
