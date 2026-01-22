@@ -33,7 +33,7 @@ Future<void> main(List<String> args) async {
   final prompt1 =
       "<start_of_turn>user\nCount to 5<end_of_turn>\n<start_of_turn>model\n";
   final prompt2 =
-      "<start_of_turn>user\nList 3 colors<end_of_turn>\n<start_of_turn>model\n";
+      "<start_of_turn>user\nList 3 emojis <end_of_turn>\n<start_of_turn>model\n";
 
   print("Sending concurrent requests...");
 

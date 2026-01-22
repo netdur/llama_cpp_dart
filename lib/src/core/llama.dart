@@ -11,6 +11,9 @@ import 'model_params.dart';
 import 'llama_cpp.dart';
 import 'context_params.dart';
 import 'llama_input.dart';
+import 'service/sampler_factory.dart';
+import 'service/state_codec.dart';
+import 'service/utf8_accumulator.dart';
 
 typedef LlamaLogCallback = Void Function(
     UnsignedInt level, Pointer<Char> text, Pointer<Void> userData);
@@ -139,7 +142,8 @@ class Llama {
   int get _nPrompt => _slots[_currentSlotId]!.nPrompt;
   set _nPrompt(int v) => _slots[_currentSlotId]!.nPrompt = v;
 
-  List<int> get _pendingBytes => _slots[_currentSlotId]!.pendingBytes;
+  Utf8Accumulator get _accumulator => _slots[_currentSlotId]!.accumulator;
+  List<int> get _pendingBytes => _accumulator.buffer;
 
   /// Creates a new Llama instance.
   Llama(
@@ -407,7 +411,12 @@ class Llama {
       rethrow;
     }
 
-    _initializeSampler(samplerParams);
+    _smpl = SamplerFactory.build(
+      lib: lib,
+      vocab: vocab,
+      model: model,
+      params: samplerParams ?? SamplerParams(),
+    );
 
     if (mmprojPath != null && mmprojPath.isNotEmpty) {
       final mprojPathPtr = mmprojPath.toNativeUtf8().cast<Char>();
@@ -428,133 +437,6 @@ class Llama {
     _tokenPtr = malloc<llama_token>();
   }
 
-  void _initializeSampler(SamplerParams? samplerParams) {
-    samplerParams ??= SamplerParams();
-
-    llama_sampler_chain_params sparams =
-        lib.llama_sampler_chain_default_params();
-    sparams.no_perf = false;
-    _smpl = lib.llama_sampler_chain_init(sparams);
-
-    if (samplerParams.greedy) {
-      lib.llama_sampler_chain_add(_smpl, lib.llama_sampler_init_greedy());
-      return;
-    }
-
-    final grammarStrPtr = samplerParams.grammarStr.toNativeUtf8().cast<Char>();
-    final grammarRootPtr =
-        samplerParams.grammarRoot.toNativeUtf8().cast<Char>();
-
-    if (samplerParams.grammarStr.isNotEmpty) {
-      final grammar =
-          lib.llama_sampler_init_grammar(vocab, grammarStrPtr, grammarRootPtr);
-      if (grammar != nullptr) {
-        lib.llama_sampler_chain_add(_smpl, grammar);
-      }
-    }
-    malloc.free(grammarStrPtr);
-    malloc.free(grammarRootPtr);
-
-    lib.llama_sampler_chain_add(
-        _smpl,
-        lib.llama_sampler_init_penalties(
-          samplerParams.penaltyLastTokens,
-          samplerParams.penaltyRepeat,
-          samplerParams.penaltyFreq,
-          samplerParams.penaltyPresent,
-        ));
-
-    if (samplerParams.dryMultiplier > 0.0) {
-      try {
-        final breakers = samplerParams.dryBreakers;
-        final breakerCount = breakers.length;
-
-        final breakersPtr = malloc<Pointer<Char>>(breakerCount);
-        final allocatedStrings = <Pointer<Char>>[];
-
-        for (int i = 0; i < breakerCount; i++) {
-          final strPtr = breakers[i].toNativeUtf8().cast<Char>();
-          breakersPtr[i] = strPtr;
-          allocatedStrings.add(strPtr);
-        }
-
-        final int nCtxTrain = lib.llama_model_n_ctx_train(model);
-
-        lib.llama_sampler_chain_add(
-            _smpl,
-            lib.llama_sampler_init_dry(
-              vocab,
-              nCtxTrain,
-              samplerParams.dryMultiplier,
-              samplerParams.dryBase,
-              samplerParams.dryAllowedLen,
-              samplerParams.dryPenaltyLastN,
-              breakersPtr,
-              breakerCount,
-            ));
-
-        for (var ptr in allocatedStrings) {
-          malloc.free(ptr);
-        }
-        malloc.free(breakersPtr);
-      } catch (e) {}
-    }
-
-    if (samplerParams.mirostat == 2) {
-      lib.llama_sampler_chain_add(
-          _smpl,
-          lib.llama_sampler_init_mirostat_v2(samplerParams.seed,
-              samplerParams.mirostatTau, samplerParams.mirostatEta));
-    } else if (samplerParams.mirostat == 1) {
-      lib.llama_sampler_chain_add(
-          _smpl,
-          lib.llama_sampler_init_mirostat(
-              lib.llama_n_vocab(vocab),
-              samplerParams.seed,
-              samplerParams.mirostatTau,
-              samplerParams.mirostatEta,
-              samplerParams.mirostatM));
-    } else {
-      lib.llama_sampler_chain_add(
-          _smpl, lib.llama_sampler_init_top_k(samplerParams.topK));
-
-      lib.llama_sampler_chain_add(
-          _smpl, lib.llama_sampler_init_top_p(samplerParams.topP, 1));
-
-      lib.llama_sampler_chain_add(
-          _smpl, lib.llama_sampler_init_min_p(samplerParams.minP, 1));
-
-      lib.llama_sampler_chain_add(
-          _smpl, lib.llama_sampler_init_typical(samplerParams.typical, 1));
-
-      if (samplerParams.dynatempRange > 0.0) {
-        try {
-          lib.llama_sampler_chain_add(
-              _smpl,
-              lib.llama_sampler_init_temp_ext(samplerParams.temp,
-                  samplerParams.dynatempRange, samplerParams.dynatempExponent));
-        } catch (_) {
-          lib.llama_sampler_chain_add(
-              _smpl, lib.llama_sampler_init_temp(samplerParams.temp));
-        }
-      } else {
-        lib.llama_sampler_chain_add(
-            _smpl, lib.llama_sampler_init_temp(samplerParams.temp));
-      }
-
-      if (samplerParams.xtcProbability > 0.0) {
-        try {
-          lib.llama_sampler_chain_add(
-              _smpl,
-              lib.llama_sampler_init_xtc(samplerParams.xtcProbability,
-                  samplerParams.xtcThreshold, 1, samplerParams.seed));
-        } catch (_) {}
-      }
-    }
-
-    lib.llama_sampler_chain_add(
-        _smpl, lib.llama_sampler_init_dist(samplerParams.seed));
-  }
 
   void setPrompt(String prompt,
       {void Function(int current, int total)? onProgress}) {
@@ -653,15 +535,7 @@ class Llama {
       if (n < 0) return "";
 
       final newBytes = buf.cast<Uint8>().asTypedList(n);
-      _pendingBytes.addAll(newBytes);
-
-      try {
-        String piece = utf8.decode(_pendingBytes);
-        _pendingBytes.clear();
-        return piece;
-      } catch (e) {
-        return "";
-      }
+      return _accumulator.process(newBytes);
     } finally {
       malloc.free(buf);
     }
@@ -1239,21 +1113,16 @@ class Llama {
 
       // 2. Write Final File with Header
       final file = File(path);
-      // Header: Magic (4) + Version (4) + nPos (4) + nPrompt (4) = 16 bytes
-      final header = ByteData(16);
-      header.setUint32(0, 0x44415254, Endian.little); // "DART" magic
-      header.setUint32(4, 1, Endian.little); // Version 1
-      header.setUint32(8, _nPos, Endian.little);
-      header.setUint32(12, _nPrompt, Endian.little);
+      final wrapped = StateCodec.encode(
+        stateData,
+        nPos: _nPos,
+        nKeep: _nPrompt,
+      );
 
-      final allBytes = Uint8List(16 + stateData.length);
-      allBytes.setAll(0, header.buffer.asUint8List());
-      allBytes.setAll(16, stateData);
-
-      file.writeAsBytesSync(allBytes, flush: true);
+      file.writeAsBytesSync(wrapped, flush: true);
 
       if (_verbose)
-        print("Session saved (Native Wrapper). Size: ${allBytes.length}");
+        print("Session saved (Native Wrapper). Size: ${wrapped.length}");
 
       // Cleanup
       tempFile.deleteSync();
@@ -1271,23 +1140,16 @@ class Llama {
 
     // Read entire file
     final bytes = file.readAsBytesSync();
-    if (bytes.length < 16) {
-      print("Warning: Session file too small.");
-      return false;
-    }
+    final decoded = StateCodec.decode(bytes);
 
-    // Check Header
-    final header = ByteData.sublistView(bytes, 0, 16);
-    final magic = header.getUint32(0, Endian.little);
-
-    if (magic == 0x44415254) {
+    if (decoded.hasHeader) {
       // DART wrapper
-      final savedPos = header.getUint32(8, Endian.little);
-      final savedPrompt = header.getUint32(12, Endian.little);
+      final savedPos = decoded.nPos ?? 0;
+      final savedPrompt = decoded.nKeep ?? 0;
       if (_verbose) print("Custom header found. Saved nPos=$savedPos");
 
       // Unwrap Native Blob
-      final stateData = bytes.sublist(16);
+      final stateData = decoded.payload;
 
       // Write to Temp
       final tempPath =
@@ -1422,7 +1284,7 @@ class _LlamaSlot {
   int nPos = 0;
   int nPrompt = 0;
   int nGeneratedTotal = 0;
-  List<int> pendingBytes = [];
+  Utf8Accumulator accumulator = Utf8Accumulator();
 
   _LlamaSlot(this.context);
 }

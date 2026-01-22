@@ -187,6 +187,7 @@ class LlamaService {
     final sampler = SamplerFactory.build(
       lib: lib,
       vocab: _sharedModel.vocab,
+      model: _sharedModel.model,
       params: samplerParams ?? defaultSamplerParams,
     );
 
@@ -1368,6 +1369,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
       final sampler = SamplerFactory.build(
         lib: lib,
         vocab: _sharedModel.vocab,
+        model: _sharedModel.model,
         params: defaultSamplerParams,
       );
 
