@@ -1,4 +1,5 @@
-import 'dart:convert';
+import 'dart:convert' show utf8;
+import 'dart:collection';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:async';
@@ -11,36 +12,14 @@ import 'model_params.dart';
 import 'llama_cpp.dart';
 import 'context_params.dart';
 import 'llama_input.dart';
+import 'llama_slot.dart';
+import 'llama_session_io.dart';
+import 'llama_types.dart';
+import 'service/pending_item.dart';
 import 'service/sampler_factory.dart';
-import 'service/state_codec.dart';
 import 'service/utf8_accumulator.dart';
-
-typedef LlamaLogCallback = Void Function(
-    UnsignedInt level, Pointer<Char> text, Pointer<Void> userData);
-typedef LlamaLogCallbackDart = void Function(
-    int level, Pointer<Char> text, Pointer<Void> userData);
-
-/// Custom exception for Llama-specific errors
-class LlamaException implements Exception {
-  final String message;
-  final dynamic originalError;
-
-  LlamaException(this.message, [this.originalError]);
-
-  @override
-  String toString() =>
-      'LlamaException: $message${originalError != null ? ' ($originalError)' : ''}';
-}
-
-/// Status tracking for the Llama instance
-enum LlamaStatus {
-  uninitialized,
-  loading,
-  ready,
-  generating,
-  error,
-  disposed,
-}
+import 'service/vision_helper.dart';
+export 'llama_types.dart';
 
 /// A Dart wrapper for llama.cpp functionality.
 class Llama {
@@ -57,7 +36,7 @@ class Llama {
 
   final List<Pointer<llama_seq_id>> _batchSeqIds = [];
 
-  final Map<String, _LlamaSlot> _slots = {};
+  final Map<String, LlamaSlot> _slots = {};
   String _currentSlotId = "default";
 
   int _nPredict = 32;
@@ -212,7 +191,7 @@ class Llama {
       throw LlamaException("Failed to allocate VRAM for slot: $slotId");
     }
 
-    _slots[slotId] = _LlamaSlot(newCtx);
+    _slots[slotId] = LlamaSlot(newCtx);
   }
 
   /// Switches the active "brain" to the specified user.
@@ -403,7 +382,7 @@ class Llama {
         lib.llama_free_model(model);
         throw LlamaException("Could not create context!");
       }
-      _slots["default"] = _LlamaSlot(loadedContext);
+      _slots["default"] = LlamaSlot(loadedContext);
       _currentSlotId = "default";
     } catch (e) {
       if (loadedContext != nullptr) lib.llama_free(loadedContext);
@@ -686,114 +665,91 @@ class Llama {
     }
     if (inputs.isEmpty) throw ArgumentError('No images given');
 
-    final images = inputs.whereType<LlamaImage>().toList();
-    const marker = '<image>';
-    final mCnt = marker.allMatches(prompt).length;
-    if (mCnt != images.length) {
-      throw ArgumentError(
-          'Prompt has $mCnt <image> marker(s) but ${images.length} image(s) supplied.');
-    }
-
-    Pointer<mtmd_input_text> txtPtr = nullptr;
-    Pointer<Char> fullPtr = nullptr;
-    Pointer<mtmd_input_chunks> chunks = nullptr;
-    final bitmapRefs = <BitmapPointers>[];
-    Pointer<Pointer<mtmd_bitmap>> bmpArr = nullptr;
+    final queue = ListQueue<PendingItem>();
 
     try {
       _status = LlamaStatus.generating;
       lib.llama_sampler_reset(_smpl);
       clear();
 
-      for (final img in images) {
-        bitmapRefs.add(img.toBitmap(lib, malloc));
-      }
-      bmpArr = malloc<Pointer<mtmd_bitmap>>(bitmapRefs.length);
-      for (var i = 0; i < bitmapRefs.length; ++i) {
-        bmpArr[i] = bitmapRefs[i].bitmap;
-      }
-
-      final modelMark = lib.mtmd_default_marker().cast<Utf8>().toDartString();
-      final fullPrompt = prompt.replaceAll(marker, modelMark);
-      fullPtr = fullPrompt.toNativeUtf8().cast<Char>();
-
-      txtPtr = calloc<mtmd_input_text>();
-      txtPtr.ref
-        ..text = fullPtr
-        ..add_special = true
-        ..parse_special = true;
-
-      chunks = lib.mtmd_input_chunks_init();
-
-      final tk =
-          lib.mtmd_tokenize(_mctx, chunks, txtPtr, bmpArr, bitmapRefs.length);
-      if (tk != 0) throw LlamaException('mtmd_tokenize failed ($tk)');
+      final build = VisionHelper.buildPendingItems(
+        lib: lib,
+        mctx: _mctx,
+        model: model,
+        prompt: prompt,
+        inputs: inputs,
+      );
+      queue.addAll(build.items);
 
       var nPast = 0;
       final nCtx = _contextParams?.nCtx ?? 2048;
-      final nChunks = lib.mtmd_input_chunks_size(chunks);
 
       final b = batch;
       final Pointer<llama_token> originalTokenPtr = b.token;
       final int batchCapacity = _contextParams?.nBatch ?? 512;
 
-      for (var i = 0; i < nChunks; ++i) {
+      while (queue.isNotEmpty) {
         b.n_tokens = 0;
-        final chunk = lib.mtmd_input_chunks_get(chunks, i);
-        final type = lib.mtmd_input_chunk_get_type(chunk);
+        final item = queue.first;
 
-        if (type == mtmd_input_chunk_type.MTMD_INPUT_CHUNK_TYPE_IMAGE) {
-          if (lib.mtmd_encode_chunk(_mctx, chunk) != 0) {
-            throw LlamaException('encode image failed');
+        if (item.isEmbedding) {
+          final nEmbd = lib.llama_n_embd(model);
+          int offsetTokens = 0;
+          final totalTokens = item.nTokens;
+
+          while (offsetTokens < totalTokens) {
+            final sendTokens = min(batchCapacity, totalTokens - offsetTokens);
+            if (nPast + sendTokens > nCtx) {
+              throw LlamaException('n_ctx overflow');
+            }
+
+            b.token = nullptr;
+            b.embd = item.nativeValues! + (offsetTokens * nEmbd);
+            for (var k = 0; k < sendTokens; ++k) {
+              b.pos[k] = nPast + k;
+              b.n_seq_id[k] = 1;
+              b.seq_id[k] = _batchSeqIds[k];
+              b.seq_id[k].value = 0;
+              b.logits[k] = 0;
+            }
+            b.logits[sendTokens - 1] = 1;
+            b.n_tokens = sendTokens;
+
+            if (lib.llama_decode(context, b) != 0) {
+              throw LlamaException('decode image failed');
+            }
+            nPast += sendTokens;
+            offsetTokens += sendTokens;
           }
-          final embd = lib.mtmd_get_output_embd(_mctx);
-          final nTok = lib.mtmd_input_chunk_get_n_tokens(chunk);
-
-          if (nTok > batchCapacity) throw LlamaException('Image chunk > batch');
-          if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
-
-          b.token = nullptr;
-          b.embd = embd;
-          for (var k = 0; k < nTok; ++k) {
-            b.pos[k] = nPast + k;
-            b.n_seq_id[k] = 1;
-            b.seq_id[k] = _batchSeqIds[k];
-            b.seq_id[k].value = 0;
-            b.logits[k] = 0;
-          }
-          b.logits[nTok - 1] = 1;
-          b.n_tokens = nTok;
-
-          if (lib.llama_decode(context, b) != 0) {
-            throw LlamaException('decode image failed');
-          }
-          nPast += nTok;
+          item.dispose();
+          queue.removeFirst();
         } else {
-          final nPtr = malloc<Size>();
-          final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
-          final nTok = nPtr.value;
-          malloc.free(nPtr);
-
-          if (nTok > batchCapacity) throw LlamaException('Text chunk > batch');
-          if (nPast + nTok > nCtx) throw LlamaException('n_ctx overflow');
-
           b.token = originalTokenPtr;
           b.embd = nullptr;
-          for (var k = 0; k < nTok; ++k) {
-            b.token[k] = tokPt[k];
-            b.pos[k] = nPast + k;
-            b.n_seq_id[k] = 1;
-            b.seq_id[k] = _batchSeqIds[k];
-            b.seq_id[k].value = 0;
-            b.logits[k] = 0;
+          int filled = 0;
+          while (filled < batchCapacity &&
+              queue.isNotEmpty &&
+              !queue.first.isEmbedding) {
+            final tItem = queue.removeFirst();
+            b.token[filled] = tItem.token!;
+            b.pos[filled] = nPast + filled;
+            b.n_seq_id[filled] = 1;
+            b.seq_id[filled] = _batchSeqIds[filled];
+            b.seq_id[filled].value = 0;
+            b.logits[filled] = 0;
+            filled++;
           }
-          b.logits[nTok - 1] = 1;
-          b.n_tokens = nTok;
+
+          if (filled == 0) continue;
+          if (nPast + filled > nCtx) throw LlamaException('n_ctx overflow');
+
+          b.logits[filled - 1] = 1;
+          b.n_tokens = filled;
 
           if (lib.llama_decode(context, b) != 0) {
             throw LlamaException('decode text failed');
           }
-          nPast += nTok;
+          nPast += filled;
         }
       }
       _nPos = nPast;
@@ -847,13 +803,9 @@ class Llama {
           batch.seq_id[i] = nullptr;
         }
       }
-      if (chunks != nullptr) lib.mtmd_input_chunks_free(chunks);
-      if (bmpArr != nullptr) malloc.free(bmpArr);
-      for (final r in bitmapRefs) {
-        if (r.bitmap != nullptr) lib.mtmd_bitmap_free(r.bitmap);
+      for (final item in queue) {
+        item.dispose();
       }
-      if (txtPtr != nullptr) calloc.free(txtPtr);
-      if (fullPtr != nullptr) malloc.free(fullPtr);
 
       if (_status != LlamaStatus.error && !_isDisposed) {
         _status = LlamaStatus.ready;
@@ -1095,196 +1047,55 @@ class Llama {
   /// This ensures robust binary format (Native) + Single File convenience (User requirement).
   void saveSession(String path) {
     if (_isDisposed) throw StateError('Disposed');
-
-    final tempPath = "${path}.tmp.${DateTime.now().millisecondsSinceEpoch}";
-    final tempPathPtr = tempPath.toNativeUtf8().cast<Char>();
-
-    try {
-      // 1. Native Save to Temp
-      final result =
-          lib.llama_state_save_file(context, tempPathPtr, nullptr, 0);
-      if (!result) {
-        throw LlamaException(
-            'Failed to save session (llama_state_save_file returned false)');
-      }
-
-      final tempFile = File(tempPath);
-      final stateData = tempFile.readAsBytesSync();
-
-      // 2. Write Final File with Header
-      final file = File(path);
-      final wrapped = StateCodec.encode(
-        stateData,
-        nPos: _nPos,
-        nKeep: _nPrompt,
-      );
-
-      file.writeAsBytesSync(wrapped, flush: true);
-
-      if (_verbose)
-        print("Session saved (Native Wrapper). Size: ${wrapped.length}");
-
-      // Cleanup
-      tempFile.deleteSync();
-    } finally {
-      malloc.free(tempPathPtr);
-    }
+    LlamaSessionIO.saveSession(
+      lib: lib,
+      context: context,
+      path: path,
+      nPos: _nPos,
+      nKeep: _nPrompt,
+      verbose: _verbose,
+    );
   }
 
   /// Loads session from disk.
   /// Unwraps custom header to restore `nPos`, then uses native `llama_state_load_file`.
   bool loadSession(String path) {
     if (_isDisposed) throw StateError('Disposed');
-    final file = File(path);
-    if (!file.existsSync()) return false;
-
-    // Read entire file
-    final bytes = file.readAsBytesSync();
-    final decoded = StateCodec.decode(bytes);
-
-    if (decoded.hasHeader) {
-      // DART wrapper
-      final savedPos = decoded.nPos ?? 0;
-      final savedPrompt = decoded.nKeep ?? 0;
-      if (_verbose) print("Custom header found. Saved nPos=$savedPos");
-
-      // Unwrap Native Blob
-      final stateData = decoded.payload;
-
-      // Write to Temp
-      final tempPath =
-          "${path}.tmp.load.${DateTime.now().millisecondsSinceEpoch}";
-      final tempFile = File(tempPath);
-      tempFile.writeAsBytesSync(stateData, flush: true);
-
-      final tempPathPtr = tempPath.toNativeUtf8().cast<Char>();
-      final countOut = calloc<Size>(1);
-
-      try {
-        final result = lib.llama_state_load_file(
-            context, tempPathPtr, nullptr, 0, countOut);
-        if (_verbose) print("Native load result: $result");
-        if (result) {
-          final restoredPos = countOut.value;
-          _nPos = restoredPos != 0 ? restoredPos : savedPos;
-          _nPrompt = savedPrompt != 0 ? savedPrompt : _nPos;
-        }
-        return result;
-      } finally {
-        malloc.free(tempPathPtr);
-        calloc.free(countOut);
-        if (tempFile.existsSync()) tempFile.deleteSync();
-      }
-    } else {
-      // Fallback: Try Raw Native (no wrapper)
-      // Assume Native format
-      if (_verbose)
-        print(
-            "No custom header. Attempting raw native load (nPos resets to 0).");
-
-      final pathPtr = path.toNativeUtf8().cast<Char>();
-      final countOut = calloc<Size>(1);
-      try {
-        // If we have .meta sidecar (backwards compatibility), use it?
-        // Not priority, but good hygiene.
-        final result =
-            lib.llama_state_load_file(context, pathPtr, nullptr, 0, countOut);
-        if (result) {
-          _nPos = countOut.value;
-          final metaFile = File("$path.meta");
-          if (metaFile.existsSync()) {
-            try {
-              final json = jsonDecode(metaFile.readAsStringSync());
-              _nPos = _nPos != 0 ? _nPos : (json["nPos"] ?? 0);
-              _nPrompt = json["nPrompt"] ?? _nPos;
-            } catch (_) {}
-          } else {
-            _nPrompt = _nPos;
-          }
-        }
-        return result;
-      } finally {
-        malloc.free(pathPtr);
-        calloc.free(countOut);
-      }
-    }
+    final result = LlamaSessionIO.loadSession(
+      lib: lib,
+      context: context,
+      path: path,
+      verbose: _verbose,
+    );
+    if (!result.ok) return false;
+    _nPos = result.nPos;
+    _nPrompt = result.nKeep;
+    return true;
   }
 
   /// Saves the current state to RAM (Heap) as a byte array.
   /// Useful for fast context switching between users/chats without disk I/O.
   Uint8List saveState() {
     if (_isDisposed) throw StateError('Disposed');
-
-    final int stateSize = lib.llama_get_state_size(context);
-    const int headerSize = 16;
-    final int totalSize = stateSize + headerSize;
-
-    final ptr = malloc<Uint8>(totalSize);
-
-    try {
-      final headerData = ptr.asTypedList(headerSize).buffer.asByteData();
-      headerData.setUint32(0, 0x4C4C5346, Endian.little);
-      headerData.setUint32(4, 1, Endian.little);
-      headerData.setUint32(8, _nPos, Endian.little);
-      headerData.setUint32(12, _nPrompt, Endian.little);
-
-      final dataPtr = Pointer<Uint8>.fromAddress(ptr.address + headerSize);
-      lib.llama_copy_state_data(context, dataPtr);
-
-      return Uint8List.fromList(ptr.asTypedList(totalSize));
-    } finally {
-      malloc.free(ptr);
-    }
+    return LlamaStateIO.saveState(
+      lib: lib,
+      context: context,
+      nPos: _nPos,
+      nKeep: _nPrompt,
+    );
   }
 
   /// Restores state from a RAM byte array.
   void loadState(Uint8List stateData) {
     if (_isDisposed) throw StateError('Disposed');
-
-    const int headerSize = 16;
-    if (stateData.length < headerSize) {
-      throw LlamaException('State data too short');
-    }
-
-    final header = ByteData.sublistView(stateData, 0, headerSize);
-    final magic = header.getUint32(0, Endian.little);
-    final version = header.getUint32(4, Endian.little);
-
-    if (magic != 0x4C4C5346 || version != 1) {
-      throw LlamaException('Invalid state data header');
-    }
-
-    _nPos = header.getUint32(8, Endian.little);
-    _nPrompt = header.getUint32(12, Endian.little);
-
-    final int expectedStateSize = lib.llama_get_state_size(context);
-    if (stateData.length - headerSize != expectedStateSize) {
-      // ignore: avoid_print
-      print(
-          "Warning: State size mismatch. Expected $expectedStateSize, got ${stateData.length - headerSize}");
-    }
-
-    final ptr = malloc<Uint8>(expectedStateSize);
-
-    try {
-      final dataView = stateData.sublist(headerSize);
-      ptr.asTypedList(expectedStateSize).setAll(0, dataView);
-
-      lib.llama_set_state_data(context, ptr);
-    } finally {
-      malloc.free(ptr);
-    }
+    final restored = LlamaStateIO.loadState(
+      lib: lib,
+      context: context,
+      stateData: stateData,
+    );
+    _nPos = restored.nPos;
+    _nPrompt = restored.nKeep;
   }
 }
 
 /// Holds the state for a specific user/conversation slot
-
-class _LlamaSlot {
-  final Pointer<llama_context> context;
-  int nPos = 0;
-  int nPrompt = 0;
-  int nGeneratedTotal = 0;
-  Utf8Accumulator accumulator = Utf8Accumulator();
-
-  _LlamaSlot(this.context);
-}

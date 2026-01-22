@@ -2,7 +2,7 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
-import '../llama.dart';
+import '../llama_types.dart';
 import '../llama_cpp.dart';
 import '../llama_input.dart';
 import 'pending_item.dart';

@@ -5,7 +5,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-import '../llama.dart' show LlamaStatus;
+import '../llama_types.dart';
 import '../llama_cpp.dart';
 import 'pending_item.dart';
 import 'utf8_accumulator.dart';

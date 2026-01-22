@@ -5,6 +5,7 @@ export 'src/core/model_params.dart';
 export 'src/core/context_params.dart';
 export 'src/core/sampler_params.dart';
 export 'src/core/llama.dart';
+export 'src/core/llama_types.dart';
 export 'src/core/llama_service.dart';
 
 export 'src/prompt/prompt_format.dart';

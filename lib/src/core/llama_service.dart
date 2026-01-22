@@ -7,7 +7,8 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 
 import 'context_params.dart';
-import 'llama.dart' show Llama, LlamaException, LlamaLogCallback, LlamaStatus;
+import 'llama.dart' show Llama;
+import 'llama_types.dart';
 import 'llama_cpp.dart';
 import 'llama_input.dart';
 import 'model_params.dart';
