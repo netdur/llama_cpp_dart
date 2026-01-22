@@ -590,9 +590,13 @@ class LlamaService {
 
   Future<void> _runLoop() async {
     final sliceTimer = Stopwatch()..start();
+    final Set<int> batchSeqIds = {};
+    final Map<int, int> batchRidBySeqId = {};
+    final List<bool> passes = _visionEnabled ? [false, true] : [false];
     try {
       while (!_disposed) {
         if (_stopSignal.isCompleted) break;
+        batchRidBySeqId.clear();
 
         // Cooperative yield (time-sliced)
         if (sliceTimer.elapsedMilliseconds > 10) {
@@ -636,19 +640,10 @@ class LlamaService {
           continue;
         }
 
-        final Map<ServiceSession, int> sessionIndex = {};
-        for (var i = 0; i < activeSessions.length; i++) {
-          sessionIndex[activeSessions[i]] = i;
-        }
-
         // Round-robin rotation
         final int rotateStart =
             (_lastScheduledSessionIndex + 1) % activeSessions.length;
-        final passes = _visionEnabled ? [false, true] : [false];
         bool didWork = false;
-
-        // Track requestId used when scheduling each seq_id into the batch.
-        final Map<int, int> batchRidBySeqId = {};
 
         for (final isEmbeddingPass in passes) {
           final currentBatch = isEmbeddingPass ? _batchEmbd : _batchTokens;
@@ -656,7 +651,7 @@ class LlamaService {
 
           int batchIdx = 0;
           currentBatch.n_tokens = 0;
-          final Set<int> batchSeqIds = {};
+          batchSeqIds.clear();
 
           // Fill batch
           for (int i = 0; i < activeSessions.length; i++) {
@@ -670,15 +665,13 @@ class LlamaService {
             if (available <= 0) break;
 
             if (session.pendingItems.isEmpty) {
-              _lastScheduledSessionIndex =
-                  sessionIndex[session] ?? _lastScheduledSessionIndex;
+              _lastScheduledSessionIndex = index;
               continue;
             }
 
             final item = session.pendingItems.first;
             if (item.isEmbedding != isEmbeddingPass) {
-              _lastScheduledSessionIndex =
-                  sessionIndex[session] ?? _lastScheduledSessionIndex;
+              _lastScheduledSessionIndex = index;
               continue;
             }
 
@@ -727,8 +720,7 @@ class LlamaService {
               final remaining = item.remainingEmbeddingTokens;
               if (remaining <= 0) {
                 session.pendingItems.removeFirst();
-                _lastScheduledSessionIndex =
-                    sessionIndex[session] ?? _lastScheduledSessionIndex;
+                _lastScheduledSessionIndex = index;
                 continue;
               }
 
@@ -806,7 +798,7 @@ class LlamaService {
             }
 
             _lastScheduledSessionIndex =
-                sessionIndex[session] ?? _lastScheduledSessionIndex;
+                index;
             if (batchIdx >= _nBatch) break;
           }
 
