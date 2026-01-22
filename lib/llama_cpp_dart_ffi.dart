@@ -3,4 +3,4 @@
 /// You will need 'dart:ffi' and 'package:ffi/ffi.dart' to use this effectively.
 library;
 
-export 'src/llama_cpp.dart';
+export 'src/core/llama_cpp.dart';

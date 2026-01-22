@@ -174,7 +174,7 @@ void main() async {
       modelPath,
       modelParams: ModelParams(),
       contextParams: contextParams,
-      verbose: true,
+      verbose: false,
     );
 
     ChatHistory history = ChatHistory();

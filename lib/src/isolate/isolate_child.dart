@@ -1,6 +1,12 @@
 import 'dart:async';
 import 'package:typed_isolate/typed_isolate.dart';
-import '../llama_cpp_dart.dart';
+
+import '../core/context_params.dart';
+import '../core/llama.dart';
+import '../core/llama_input.dart';
+import '../core/model_params.dart';
+import '../core/sampler_params.dart';
+import 'isolate_types.dart';
 
 /// Child isolate that handles Llama model operations
 class LlamaChild extends IsolateChild<LlamaResponse, LlamaCommand> {

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:llama_cpp_dart/src/model_params.dart';
-import 'package:llama_cpp_dart/src/context_params.dart';
-import 'package:llama_cpp_dart/src/sampler_params.dart';
+import 'package:llama_cpp_dart/src/core/model_params.dart';
+import 'package:llama_cpp_dart/src/core/context_params.dart';
+import 'package:llama_cpp_dart/src/core/sampler_params.dart';
 
 void main() {
   group('ModelParams', () {

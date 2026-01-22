@@ -1,7 +1,7 @@
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
-import 'package:llama_cpp_dart/src/llama_cpp.dart';
+import 'package:llama_cpp_dart/src/core/llama_cpp.dart';
 
 void main() {
   // Initialize settings

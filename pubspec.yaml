@@ -28,12 +28,12 @@ dev_dependencies:
 
 analyzer:
   exclude:
-    - 'lib/src/llama_cpp.dart'
+    - 'lib/src/core/llama_cpp.dart'
 
 ffigen: # dart run ffigen
   name: 'llama_cpp'
   description: 'llama.cpp binding'
-  output: 'lib/src/llama_cpp.dart'
+  output: 'lib/src/core/llama_cpp.dart'
   # ignore-source-errors: true
   headers:
     entry-points:

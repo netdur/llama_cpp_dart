@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:image/image.dart' as img;
-import 'package:llama_cpp_dart/src/llama_cpp.dart';
+import 'package:llama_cpp_dart/src/core/llama_cpp.dart';
 
 Future<void> main() async {
   String modelPath = "/Users/adel/Workspace/gguf/gemma-3-4b-it-q4_0.gguf";

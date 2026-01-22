@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import '../llama_cpp_dart.dart';
-import 'llama_input.dart';
+import '../../llama_cpp_dart.dart';
+import '../core/llama_input.dart';
 
 /// Represents supported chat formats for export
 enum ChatFormat {

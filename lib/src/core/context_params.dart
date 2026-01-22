@@ -1,5 +1,5 @@
 import 'dart:convert';
-import '../llama_cpp_dart.dart';
+import 'llama.dart';
 import 'llama_cpp.dart';
 
 /// GGML Types for KV Cache Quantization (ggml_type)

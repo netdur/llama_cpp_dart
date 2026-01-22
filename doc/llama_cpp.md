@@ -15,7 +15,7 @@ If you update the shared library to a newer version of `llama.cpp`, you must ens
 ```dart
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
-import 'package:llama_cpp_dart/src/llama_cpp.dart';
+import 'package:llama_cpp_dart/src/core/llama_cpp.dart';
 
 void main() {
   // 1. Load the dynamic library

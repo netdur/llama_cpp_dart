@@ -15,7 +15,7 @@ This library provides three levels of abstraction for integrating llama.cpp into
 ### Low-Level FFI Bindings
 Direct llama.cpp integration with maximum control:
 ```dart
-import 'package:llama_cpp_dart/src/llama_cpp.dart';
+import 'package:llama_cpp_dart/src/core/llama_cpp.dart';
 
 void main() {
   final lib = llama_cpp(DynamicLibrary.open("libllama.dylib"));

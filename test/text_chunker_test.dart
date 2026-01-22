@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:llama_cpp_dart/src/text_chunker.dart';
+import 'package:llama_cpp_dart/src/utils/text_chunker.dart';
 
 void main() {
   group('TextChunker', () {

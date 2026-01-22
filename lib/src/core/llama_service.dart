@@ -1,51 +1,28 @@
 // ignore_for_file: unused_field
 
 import 'dart:async';
-import 'dart:collection';
-import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:math' show max, min;
 import 'dart:typed_data';
+
 import 'package:ffi/ffi.dart';
+
 import 'context_params.dart';
 import 'llama.dart' show Llama, LlamaException, LlamaLogCallback, LlamaStatus;
 import 'llama_cpp.dart';
 import 'llama_input.dart';
 import 'model_params.dart';
 import 'sampler_params.dart';
-
-class _SessionEvent {
-  final int requestId;
-  final String text;
-  _SessionEvent(this.requestId, this.text);
-}
-
-enum SessionTier {
-  hot, // In VRAM (Active)
-  warm, // In RAM (Uint8List snapshot)
-  cold, // On Disk (File path)
-}
-
-class TokenUsage {
-  int promptTokens = 0;
-  int completionTokens = 0;
-  final DateTime startTime = DateTime.now();
-  DateTime? endTime;
-
-  int get total => promptTokens + completionTokens;
-
-  double get tokensPerSecond {
-    final end = endTime ?? DateTime.now();
-    final duration = end.difference(startTime).inMilliseconds / 1000.0;
-    if (duration <= 0) return 0.0;
-    return completionTokens / duration;
-  }
-}
+import 'service/model_cache.dart';
+import 'service/pending_item.dart';
+import 'service/session.dart';
+import 'service/state_codec.dart';
+import 'service/utf8_accumulator.dart';
 
 /// Multi-user friendly wrapper around llama.cpp.
 class LlamaService {
-  static final Map<_ModelCacheKey, _SharedModelHandle> _modelCache = {};
+  static final Map<ModelCacheKey, SharedModelHandle> _modelCache = {};
 
   static llama_cpp get lib => Llama.lib;
 
@@ -63,10 +40,10 @@ class LlamaService {
   final String sessionHome;
   final int maxSystemRamMb;
 
-  final Map<String, _ServiceSession> _sessions = {};
-  final Map<int, _ServiceSession> _sessionsBySeqId = {};
+  final Map<String, ServiceSession> _sessions = {};
+  final Map<int, ServiceSession> _sessionsBySeqId = {};
 
-  late final _SharedModelHandle _sharedModel;
+  late final SharedModelHandle _sharedModel;
 
   // Shared context and batches
   Pointer<llama_context> _context = nullptr;
@@ -208,7 +185,7 @@ class LlamaService {
 
     final sampler = _initializeSampler(samplerParams ?? defaultSamplerParams);
 
-    final session = _ServiceSession(
+    final session = ServiceSession(
       id: sessionId,
       seqId: null,
       sampler: sampler,
@@ -243,8 +220,8 @@ class LlamaService {
       item.dispose();
     }
     session.pendingItems.clear();
-    session._outputBuffer.clear();
-    session._completeGeneration(rid);
+    session.outputBuffer.clear();
+    session.completeGeneration(rid);
   }
 
   Future<void> freeSession(
@@ -369,7 +346,7 @@ class LlamaService {
           }
 
           for (int i = 0; i < nTokens; i++) {
-            session.pendingItems.addLast(_PendingItem.token(tokenPtr[i]));
+            session.pendingItems.addLast(PendingItem.token(tokenPtr[i]));
           }
           session.nPromptTokens = nTokens;
           session.usage.promptTokens = nTokens;
@@ -388,11 +365,11 @@ class LlamaService {
     } catch (e, s) {
       session.status = LlamaStatus.error;
       session.pendingItems.clear();
-      session._outputBuffer.clear();
+      session.outputBuffer.clear();
       if (!session.controller.isClosed) {
         session.controller.addError(e, s);
       }
-      session._completeGeneration(currentRequestId);
+      session.completeGeneration(currentRequestId);
       rethrow;
     }
   }
@@ -410,7 +387,7 @@ class LlamaService {
     final buffer = StringBuffer();
     final completer = Completer<String>();
 
-    StreamSubscription<_SessionEvent>? sub;
+    StreamSubscription<SessionEvent>? sub;
     sub = session.stream.listen(
       (event) {
         if (event.requestId == currentReqId) buffer.write(event.text);
@@ -493,7 +470,7 @@ class LlamaService {
   }
 
   Stream<String> _generateWithMediaBody(
-    _ServiceSession session,
+    ServiceSession session,
     String prompt,
     List<LlamaInput> inputs,
     bool clearHistory,
@@ -597,7 +574,7 @@ class LlamaService {
             dstList.setAll(0, srcList);
 
             session.pendingItems
-                .addLast(_PendingItem.embedding(nativeStore, nTok));
+                .addLast(PendingItem.embedding(nativeStore, nTok));
           } else {
             final nPtr = malloc<Size>();
             final tokPt = lib.mtmd_input_chunk_get_tokens_text(chunk, nPtr);
@@ -608,7 +585,7 @@ class LlamaService {
             totalPromptTokens += nTok;
 
             for (int k = 0; k < nTok; k++) {
-              session.pendingItems.addLast(_PendingItem.token(tokPt[k]));
+              session.pendingItems.addLast(PendingItem.token(tokPt[k]));
             }
           }
         }
@@ -636,21 +613,21 @@ class LlamaService {
     } catch (e, s) {
       session.status = LlamaStatus.error;
       session.pendingItems.clear();
-      session._outputBuffer.clear();
+      session.outputBuffer.clear();
       if (!session.controller.isClosed) {
         session.controller.addError(e, s);
       }
       session.lastError = e;
       session.lastStackTrace = s;
       session.lastErrorTime = DateTime.now();
-      session._completeGeneration(currentRequestId);
+      session.completeGeneration(currentRequestId);
       rethrow;
     }
   }
 
   /// Returns a finite stream for a specific requestId.
-  Stream<_SessionEvent> _streamRequest(
-    _ServiceSession session, {
+  Stream<SessionEvent> _streamRequest(
+    ServiceSession session, {
     required int requestId,
   }) {
     final targetReqId = requestId;
@@ -658,10 +635,10 @@ class LlamaService {
     final completer = session.requestCompleters[targetReqId];
     final doneFuture = completer?.future ?? Future.value();
 
-    StreamSubscription<_SessionEvent>? sub;
-    late final StreamController<_SessionEvent> controller;
+    StreamSubscription<SessionEvent>? sub;
+    late final StreamController<SessionEvent> controller;
 
-    controller = StreamController<_SessionEvent>(
+    controller = StreamController<SessionEvent>(
       onListen: () {
         sub = session.stream
             .where((event) => event.requestId == targetReqId)
@@ -674,7 +651,7 @@ class LlamaService {
           },
         );
 
-        // When the request completes (via _completeGeneration), close this controller.
+        // When the request completes, close this controller.
         doneFuture.then((_) async {
           await sub?.cancel();
           if (!controller.isClosed) await controller.close();
@@ -738,7 +715,7 @@ class LlamaService {
           continue;
         }
 
-        final Map<_ServiceSession, int> sessionIndex = {};
+        final Map<ServiceSession, int> sessionIndex = {};
         for (var i = 0; i < activeSessions.length; i++) {
           sessionIndex[activeSessions[i]] = i;
         }
@@ -795,7 +772,7 @@ class LlamaService {
                   LlamaException("Session ${session.id} is not hot"),
                 );
               }
-              session._completeGeneration(ridAtSchedule);
+              session.completeGeneration(ridAtSchedule);
               continue;
             }
 
@@ -939,7 +916,7 @@ class LlamaService {
               }
               s.lastError = LlamaException("llama_decode failed");
               s.lastErrorTime = DateTime.now();
-              s._completeGeneration(rid);
+              s.completeGeneration(rid);
             }
 
             await Future.delayed(const Duration(milliseconds: 50));
@@ -983,10 +960,10 @@ class LlamaService {
             final isEos = lib.llama_token_is_eog(_sharedModel.vocab, newToken);
 
             if (isEos) {
-              session._outputBuffer.write(" [EOS]");
+              session.outputBuffer.write(" [EOS]");
             } else {
               final piece = _decodeToken(session, newToken);
-              if (piece.isNotEmpty) session._outputBuffer.write(piece);
+              if (piece.isNotEmpty) session.outputBuffer.write(piece);
             }
 
             // Emit buffered output (or keep buffering if no listeners)
@@ -1003,9 +980,9 @@ class LlamaService {
             if (done) {
               session.status = LlamaStatus.ready;
               _printMetrics(session.id, session);
-              session._completeGeneration(rid);
+              session.completeGeneration(rid);
             } else {
-              session.pendingItems.addLast(_PendingItem.token(newToken));
+              session.pendingItems.addLast(PendingItem.token(newToken));
             }
           }
         }
@@ -1137,18 +1114,18 @@ class LlamaService {
 
   // -------------------- Internals --------------------
 
-  void _startRequest(_ServiceSession session) {
+  void _startRequest(ServiceSession session) {
     if (session.status != LlamaStatus.generating) return;
 
-    session.accumulator = _Utf8Accumulator();
-    session._outputBuffer.clear();
+    session.accumulator = Utf8Accumulator();
+    session.outputBuffer.clear();
 
     session.requestId++;
     session.requestCompleters[session.requestId] = Completer<void>();
     session.usage = TokenUsage();
 
     // If someone subscribes after output started, we want to replay buffered content.
-    session._bufferRequestId = session.requestId;
+    session.bufferRequestId = session.requestId;
   }
 
   void _checkDisposed() {
@@ -1164,7 +1141,7 @@ class LlamaService {
     _backendInitialized = true;
   }
 
-  void _evictSession(_ServiceSession session) {
+  void _evictSession(ServiceSession session) {
     final seqId = session.seqId;
     if (session.tier != SessionTier.hot || seqId == null) return;
 
@@ -1192,7 +1169,7 @@ class LlamaService {
     session.tier = SessionTier.warm;
   }
 
-  Future<void> _archiveSession(_ServiceSession session) async {
+  Future<void> _archiveSession(ServiceSession session) async {
     if (session.stateBuffer == null || session.stateBuffer!.isEmpty) return;
 
     final path = '$sessionHome/${session.id}.state';
@@ -1213,7 +1190,7 @@ class LlamaService {
     session.tier = SessionTier.cold;
   }
 
-  Future<void> _restoreSession(_ServiceSession session) async {
+  Future<void> _restoreSession(ServiceSession session) async {
     if (session.tier == SessionTier.hot && session.seqId != null) return;
 
     if (_freeSeqIds.isEmpty) {
@@ -1275,7 +1252,7 @@ class LlamaService {
     _sessionsBySeqId[newSeqId] = session;
   }
 
-  void _printMetrics(String sessionId, _ServiceSession session) {
+  void _printMetrics(String sessionId, ServiceSession session) {
     session.usage.endTime = DateTime.now();
     final tps = session.usage.tokensPerSecond.toStringAsFixed(2);
     final usage = session.usage;
@@ -1296,23 +1273,23 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
 """);
   }
 
-  _StatePayload _decodeStateFile(Uint8List bytes) {
+  StatePayload _decodeStateFile(Uint8List bytes) {
     const int headerSize = 16;
     if (bytes.length < headerSize) {
-      return _StatePayload(bytes, null, null, false);
+      return StatePayload(bytes, null, null, false);
     }
 
     final header = ByteData.sublistView(bytes, 0, headerSize);
     final magic = header.getUint32(0, Endian.little);
     final version = header.getUint32(4, Endian.little);
     if (magic != 0x44415254 || version != 1) {
-      return _StatePayload(bytes, null, null, false);
+      return StatePayload(bytes, null, null, false);
     }
 
     final nPos = header.getUint32(8, Endian.little);
     final nKeep = header.getUint32(12, Endian.little);
     final payload = bytes.sublist(headerSize);
-    return _StatePayload(payload, nPos, nKeep, true);
+    return StatePayload(payload, nPos, nKeep, true);
   }
 
   Uint8List _encodeStateWithHeader(
@@ -1333,7 +1310,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
     return allBytes;
   }
 
-  _ServiceSession _requireSession(String id) {
+  ServiceSession _requireSession(String id) {
     final session = _sessions[id];
     if (session == null) {
       throw ArgumentError(
@@ -1391,8 +1368,8 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
     return smpl;
   }
 
-  _SharedModelHandle _acquireModel(String path, ModelParams params) {
-    final key = _ModelCacheKey(path, params);
+  SharedModelHandle _acquireModel(String path, ModelParams params) {
+    final key = ModelCacheKey(path, params);
     final cached = _modelCache[key];
     if (cached != null) {
       cached.refs++;
@@ -1416,12 +1393,12 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
     }
 
     final handle =
-        _SharedModelHandle(model: loadedModel, vocab: vocab, key: key);
+        SharedModelHandle(model: loadedModel, vocab: vocab, key: key);
     _modelCache[key] = handle;
     return handle;
   }
 
-  void _releaseModel(_SharedModelHandle handle) {
+  void _releaseModel(SharedModelHandle handle) {
     handle.refs--;
     if (handle.refs > 0) return;
 
@@ -1436,7 +1413,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
     }
   }
 
-  String _decodeToken(_ServiceSession session, int tokenId) {
+  String _decodeToken(ServiceSession session, int tokenId) {
     const int minCapacity = 256;
 
     if (session.decodeCapacity < minCapacity || session.decodeBuf == nullptr) {
@@ -1599,7 +1576,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
       // Initialize a new WARM session (it will be moved to HOT when a prompt is sent)
       final sampler = _initializeSampler(defaultSamplerParams);
 
-      final session = _ServiceSession(
+      final session = ServiceSession(
         id: sessionId,
         seqId: null,
         sampler: sampler,
@@ -1625,201 +1602,4 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
       return false;
     }
   }
-}
-
-class _StatePayload {
-  final Uint8List payload;
-  final int? nPos;
-  final int? nKeep;
-  final bool hasHeader;
-
-  _StatePayload(this.payload, this.nPos, this.nKeep, this.hasHeader);
-}
-
-/// Accumulates UTF-8 bytes until they decode cleanly.
-class _Utf8Accumulator {
-  final List<int> _buffer = [];
-  static const int _maxBufferLen = 8192;
-
-  String process(List<int> newBytes) {
-    _buffer.addAll(newBytes);
-    if (_buffer.isEmpty) return "";
-
-    try {
-      final result = utf8.decode(_buffer);
-      _buffer.clear();
-      return result;
-    } on FormatException {
-      if (_buffer.length > _maxBufferLen) {
-        final result = utf8.decode(_buffer, allowMalformed: true);
-        _buffer.clear();
-        return result;
-      }
-      return "";
-    }
-  }
-}
-
-class _PendingItem {
-  final int? token;
-  final Pointer<Float>? nativeValues; // embeddings in native memory
-  final int nTokens;
-  int embdOffsetTokens;
-
-  _PendingItem.token(this.token)
-      : nativeValues = null,
-        nTokens = 1,
-        embdOffsetTokens = 0;
-
-  _PendingItem.embedding(this.nativeValues, this.nTokens,
-      {this.embdOffsetTokens = 0})
-      : token = null;
-
-  bool get isEmbedding => nativeValues != null;
-  int get remainingEmbeddingTokens => nTokens - embdOffsetTokens;
-
-  void dispose() {
-    if (nativeValues != null && nativeValues != nullptr) {
-      malloc.free(nativeValues!);
-    }
-  }
-}
-
-class _ServiceSession {
-  final String id;
-  int? seqId;
-  final Pointer<llama_sampler> sampler;
-
-  int requestId = 0;
-  int _bufferRequestId = 0;
-
-  LlamaStatus status = LlamaStatus.uninitialized;
-
-  Object? lastError;
-  StackTrace? lastStackTrace;
-  DateTime? lastErrorTime;
-
-  Pointer<Char> decodeBuf = nullptr;
-  int decodeCapacity = 0;
-  _Utf8Accumulator accumulator = _Utf8Accumulator();
-
-  final ListQueue<_PendingItem> pendingItems = ListQueue<_PendingItem>();
-
-  late final StreamController<_SessionEvent> controller;
-
-  // requestId -> completion
-  final Map<int, Completer<void>> requestCompleters = {};
-
-  int nPos = 0;
-  int nPromptTokens = 0;
-  int nGenerated = 0;
-  int nKeep = 0; // Number of tokens to preserve (System Prompt)
-  TokenUsage usage = TokenUsage();
-
-  SessionTier tier = SessionTier.warm; // Start warm (waiting for slot)
-  Uint8List? stateBuffer;
-  String? coldFilePath;
-  DateTime lastActiveTime = DateTime.now();
-
-  // Output buffering
-  final StringBuffer _outputBuffer = StringBuffer();
-  DateTime _lastFlushTime = DateTime.now();
-
-  bool _isDisposed = false;
-
-  _ServiceSession({
-    required this.id,
-    required this.seqId,
-    required this.sampler,
-  }) {
-    // Broadcast stream with replay of buffered output when a listener attaches.
-    controller = StreamController<_SessionEvent>.broadcast(
-      onListen: () {
-        // If we have buffered output for the last request, flush it now.
-        if (_outputBuffer.isNotEmpty) {
-          flush(force: true, requestId: _bufferRequestId);
-        }
-      },
-    );
-  }
-
-  Stream<_SessionEvent> get stream => controller.stream;
-
-  void flush({bool force = false, required int requestId}) {
-    if (_outputBuffer.isEmpty) return;
-
-    // If no listeners, keep buffering (bounded).
-    if (!controller.hasListener) {
-      _bufferRequestId = requestId;
-      if (_outputBuffer.length > 5 * 1024 * 1024) {
-        _outputBuffer.clear();
-        _outputBuffer.write(
-          "[Error: Output buffer exceeded 5MB with no listeners. Stream dropped.]",
-        );
-      }
-      return;
-    }
-
-    final now = DateTime.now();
-    if (force ||
-        _outputBuffer.length > 1024 ||
-        now.difference(_lastFlushTime).inMilliseconds > 50) {
-      if (!controller.isClosed) {
-        controller.add(_SessionEvent(requestId, _outputBuffer.toString()));
-      }
-      _outputBuffer.clear();
-      _lastFlushTime = now;
-    }
-  }
-
-  void _completeGeneration(int requestId) {
-    // Ensure pending buffer is emitted (or stays buffered for replay).
-    flush(force: true, requestId: requestId);
-
-    final c = requestCompleters[requestId];
-    if (c != null && !c.isCompleted) c.complete();
-
-    // Drop old completers to avoid leaks.
-    requestCompleters.removeWhere((k, _) => k < requestId);
-  }
-
-  void dispose(llama_cpp lib) {
-    if (_isDisposed) return;
-    _isDisposed = true;
-
-    if (sampler != nullptr) {
-      lib.llama_sampler_free(sampler);
-    }
-    if (decodeBuf != nullptr) {
-      malloc.free(decodeBuf);
-      decodeBuf = nullptr;
-    }
-    controller.close();
-  }
-}
-
-class _SharedModelHandle {
-  final Pointer<llama_model> model;
-  final Pointer<llama_vocab> vocab;
-  final _ModelCacheKey? key;
-  int refs = 1;
-
-  _SharedModelHandle({required this.model, required this.vocab, this.key});
-}
-
-class _ModelCacheKey {
-  final String path;
-  final String paramsSignature;
-
-  _ModelCacheKey(this.path, ModelParams params)
-      : paramsSignature = params.toString();
-
-  @override
-  bool operator ==(Object other) =>
-      other is _ModelCacheKey &&
-      other.path == path &&
-      other.paramsSignature == paramsSignature;
-
-  @override
-  int get hashCode => Object.hash(path, paramsSignature);
 }

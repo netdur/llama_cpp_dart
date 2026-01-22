@@ -3,7 +3,7 @@
 import 'dart:ffi';
 import 'dart:io';
 import 'package:ffi/ffi.dart';
-import 'package:llama_cpp_dart/src/llama_cpp.dart';
+import 'package:llama_cpp_dart/src/core/llama_cpp.dart';
 
 /// Saves the state of the context to a file.
 void saveSession(llama_cpp lib, Pointer<llama_context> ctx, String path) {

@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
-import 'package:llama_cpp_dart/src/llama_cpp.dart';
+import 'llama_cpp.dart';
 
 /// An abstract class representing a multimodal input for the Llama model.
 abstract class LlamaInput {}

@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:llama_cpp_dart/src/llama_input.dart';
 import 'package:typed_isolate/typed_isolate.dart';
 
+import '../core/llama.dart';
+import '../core/llama_input.dart';
+import '../prompt/prompt_format.dart';
 import 'isolate_child.dart';
 import 'isolate_scope.dart';
 import 'isolate_types.dart';
-import 'llama.dart';
-import 'prompt_format.dart';
 
 /// Event emitted when a completion finishes or fails
 class CompletionEvent {
