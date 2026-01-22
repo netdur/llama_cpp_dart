@@ -1,5 +1,3 @@
-// ignore_for_file: unused_field
-
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
@@ -16,14 +14,13 @@ import 'model_params.dart';
 import 'sampler_params.dart';
 import 'service/model_cache.dart';
 import 'service/pending_item.dart';
+import 'service/sampler_factory.dart';
 import 'service/session.dart';
 import 'service/state_codec.dart';
 import 'service/utf8_accumulator.dart';
 
 /// Multi-user friendly wrapper around llama.cpp.
 class LlamaService {
-  static final Map<ModelCacheKey, SharedModelHandle> _modelCache = {};
-
   static llama_cpp get lib => Llama.lib;
 
   static bool _backendInitialized = false;
@@ -68,7 +65,6 @@ class LlamaService {
   Completer<void> _workSignal = Completer<void>();
   Completer<void>? _activeDecodeSync;
   Future<void>? _loopFuture;
-  final Stopwatch _loopTimer = Stopwatch()..start();
   final Stopwatch _memoryJanitorTimer = Stopwatch()..start();
 
   // Seq allocation
@@ -99,7 +95,11 @@ class LlamaService {
     defaultContextParams = _ctxConfig;
 
     _ensureBackend();
-    _sharedModel = _acquireModel(modelPath, this.modelParams);
+    _sharedModel = ModelCache.acquire(
+      lib: lib,
+      path: modelPath,
+      params: this.modelParams,
+    );
 
     final ptr = lib.llama_print_system_info();
     final sysInfo = ptr.cast<Utf8>().toDartString();
@@ -183,7 +183,11 @@ class LlamaService {
     _checkDisposed();
     if (_sessions.containsKey(sessionId)) return;
 
-    final sampler = _initializeSampler(samplerParams ?? defaultSamplerParams);
+    final sampler = SamplerFactory.build(
+      lib: lib,
+      vocab: _sharedModel.vocab,
+      params: samplerParams ?? defaultSamplerParams,
+    );
 
     final session = ServiceSession(
       id: sessionId,
@@ -819,8 +823,8 @@ class LlamaService {
 
               // FIX: Copy from Native Store -> Batch
               // item.nativeValues is our malloc'd pointer
-              final srcPtr = item.nativeValues!.elementAt(start);
-              final destPtr = currentBatch.embd.elementAt(batchIdx * nEmbd);
+              final srcPtr = item.nativeValues! + start;
+              final destPtr = currentBatch.embd + (batchIdx * nEmbd);
 
               // Low-level memory copy (fastest)
               final srcList = srcPtr.asTypedList(floatCount);
@@ -1104,9 +1108,9 @@ class LlamaService {
       _mctx = nullptr;
     }
 
-    _releaseModel(_sharedModel);
+    ModelCache.release(lib: lib, handle: _sharedModel);
 
-    if (_modelCache.isEmpty && _backendInitialized) {
+    if (ModelCache.isEmpty && _backendInitialized) {
       lib.llama_backend_free();
       _backendInitialized = false;
     }
@@ -1178,7 +1182,7 @@ class LlamaService {
       // ignore: avoid_print
       print("Archiving ${session.id} to disk ($path)...");
     }
-    final wrapped = _encodeStateWithHeader(
+    final wrapped = StateCodec.encode(
       session.stateBuffer!,
       nPos: session.nPos,
       nKeep: session.nKeep,
@@ -1215,7 +1219,7 @@ class LlamaService {
         throw LlamaException("Session ${session.id} has no archive path");
       }
       final bytes = await File(path).readAsBytes();
-      final decoded = _decodeStateFile(bytes);
+      final decoded = StateCodec.decode(bytes);
       data = decoded.payload;
       if (decoded.hasHeader) {
         session.nPos = decoded.nPos ?? session.nPos;
@@ -1262,6 +1266,7 @@ class LlamaService {
     final ctxMb = ctxBytes / (1024 * 1024);
 
     // ASCII-only output to keep logs compatible with restricted consoles.
+    // ignore: avoid_print
     print("""
 [Metrics: $sessionId]
 ------------------------------------------
@@ -1273,43 +1278,6 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
 """);
   }
 
-  StatePayload _decodeStateFile(Uint8List bytes) {
-    const int headerSize = 16;
-    if (bytes.length < headerSize) {
-      return StatePayload(bytes, null, null, false);
-    }
-
-    final header = ByteData.sublistView(bytes, 0, headerSize);
-    final magic = header.getUint32(0, Endian.little);
-    final version = header.getUint32(4, Endian.little);
-    if (magic != 0x44415254 || version != 1) {
-      return StatePayload(bytes, null, null, false);
-    }
-
-    final nPos = header.getUint32(8, Endian.little);
-    final nKeep = header.getUint32(12, Endian.little);
-    final payload = bytes.sublist(headerSize);
-    return StatePayload(payload, nPos, nKeep, true);
-  }
-
-  Uint8List _encodeStateWithHeader(
-    Uint8List payload, {
-    required int nPos,
-    required int nKeep,
-  }) {
-    const int headerSize = 16;
-    final header = ByteData(headerSize);
-    header.setUint32(0, 0x44415254, Endian.little); // "DART" magic
-    header.setUint32(4, 1, Endian.little); // Version 1
-    header.setUint32(8, nPos, Endian.little);
-    header.setUint32(12, nKeep, Endian.little);
-
-    final allBytes = Uint8List(headerSize + payload.length);
-    allBytes.setAll(0, header.buffer.asUint8List());
-    allBytes.setAll(headerSize, payload);
-    return allBytes;
-  }
-
   ServiceSession _requireSession(String id) {
     final session = _sessions[id];
     if (session == null) {
@@ -1317,100 +1285,6 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
           "Session $id does not exist. Call createSession first.");
     }
     return session;
-  }
-
-  Pointer<llama_sampler> _initializeSampler(SamplerParams samplerParams) {
-    final sparams = lib.llama_sampler_chain_default_params();
-    final smpl = lib.llama_sampler_chain_init(sparams);
-
-    if (samplerParams.greedy) {
-      lib.llama_sampler_chain_add(smpl, lib.llama_sampler_init_greedy());
-      return smpl;
-    }
-
-    final grammarStrPtr = samplerParams.grammarStr.toNativeUtf8().cast<Char>();
-    final grammarRootPtr =
-        samplerParams.grammarRoot.toNativeUtf8().cast<Char>();
-
-    if (samplerParams.grammarStr.isNotEmpty) {
-      final grammar = lib.llama_sampler_init_grammar(
-        _sharedModel.vocab,
-        grammarStrPtr,
-        grammarRootPtr,
-      );
-      if (grammar != nullptr) lib.llama_sampler_chain_add(smpl, grammar);
-    }
-
-    malloc.free(grammarStrPtr);
-    malloc.free(grammarRootPtr);
-
-    lib.llama_sampler_chain_add(
-      smpl,
-      lib.llama_sampler_init_penalties(
-        samplerParams.penaltyLastTokens,
-        samplerParams.penaltyRepeat,
-        samplerParams.penaltyFreq,
-        samplerParams.penaltyPresent,
-      ),
-    );
-
-    lib.llama_sampler_chain_add(
-        smpl, lib.llama_sampler_init_top_k(samplerParams.topK));
-    lib.llama_sampler_chain_add(
-        smpl, lib.llama_sampler_init_top_p(samplerParams.topP, 1));
-    lib.llama_sampler_chain_add(
-        smpl, lib.llama_sampler_init_min_p(samplerParams.minP, 1));
-    lib.llama_sampler_chain_add(
-        smpl, lib.llama_sampler_init_temp(samplerParams.temp));
-    lib.llama_sampler_chain_add(
-        smpl, lib.llama_sampler_init_dist(samplerParams.seed));
-
-    return smpl;
-  }
-
-  SharedModelHandle _acquireModel(String path, ModelParams params) {
-    final key = ModelCacheKey(path, params);
-    final cached = _modelCache[key];
-    if (cached != null) {
-      cached.refs++;
-      return cached;
-    }
-
-    final mp = params.get();
-    final modelPathPtr = path.toNativeUtf8().cast<Char>();
-
-    Pointer<llama_model> loadedModel = nullptr;
-    Pointer<llama_vocab> vocab = nullptr;
-
-    try {
-      loadedModel = lib.llama_load_model_from_file(modelPathPtr, mp);
-      if (loadedModel == nullptr) {
-        throw LlamaException("Could not load model at $path");
-      }
-      vocab = lib.llama_model_get_vocab(loadedModel);
-    } finally {
-      malloc.free(modelPathPtr);
-    }
-
-    final handle =
-        SharedModelHandle(model: loadedModel, vocab: vocab, key: key);
-    _modelCache[key] = handle;
-    return handle;
-  }
-
-  void _releaseModel(SharedModelHandle handle) {
-    handle.refs--;
-    if (handle.refs > 0) return;
-
-    if (handle.key != null) {
-      _modelCache.remove(handle.key);
-    } else {
-      _modelCache.removeWhere((_, h) => identical(h, handle));
-    }
-
-    if (handle.model.address != 0) {
-      lib.llama_free_model(handle.model);
-    }
   }
 
   String _decodeToken(ServiceSession session, int tokenId) {
@@ -1504,7 +1378,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
       _mctx = nullptr;
     }
 
-    _releaseModel(_sharedModel);
+    ModelCache.release(lib: lib, handle: _sharedModel);
   }
 
   /// Manually saves the current state of a session to a specific file path.
@@ -1525,7 +1399,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
         // Extract directly from C++ context
         lib.llama_state_seq_get_data(_context, dataPtr, size, seqId);
         final payload = dataPtr.asTypedList(size);
-        final wrapped = _encodeStateWithHeader(
+        final wrapped = StateCodec.encode(
           payload,
           nPos: session.nPos,
           nKeep: session.nKeep,
@@ -1537,7 +1411,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
     }
     // Case 2: Session is WARM (Currently in RAM buffer)
     else if (session.tier == SessionTier.warm && session.stateBuffer != null) {
-      final wrapped = _encodeStateWithHeader(
+      final wrapped = StateCodec.encode(
         session.stateBuffer!,
         nPos: session.nPos,
         nKeep: session.nKeep,
@@ -1547,8 +1421,8 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
     // Case 3: Session is COLD (Already on disk in the default location)
     else if (session.tier == SessionTier.cold && session.coldFilePath != null) {
       final bytes = await File(session.coldFilePath!).readAsBytes();
-      final decoded = _decodeStateFile(bytes);
-      final wrapped = _encodeStateWithHeader(
+      final decoded = StateCodec.decode(bytes);
+      final wrapped = StateCodec.encode(
         decoded.payload,
         nPos: decoded.nPos ?? session.nPos,
         nKeep: decoded.nKeep ?? session.nKeep,
@@ -1571,10 +1445,14 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
 
     try {
       final bytes = await file.readAsBytes();
-      final decoded = _decodeStateFile(bytes);
+      final decoded = StateCodec.decode(bytes);
 
       // Initialize a new WARM session (it will be moved to HOT when a prompt is sent)
-      final sampler = _initializeSampler(defaultSamplerParams);
+      final sampler = SamplerFactory.build(
+        lib: lib,
+        vocab: _sharedModel.vocab,
+        params: defaultSamplerParams,
+      );
 
       final session = ServiceSession(
         id: sessionId,
@@ -1598,6 +1476,7 @@ App RAM:     ${currentRss.toStringAsFixed(1)} MB (RSS)
       _sessions[sessionId] = session;
       return true;
     } catch (e) {
+      // ignore: avoid_print
       print("Error loading session from $path: $e");
       return false;
     }
