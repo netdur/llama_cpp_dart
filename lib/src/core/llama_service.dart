@@ -644,11 +644,6 @@ class LlamaService {
         // Round-robin rotation
         final int rotateStart =
             (_lastScheduledSessionIndex + 1) % activeSessions.length;
-        final rotatedSessions = [
-          ...activeSessions.sublist(rotateStart),
-          ...activeSessions.sublist(0, rotateStart),
-        ];
-
         final passes = _visionEnabled ? [false, true] : [false];
         bool didWork = false;
 
@@ -664,7 +659,9 @@ class LlamaService {
           final Set<int> batchSeqIds = {};
 
           // Fill batch
-          for (final session in rotatedSessions) {
+          for (int i = 0; i < activeSessions.length; i++) {
+            final index = (rotateStart + i) % activeSessions.length;
+            final session = activeSessions[index];
             if (session.status != LlamaStatus.generating) continue;
 
             final ridAtSchedule = session.requestId;
@@ -722,7 +719,9 @@ class LlamaService {
               }
             }
 
-            final int quota = min(available, _maxTokensPerSessionPerBatch);
+            final int sessionCap =
+                session.pendingItems.length > 1 ? _nBatch : _maxTokensPerSessionPerBatch;
+            final int quota = min(available, sessionCap);
 
             if (isEmbeddingPass) {
               final remaining = item.remainingEmbeddingTokens;
