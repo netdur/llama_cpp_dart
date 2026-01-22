@@ -589,12 +589,16 @@ class LlamaService {
   // -------------------- Scheduling loop --------------------
 
   Future<void> _runLoop() async {
+    final sliceTimer = Stopwatch()..start();
     try {
       while (!_disposed) {
         if (_stopSignal.isCompleted) break;
 
-        // Cooperative yield
-        await Future.delayed(Duration.zero);
+        // Cooperative yield (time-sliced)
+        if (sliceTimer.elapsedMilliseconds > 10) {
+          await Future.delayed(Duration.zero);
+          sliceTimer.reset();
+        }
 
         if (_memoryJanitorTimer.elapsed.inSeconds >= 5) {
           _memoryJanitorTimer.reset();
@@ -908,6 +912,7 @@ class LlamaService {
           if (!_workSignal.isCompleted && !_stopSignal.isCompleted) {
             await Future.any([_workSignal.future, _stopSignal.future]);
           }
+          sliceTimer.reset();
           if (_workSignal.isCompleted) _workSignal = Completer<void>();
         }
       }
