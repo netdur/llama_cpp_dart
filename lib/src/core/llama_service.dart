@@ -967,7 +967,7 @@ class LlamaService {
     if (_disposed) return;
     _disposed = true;
 
-    _stopSignal.complete();
+    if (!_stopSignal.isCompleted) _stopSignal.complete();
     if (!_workSignal.isCompleted) _workSignal.complete();
 
     if (_loopFuture != null) {
@@ -1121,48 +1121,56 @@ class LlamaService {
 
     final newSeqId = _freeSeqIds.removeLast();
 
-    Uint8List? data;
-    if (session.tier == SessionTier.cold) {
-      final path = session.coldFilePath;
-      if (path == null) {
-        throw LlamaException("Session ${session.id} has no archive path");
-      }
-      final bytes = await File(path).readAsBytes();
-      final decoded = StateCodec.decode(bytes);
-      data = decoded.payload;
-      if (decoded.hasHeader) {
-        session.nPos = decoded.nPos ?? session.nPos;
-        session.nKeep = decoded.nKeep ?? session.nKeep;
-      }
-    } else {
-      data = session.stateBuffer;
-    }
-
-    if (data == null) {
-      if (session.tier == SessionTier.warm) {
-        final mem = lib.llama_get_memory(_context);
-        lib.llama_memory_seq_rm(mem, newSeqId, -1, -1);
-        session.seqId = newSeqId;
-        session.tier = SessionTier.hot;
-        _sessionsBySeqId[newSeqId] = session;
-        return;
-      }
-      throw LlamaException("Session ${session.id} has no state to restore");
-    }
-
-    final size = data.length;
-    final dataPtr = malloc<Uint8>(size);
     try {
-      dataPtr.asTypedList(size).setAll(0, data);
-      lib.llama_state_seq_set_data(_context, dataPtr, size, newSeqId);
-    } finally {
-      malloc.free(dataPtr);
-    }
+      Uint8List? data;
+      if (session.tier == SessionTier.cold) {
+        final path = session.coldFilePath;
+        if (path == null) {
+          throw LlamaException("Session ${session.id} has no archive path");
+        }
+        final bytes = await File(path).readAsBytes();
+        final decoded = StateCodec.decode(bytes);
+        data = decoded.payload;
+        if (decoded.hasHeader) {
+          session.nPos = decoded.nPos ?? session.nPos;
+          session.nKeep = decoded.nKeep ?? session.nKeep;
+        }
+      } else {
+        data = session.stateBuffer;
+      }
 
-    session.seqId = newSeqId;
-    session.tier = SessionTier.hot;
-    session.stateBuffer = null;
-    _sessionsBySeqId[newSeqId] = session;
+      if (data == null) {
+        if (session.tier == SessionTier.warm) {
+          final mem = lib.llama_get_memory(_context);
+          lib.llama_memory_seq_rm(mem, newSeqId, -1, -1);
+          session.seqId = newSeqId;
+          session.tier = SessionTier.hot;
+          _sessionsBySeqId[newSeqId] = session;
+          return;
+        }
+        throw LlamaException("Session ${session.id} has no state to restore");
+      }
+
+      final size = data.length;
+      final dataPtr = malloc<Uint8>(size);
+      try {
+        dataPtr.asTypedList(size).setAll(0, data);
+        lib.llama_state_seq_set_data(_context, dataPtr, size, newSeqId);
+      } finally {
+        malloc.free(dataPtr);
+      }
+
+      session.seqId = newSeqId;
+      session.tier = SessionTier.hot;
+      session.stateBuffer = null;
+      _sessionsBySeqId[newSeqId] = session;
+    } catch (_) {
+      if (session.seqId != newSeqId &&
+          !_sessionsBySeqId.containsKey(newSeqId)) {
+        _freeSeqIds.add(newSeqId);
+      }
+      rethrow;
+    }
   }
 
   void _printMetrics(String sessionId, ServiceSession session) {
