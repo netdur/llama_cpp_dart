@@ -2,6 +2,7 @@
 enum PromptFormatType {
   raw,
   chatml,
+  chatmlThinking,
   alpaca,
   gemma,
   harmony,

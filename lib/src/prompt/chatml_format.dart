@@ -44,7 +44,7 @@ class ChatMLFormat extends PromptFormat {
     } else if (messages.isNotEmpty && messages.last['role'] == 'assistant') {
       final lastContent = messages.last['content'];
       if (lastContent == null || lastContent.toString().isEmpty) {
-         buffer.write(outputSequence);
+        buffer.write(outputSequence);
       }
     }
 
