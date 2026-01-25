@@ -9,7 +9,8 @@ enum ChatFormat {
   alpaca,
   gemma,
   harmony,
-  qwen3;
+  qwen3,
+  chatmlThinking;
 
   String get value => name;
 }
@@ -161,6 +162,9 @@ class ChatHistory {
       case ChatFormat.qwen3:
         return _exportQwen3Jinja(processedMsgs,
             leaveLastAssistantOpen: leaveLastAssistantOpen);
+      case ChatFormat.chatmlThinking:
+        return _exportChatMLThinking(processedMsgs,
+            leaveLastAssistantOpen: leaveLastAssistantOpen);
     }
   }
 
@@ -174,6 +178,47 @@ class ChatHistory {
         buffer.writeln('<|im_end|>');
       }
     }
+    return buffer.toString();
+  }
+
+  String _exportChatMLThinking(List<Message> msgs,
+      {bool leaveLastAssistantOpen = false}) {
+    final buffer = StringBuffer();
+    for (int i = 0; i < msgs.length; i++) {
+      final message = msgs[i];
+      final isLast = i == msgs.length - 1;
+
+      buffer.write('<|im_start|>${message.role.value}\n');
+      buffer.write(message.content);
+
+      final isAssistantAndOpen =
+          leaveLastAssistantOpen && isLast && message.role == Role.assistant;
+
+      if (!isAssistantAndOpen) {
+        buffer.write('<|im_end|>\n');
+      } else {
+        // It's the last message, it's assistant, and we want to leave it open.
+        // In this specific format, "open" means we just wrote the content?
+        // Actually, if we are appending, we usually don't have content yet.
+      }
+    }
+
+    // If we want to prompt the assistant to start:
+    if (leaveLastAssistantOpen &&
+        msgs.isNotEmpty &&
+        msgs.last.role != Role.assistant) {
+      buffer.write('<|im_start|>assistant\n<|thought|>');
+    } else if (leaveLastAssistantOpen &&
+        msgs.isNotEmpty &&
+        msgs.last.role == Role.assistant) {
+      // If the last message IS assistant and we want it open,
+      // AND it was empty/partial, the loop above handled content.
+      // We might need to ensure <|thought|> is there if it's empty?
+      if (msgs.last.content.isEmpty) {
+        buffer.write('<|thought|>');
+      }
+    }
+
     return buffer.toString();
   }
 
@@ -322,8 +367,8 @@ class ChatHistory {
     }
 
     // Find the last user message index to mirror the template's thinking logic.
-    int lastUserIdx = trimmedMsgs.lastIndexWhere(
-        (m) => m.role == Role.user || m.role == Role.system);
+    int lastUserIdx = trimmedMsgs
+        .lastIndexWhere((m) => m.role == Role.user || m.role == Role.system);
     if (lastUserIdx < 0) lastUserIdx = trimmedMsgs.length - 1;
 
     for (var i = startIdx; i < trimmedMsgs.length; i++) {
@@ -331,12 +376,10 @@ class ChatHistory {
 
       switch (message.role) {
         case Role.user:
-          buffer
-              .write('<|im_start|>user\n${message.content}<|im_end|>\n');
+          buffer.write('<|im_start|>user\n${message.content}<|im_end|>\n');
           break;
         case Role.system:
-          buffer
-              .write('<|im_start|>system\n${message.content}<|im_end|>\n');
+          buffer.write('<|im_start|>system\n${message.content}<|im_end|>\n');
           break;
         case Role.assistant:
           final content = message.content;
@@ -348,8 +391,8 @@ class ChatHistory {
           const thinkClose = '</think>';
           if (content.contains(thinkOpen) && content.contains(thinkClose)) {
             final beforeClose = content.split(thinkClose).first;
-            final afterClose = content.substring(
-                content.indexOf(thinkClose) + thinkClose.length);
+            final afterClose = content
+                .substring(content.indexOf(thinkClose) + thinkClose.length);
             if (beforeClose.contains(thinkOpen)) {
               reasoning = beforeClose.split(thinkOpen).last.trim();
               assistantContent = afterClose.trimLeft();

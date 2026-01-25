@@ -11,6 +11,7 @@ export 'src/core/llama_service.dart';
 export 'src/prompt/prompt_format.dart';
 export 'src/prompt/alpaca_format.dart';
 export 'src/prompt/chatml_format.dart';
+export 'src/prompt/chatml_thinking_format.dart';
 export 'src/prompt/gemma_format.dart';
 
 export 'src/isolate/isolate_child.dart';
