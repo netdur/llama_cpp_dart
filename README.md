@@ -1,181 +1,219 @@
-# LLAMA.CPP DART
+# llama_cpp_dart
 
-A high-performance Dart binding for llama.cpp, enabling advanced text generation capabilities in both Dart and Flutter applications with flexible integration options.
+Dart FFI binding for [llama.cpp](https://github.com/ggml-org/llama.cpp), targeting **iOS, Android, and macOS** for Flutter mobile apps.
 
-## Overview
+> **Status:** 0.9.x — clean rewrite of the 0.2 binding. Public API will likely have one more breaking pass before 1.0.
 
-This library provides three levels of abstraction for integrating llama.cpp into your Dart/Flutter projects, allowing you to choose the right balance between control and convenience:
+## Highlights
 
-1. **Low-Level FFI Bindings**: Direct access to llama.cpp functions
-2. **High-Level Wrapper**: Simplified, object-oriented API
-3. **Managed Isolate**: Flutter-friendly, non-blocking implementation
+- Streaming token output via `Stream<GenerationEvent>`.
+- Off-thread inference via `LlamaEngine` worker isolate (UI never blocks).
+- **Multimodal**: vision and audio through llama.cpp's `mtmd` (image and audio bitmaps go in, the model emits text).
+- **Chat**: uses the model's embedded Jinja chat template via `llama_chat_apply_template`. Falls back to manual prompt rendering for models with custom Jinja the C API can't parse.
+- **Persistence**: KV-cache + token history + chat messages save/restore to a single self-describing file with metadata-validated reload.
+- **Context shift**: `llama-server`-style auto-shift when the context fills (off by default, opt in per request, blocked on caches that can't shift).
+- Apple **Metal** + Android **CPU** acceleration. Hexagon NPU is post-1.0.
 
-## Usage Examples
+## Install
 
-### Low-Level FFI Bindings
-Direct llama.cpp integration with maximum control:
-```dart
-import 'package:llama_cpp_dart/src/core/llama_cpp.dart';
+The Dart package contains no native binaries — they're shipped per platform from GitHub Releases.
 
-void main() {
-  final lib = llama_cpp(DynamicLibrary.open("libllama.dylib"));
-  // Initialize model, context, and sampling parameters
-  // See examples/low_level.dart for complete example
-}
-```
-
-check examples:
-- [simple](example/simple.dart)
-- [embedding](example/embedding_raw.dart)
-
-### High-Level Wrapper
-Simplified API for common use cases:
-```dart
-import 'package:llama_cpp_dart/llama_cpp_dart.dart';
-
-void main() {
-  Llama.libraryPath = "libllama.dylib";
-  final llama = Llama("path/to/model.gguf");
-  
-  llama.setPrompt("2 * 2 = ?");
-  while (true) {
-    var (token, done) = llama.getNext();
-    print(token);
-    if (done) break;
-  }
-  llama.dispose();
-}
-```
-
-check examples:
-- [test](example/test.dart)
-- [rag](example/rag.dart)
-- [chat](example/chat_cli.dart)
-
-
-### Managed Isolate
-Perfect for Flutter applications:
-```dart
-import 'package:llama_cpp_dart/llama_cpp_dart.dart';
-
-void main() async {
-  final loadCommand = LlamaLoad(
-    path: "path/to/model.gguf",
-    modelParams: ModelParams(),
-    contextParams: ContextParams(),
-    samplingParams: SamplerParams(),
-    format: ChatMLFormat(),
-  );
-
-  final llamaParent = LlamaParent(loadCommand);
-  await llamaParent.init();
-
-  llamaParent.stream.listen((response) => print(response));
-  llamaParent.sendPrompt("2 * 2 = ?");
-}
-```
-
-check examples:
-- [test](example/test_isolated.dart)
-- [chat](example/chat_cli_isolated.dart)
-
-## Getting Started
-
-### Prerequisites
-- Dart SDK (for console applications)
-- Flutter SDK (for Flutter applications)
-- Compiled llama.cpp shared library
-
-### Building llama.cpp Library
-
-1. Clone the llama.cpp repository:
-```bash
-git clone https://github.com/ggml-org/llama.cpp
-```
-
-2. Compile into a shared library:
-- Windows: Outputs .dll
-- Linux: Outputs .so
-- macOS: Outputs .dylib
-
-check [BUILD.md](BUILD.md)
-
-3. Place the compiled library in your project's accessible directory
-
-## Installation
-
-Add to your `pubspec.yaml`:
 ```yaml
 dependencies:
-  llama_cpp_dart: ^latest_version
+  llama_cpp_dart: ^0.9.0
 ```
 
-## Model Selection Guide
+Then download the platform binary for your project:
 
-When choosing and using LLM models with this library, consider the following:
+| Platform | Artifact | Where to put it |
+|---|---|---|
+| macOS (dev/test) | `libllama.dylib` + sibling `libggml*.dylib`, `libmtmd.dylib` | anywhere on disk; pass path to `LlamaEngine.spawn` |
+| iOS / macOS app | `llama.xcframework` (3 slices: `ios-arm64`, `ios-arm64-simulator`, `macos-arm64`) | drag into Xcode → "Embed & Sign" → call `LlamaEngine.spawnFromProcess` |
+| Android | `llama-cpp-dart.aar` (CPU, arm64-v8a) | `android/app/libs/` and `implementation files('libs/llama-cpp-dart.aar')` in Gradle |
 
-### Use-Case Specific Models
+Build artifacts yourself with:
 
-Different models excel at different tasks:
+```bash
+tool/build_native.sh --platform macos --with-mtmd
+tool/build_apple_xcframework.sh
+tool/build_android_aar.sh
+```
 
-- **Text Generation**: Most LLMs work well for general text generation.
-- **Embeddings**: Not all models produce high-quality embeddings for semantic search. For example, while Gemma 3 can generate embeddings, it's not optimized for vector search. Instead, consider dedicated embedding models like E5, BGE, or SGPT.
-- **Code Generation**: Models like CodeLlama or StarCoder are specifically trained for code.
-- **Multilingual**: Some models have better support for non-English languages.
+## Quick start
 
-### Chat Formats
-
-Each model family expects prompts in a specific format:
-
-- **Llama 2**: Uses a specific format with `[INST]` and `[/INST]` tags
-- **ChatML**: Used by models like Claude and GPT
-- **Gemma**: Has its own system prompt format
-- **Mistral/Mixtral**: Uses `<s>` tags in a particular way
-
-Using the correct format is critical for optimal results. Our library provides common format templates:
+### Streaming generation
 
 ```dart
-// Example of setting the right chat format
-final loadCommand = LlamaLoad(
-  path: "path/to/llama2.gguf",
-  format: Llama2ChatFormat(), // Choose the correct format for your model
+final engine = await LlamaEngine.spawn(
+  libraryPath: '/path/to/libllama.dylib',
+  modelParams: ModelParams(path: '/path/to/model.gguf', gpuLayers: 99),
+  contextParams: const ContextParams(nCtx: 4096),
 );
 
-// Other available formats
-// ChatMLFormat()
-// GemmaChatFormat()
-// MistralChatFormat()
-// Custom formats can be created by implementing the ChatFormat interface
+final session = await engine.createSession();
+await for (final event in session.generate(
+  prompt: 'Once upon a time',
+  addSpecial: true,
+  sampler: const SamplerParams(temperature: 0.7, topP: 0.9),
+  maxTokens: 128,
+)) {
+  switch (event) {
+    case TokenEvent():
+      stdout.write(event.text);
+    case ShiftEvent():
+      // KV was shifted to make room. Bookkeeping; usually ignored.
+    case DoneEvent():
+      stdout.writeln('\n[${event.reason}, ${event.generatedCount} tokens]');
+  }
+}
+
+await session.dispose();
+await engine.dispose();
 ```
 
-### Model Size Considerations
+### Chat with a model whose template `llama_chat_apply_template` recognizes
 
-Balance quality and performance:
+```dart
+final chat = await engine.createChat();
+chat.addSystem('You are concise.');
+chat.addUser('What is 2+2?');
 
-- **7B models**: Fastest, lowest memory requirements, but less capable
-- **13-14B models**: Good balance of performance and quality
-- **30-70B models**: Highest quality, but significantly higher memory and processing requirements
+await for (final event in chat.generate(maxTokens: 64)) {
+  if (event is TokenEvent) stdout.write(event.text);
+}
+// chat.messages now holds [system, user, assistant]
+```
 
-### Quantization
+For models that ship custom Jinja the matcher can't parse (some Unsloth quants), pass a sentinel string:
 
-Models come in different quantization levels that affect size, speed, and quality:
+```dart
+chat.generate(templateOverride: KnownChatTemplates.gemma);
+```
 
-- **F16**: Highest quality, largest size
-- **Q4_K_M**: Good balance of quality and size
-- **Q3_K_M**: Smaller size, slightly reduced quality
-- **Q2_K**: Smallest size, noticeable quality degradation
+If even that fails, format the prompt yourself and use `EngineSession.generate(prompt:)` directly. See `example/probes/gemma_chat.dart` for a worked example.
 
-For most applications, Q4_K_M provides an excellent balance.
+### Multimodal (vision + audio)
 
-### Hardware Considerations
+```dart
+final engine = await LlamaEngine.spawn(
+  libraryPath: '/path/to/libllama.dylib',
+  modelParams: ModelParams(path: '/path/to/llm.gguf', gpuLayers: 99),
+  contextParams: const ContextParams(nCtx: 4096),
+  multimodalParams: const MultimodalParams(mmprojPath: '/path/to/mmproj.gguf'),
+);
 
-- **CPU**: All models work on CPU, but larger models require more RAM
-- **Metal (Apple)**: Significant speed improvements on Apple Silicon
-- **CUDA (NVIDIA)**: Best performance for NVIDIA GPUs
-- **ROCm (AMD)**: Support for AMD GPUs
+print('vision=${engine.supportsVision} audio=${engine.supportsAudio} '
+      'rate=${engine.audioSampleRate}');
 
-Ensure your compiled llama.cpp library includes support for your target hardware.
+final chat = await engine.createChat();
+chat.addUser(
+  'Describe this image.',
+  media: [LlamaMedia.imageFile('cat.jpg')],
+);
+
+await for (final event in chat.generate(maxTokens: 128)) {
+  if (event is TokenEvent) stdout.write(event.text);
+}
+```
+
+`LlamaMedia` accepts images (jpg/png/bmp/gif via stb_image) and audio (wav/mp3/flac via miniaudio) — both decoded inside libmtmd. Use `imageFile`/`imageBytes`/`audioFile`/`audioBytes` constructors.
+
+### Persistence
+
+```dart
+await session.saveState('/tmp/conversation.lcdc');
+
+// later, possibly after engine restart:
+await otherSession.loadState('/tmp/conversation.lcdc');
+```
+
+The file format includes a metadata header (model identity, context params, mmproj identity, token checksum) so loading into an incompatible engine throws `LlamaStateException` with a discriminator (`modelMismatch`, `contextTooSmall`, `multimodalMismatch`, ...) instead of corrupting state.
+
+### Context shift
+
+```dart
+session.generate(
+  prompt: longPrompt,
+  shiftPolicy: ContextShiftPolicy.auto,
+  shift: const ContextShift(nKeep: -1),  // preserve the original prompt
+);
+```
+
+When the next decode would push past `nCtx`, the engine drops the oldest non-keep tokens and slides the rest left, exactly like llama-server's `--context-shift`. Check `engine.canShift` first — recurrent and iSWA caches (Qwen3 SWA, Gemma 3 4B) report false and the policy throws.
+
+## Public API surface
+
+```
+LlamaEngine        // worker isolate handle
+EngineSession      // raw token-stream session
+EngineChat         // chat-style session with message history
+LlamaMedia         // image or audio attachment
+
+ModelParams
+ContextParams
+SamplerParams
+MultimodalParams
+ContextShiftPolicy / ContextShift
+
+GenerationEvent (sealed): TokenEvent | ShiftEvent | DoneEvent
+StopReason (sealed):      StopEog | StopMaxTokens | StopUserAbort
+ChatMessage / KnownChatTemplates
+StateMetadata / LlamaStateException
+LlamaLibrary       // load native lib
+
+LlamaModel / LlamaContext / LlamaSession / LlamaBatch / Tokenizer / Sampler
+                   // synchronous API for advanced use; LlamaEngine is the
+                   // recommended entry point for app code
+```
+
+## Loading the native library
+
+| Where | How |
+|---|---|
+| `dart test`, CLI, macOS dev | `LlamaEngine.spawn(libraryPath: '/path/to/libllama.dylib', ...)` |
+| iOS / macOS app with xcframework | `LlamaEngine.spawnFromProcess(...)` (Xcode static-links the framework into the app binary) |
+| Android with AAR / jniLibs | `LlamaEngine.spawn(libraryPath: 'libllama.so', ...)` (basename — Android resolves) |
+
+`mtmd` resolution mirrors the same logic — opened by basename if `libllama` was a basename, by sibling path otherwise.
+
+## What's not in this binding
+
+- **No HTTP server**, no OpenAI-compatible surface — call llama.cpp directly.
+- **No MCP, no agent runtime** — application-layer concerns.
+- **No Hexagon NPU yet** — needs the Hexagon SDK install. Tracked as M8.5 in `plan.md`.
+- **No real Jinja parser** — `llama_chat_apply_template` does substring-pattern matching against ~55 known families. Custom Jinja templates fall back to manual prompt rendering. See `KnownChatTemplates` and the gemma probes for the workaround.
+
+## Layout
+
+```
+lib/
+  llama_cpp_dart.dart          // public exports
+  src/
+    ffi/         bindings.dart, library_loader.dart, log.dart
+    model/       LlamaModel + vocab + ModelParams
+    context/     LlamaContext + ContextParams
+    batch/       LlamaBatch
+    sampling/    Sampler + SamplerFactory + SamplerParams
+    tokenizer/   Tokenizer + Utf8Accumulator
+    generation/  Generator + Request + GenerationEvent + ShiftPolicy
+    chat/        ChatMessage + ChatTemplate + KnownChatTemplates
+    multimodal/  MultimodalContext + LlamaMedia + MultimodalParams
+    session/     LlamaSession + StateCodec
+    isolate/     LlamaEngine + EngineSession + EngineChat + worker
+    types/       exception hierarchy
+
+tool/                          // build scripts (macOS dylib, Apple xcframework, Android AAR)
+example/probes/                // runnable Dart scripts demonstrating each subsystem
+test/                          // pure-Dart and integration tests
+plan.md                        // milestone-by-milestone roadmap
+```
+
+## Versioning
+
+`0.9.x` is the rewrite line. The Dart API is mostly stable but **may break once more** before 1.0 — most likely around: real Jinja support, on-device validation findings, and final naming for chat-template/policy knobs. Pin to a minor when you ship.
+
+llama.cpp is pinned per release in `src/llama.cpp` (git submodule). Bumps are tested against the full suite before tagging.
 
 ## License
 
-This project is licensed under the MIT License - see the `LICENSE.md` file for details.
+MIT.

@@ -1,46 +1,34 @@
 name: llama_cpp_dart
-description: "Dart binding for llama.cpp --- high level wrappers for both Dart and Flutter"
-version: 0.2.3 # 0e4ebeb05796951fed7885763a73ada18b42e9ca
+description: Dart FFI binding for llama.cpp targeting iOS, Android, and macOS.
+version: 0.9.0-dev.0
 homepage: https://github.com/netdur/llama_cpp_dart
 repository: https://github.com/netdur/llama_cpp_dart
 
 environment:
-  sdk: '>=3.2.0 <4.0.0'
-  flutter: ">=1.20.0"
+  sdk: ^3.5.0
 
 dependencies:
-  flutter:
-    sdk: flutter
   ffi: ^2.1.5
-  typed_isolate: ^6.0.0
-  uuid: ^4.5.1
   image: ^4.7.2
 
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^6.0.0
   ffigen: ^20.1.1
-  path_provider: ^2.1.5
-  system_info2: ^4.0.0
-  http: ^1.6.0
-  intl: 0.20.2
+  lints: ^5.0.0
+  test: ^1.25.0
 
-analyzer:
-  exclude:
-    - 'lib/src/core/llama_cpp.dart'
-
-ffigen: # dart run ffigen
-  name: 'llama_cpp'
-  description: 'llama.cpp binding'
-  output: 'lib/src/core/llama_cpp.dart'
-  # ignore-source-errors: true
+ffigen:
+  name: 'LlamaBindings'
+  description: 'Raw FFI bindings for llama.cpp (llama.h + mtmd.h). Do not edit by hand.'
+  output: 'lib/src/ffi/bindings.dart'
   headers:
     entry-points:
       - 'src/llama.cpp/include/llama.h'
       - 'src/llama.cpp/tools/mtmd/mtmd.h'
+      - 'src/llama.cpp/tools/mtmd/mtmd-helper.h'
   compiler-opts:
-    - '-I/usr/lib/clang/17/include'
+    - '-resource-dir=/Library/Developer/CommandLineTools/usr/lib/clang/17'
     - '-Isrc/llama.cpp/ggml/include'
     - '-Isrc/llama.cpp/include'
     - '-Isrc/llama.cpp/tools/mtmd'
+  preamble: |
+    // ignore_for_file: type=lint, type=warning, unused_field, unused_element, camel_case_types, non_constant_identifier_names

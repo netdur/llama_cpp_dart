@@ -1,0 +1,74 @@
+name: build-apple
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: macOS dylib + Apple xcframework
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: install ninja
+        run: brew install ninja
+
+      - name: select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      # ----- macOS dylib (dev / dart test artifact) -----
+      - name: build macOS dylib
+        run: tool/build_native.sh --platform macos --with-mtmd --clean
+
+      - name: stage macOS dylib bundle
+        run: |
+          mkdir -p staging/macos
+          cp -R build/macos/install/lib/* staging/macos/
+          cd staging
+          zip -r ../macos-libllama.zip macos
+          cd ..
+          shasum -a 256 macos-libllama.zip > macos-libllama.zip.sha256
+
+      - name: upload macOS dylib bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-libllama
+          path: |
+            macos-libllama.zip
+            macos-libllama.zip.sha256
+
+      # ----- Apple xcframework (3 slices: iOS device, iOS sim, macOS) -----
+      - name: build xcframework
+        run: tool/build_apple_xcframework.sh --clean
+
+      - name: stage xcframework bundle
+        run: |
+          cd build/apple
+          zip -r ../../llama-xcframework.zip llama.xcframework
+          cd ../..
+          shasum -a 256 llama-xcframework.zip > llama-xcframework.zip.sha256
+
+      - name: upload xcframework
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-xcframework
+          path: |
+            llama-xcframework.zip
+            llama-xcframework.zip.sha256
+
+      # ----- attach to GitHub Release on tag push -----
+      - name: attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            macos-libllama.zip
+            macos-libllama.zip.sha256
+            llama-xcframework.zip
+            llama-xcframework.zip.sha256
+          fail_on_unmatched_files: true

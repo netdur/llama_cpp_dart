@@ -41,3 +41,5 @@ neo
 *.bin
 
 bin/linux-cuda
+# Local Claude Code settings (per-developer; not part of the project surface).
+.claude/

@@ -1,4 +1,20 @@
-include: package:flutter_lints/flutter.yaml
+include: package:lints/recommended.yaml
 
-# Additional information about this file can be found at
-# https://dart.dev/guides/language/analysis-options
+analyzer:
+  exclude:
+    - 'lib/src/ffi/bindings.dart'
+    - 'src/**'
+    - 'build/**'
+
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+linter:
+  rules:
+    - prefer_final_locals
+    - prefer_final_in_for_each
+    - avoid_print
+    - directives_ordering
+    - prefer_single_quotes

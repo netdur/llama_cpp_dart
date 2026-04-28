@@ -1,8 +1,89 @@
+# Changelog
+
+## 0.9.0-dev.0 — full rewrite
+
+This is effectively a new package. The 0.2.x line was a single-class FFI
+binding glued to a multi-target build system (server, CLI, MCP, multiple
+backends). 0.9.0 throws all of that away and rebuilds around three things:
+**Flutter mobile**, **modular FFI**, and **off-thread inference**.
+
+If you were on 0.2.x, see [MIGRATION.md](MIGRATION.md). The public API does
+not preserve names from 0.2.
+
+### What's new
+
+- `LlamaEngine` worker isolate — primary public API. Streaming token output
+  via `Stream<GenerationEvent>` (sealed: `TokenEvent` | `ShiftEvent` |
+  `DoneEvent`). Cancellation via stream subscription cancel.
+- `EngineSession` (raw prompt) and `EngineChat` (message-history with chat
+  template) on top of the engine isolate.
+- Multimodal (vision + audio) via llama.cpp's `mtmd` — image and audio
+  bytes go to the model unmodified; libmtmd handles decoding.
+- Persistence: `EngineSession.saveState/loadState` and
+  `EngineChat.saveState/loadState` with metadata-validated reload
+  (`StateMetadata`, `LlamaStateException` with discriminator).
+- `llama-server`-style context shift (`ContextShiftPolicy.auto`) gated on
+  `engine.canShift` — falls back gracefully on iSWA / recurrent caches.
+- Three platform artifacts:
+  - macOS dylib for `dart test` (`tool/build_native.sh`)
+  - Apple xcframework with `ios-arm64` + `ios-arm64-simulator` +
+    `macos-arm64` slices (`tool/build_apple_xcframework.sh`)
+  - Android AAR for `arm64-v8a`, CPU + mtmd (`tool/build_android_aar.sh`)
+- `LlamaLibrary.load(path:)` for dylib loading and
+  `LlamaLibrary.loadFromProcess()` for static-linked iOS/macOS apps.
+
+### What's gone (vs 0.2.x)
+
+- The `Llama` god-class.
+- `LlamaParent` / `LlamaChild` / `IsolateScope` (replaced by
+  `LlamaEngine`).
+- `LlamaService` — the multi-session scheduler. Mobile apps do one
+  conversation at a time; multi-session can be added back as a higher
+  layer if needed.
+- The MCP client / server / agent surface.
+- `TextChunker` (RAG helper) — application-layer concern.
+- The `lib/src/prompt/` chat-format classes (ChatML, Alpaca, Gemma,
+  Harmony, ChatML-thinking). Modern llama.cpp embeds the Jinja chat
+  template in the GGUF; we use it via `llama_chat_apply_template`. For
+  models with custom Jinja the matcher can't parse, see
+  `KnownChatTemplates` and the manual-prompt workaround in
+  `example/probes/gemma_chat.dart`.
+- All non-mobile platform code: Linux, Windows, CUDA, OpenCL Linux,
+  Vulkan desktop. macOS is kept as a dev/test target only.
+- The bundled binary distribution path inside the Dart package. Native
+  artifacts ship from GitHub Releases instead.
+
+### Known limitations
+
+- Custom Jinja chat templates (some Unsloth quants) require manual prompt
+  rendering. Real Jinja support is post-1.0.
+- Hexagon NPU is not built. Needs the Hexagon SDK + Snapdragon toolchain
+  Docker image. Tracked as M8.5 in `plan.md`.
+- Multimodal generation does not auto-shift on context overflow (matches
+  llama-server's behaviour). Long multimodal sessions need to be
+  segmented at the application level.
+- Log silencing is off in the worker isolate — `Pointer.fromFunction`
+  callbacks crash when ggml's Metal init logs from a non-Dart thread.
+  Move to `NativeCallable.isolateGroupShared` is queued.
+- Cosmetic: `ggml_metal_device_free` asserts at process exit because the
+  worker doesn't dispose model/context (deliberate — disposing one
+  isolate's model crashes another's outstanding ops). The assert fires
+  after tests pass; harmless.
+
+---
+
+Older entries are preserved below for context. They describe the 0.2.x
+line, which has been removed.
+
+<details>
+<summary>0.2.x history</summary>
+
 ## 0.2.3
 *  **Performance**: Moved image embedding storage to native memory (C heap) to reduce Dart GC pressure and improve stability with high-resolution images.
 *  Fix memory leaks in session cancellation and disposal logic.
 
-## 0.2.2- allow freeing the active slot by switching/detaching and reselecting a fallback
+## 0.2.2
+*  allow freeing the active slot by switching/detaching and reselecting a fallback
 *  ensure isolate child always replies on dispose/free, even when already torn down
 *  keep parent subscription alive through shutdown so free-slot confirmations are received
 *  cancel scope work before freeing slots to avoid in-flight races
@@ -10,7 +91,7 @@
 
 ## 0.2.1
 * **Android**: Added OpenCL support for GPU acceleration (#91).
-* **Vision**: 
+* **Vision**:
     * Fixed crash in `mtmd` context disposal.
     * Stable Qwen3-VL support.
 * **Chat**: Added experimental support for Qwen3-VL chat format (`_exportQwen3Jinja`).
@@ -19,80 +100,7 @@
     * Fixed stream processing crash in chat.
 * **Core**: Updated `llama.cpp` submodule.
 
-## 0.2.0
-* llama.cpp 4ffc47cb2001e7d523f9ff525335bbe34b1a2858
-* Memory Safety: No more pointer being freed was not allocated crashes.
-* UTF-8 Safety: Emojis and foreign languages won't break generation.
-* Context Management: You can Append, Clear, or Save the brain.
-* Multi-Tenancy: You can handle multiple users (Slots) if you need to.
-* breakign changes:
-    Old: Llama(path, modelParams, contextParams, samplerParams, verbose)
-    New: Llama(path, modelParams: ..., contextParams: ..., samplerParams: ..., verbose: ...)
-* Parameter Serialization: ContextParams and ModelParams JSON serialization has changed. Enums (like LlamaRopeScalingType) now store their specific C-API integer values instead of Dart list indices. Old JSON configs may need migration.
-* Sampler Standardization: SamplerParams has been refactored to strictly match llama.cpp. Non-standard fields (e.g., xtcTemperature, topPKeep) have been renamed or removed.
-* RPC Removed: Removed rpcServers from ModelParams as it is no longer supported in the core struct.
+## 0.2.0 — and earlier
+See git history.
 
-
-## 0.1.2+1
-* forgot to update version
-
-## 0.1.2
-* removed flash_attn llama_context_default_params
-* removed softmax
-* updated llama.cpp to b8595b16e
-
-## 0.1.1
-* State load / save
-* llama.cpp 25ff6f7659f6a5c47d6a73eada5813f0495331f0
-* harmony prompting syntax
-* isolate has vision and verbose support 
-* mcp server / agent
-* scope generation stopping
-
-## 0.1.0
-* Multimodal support - vision
-
-## 0.0.9
-* Major internal refactoring to improve code organization and maintainability
-* Fixed critical bug where subsequent prompts would fail due to batch seq_id memory management
-* Improved position tracking for continuous conversation support
-* Enhanced error handling and debugging capabilities
-* Added foundation for future chat optimization features
-* Breaking change: Internal API restructuring (public API remains stable)
-
-## 0.0.8
-* disabled llava
-* compatible with llama.cpp 42ae10bb
-* add typed_isolate
-* removed llama processor
-
-## 0.0.7
-* updated binding
-* performance imporvement and bugs fix
-
-## 0.0.6
-
-* added initial support to load lora
-* dart cli example
-* fixed #3 by @danemadsen
-
-## 0.0.5
-
-* removed assets defination
-* added static property `Llama.libraryPath` to set library path, in order to support linux and other platforms
-
-## 0.0.4
-
-* `ModelParams` disabled options `splitsMode`, `tensorSplit` and `metadataOverride`
-
-## 0.0.3
-
-* LlamaProcessor now take context and model parameters
-
-## 0.0.2
-
-* refactored code to follow dart package structure
-
-## 0.0.1
-
-* TODO: Describe initial release.
+</details>

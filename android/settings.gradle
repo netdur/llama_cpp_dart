@@ -1,2 +1,0 @@
-rootProject.name = 'llama_cpp_dart'
-include ':llamalib'

@@ -1,115 +1,100 @@
-## Building Binaries
+# Building native artifacts
 
-The project includes llama.cpp as a submodule and requires native binaries for various platforms. Follow these steps to build the binaries:
+llama_cpp_dart ships three platform artifacts. The Dart package itself
+contains no binaries — these are produced from the pinned `src/llama.cpp`
+submodule and uploaded to GitHub Releases.
 
-### Prerequisites
+```bash
+git submodule update --init src/llama.cpp
+```
 
-- Xcode with Command Line Tools
-- A valid Apple Developer Team ID
+## macOS dylib (development / `dart test`)
 
-### Build Process
+```bash
+tool/build_native.sh --platform macos --with-mtmd
+```
 
-1. Make sure you've initialized the submodules:
-   ```bash
-   git submodule update --remote src/llama.cpp
-   git add src/llama.cpp
-   git commit -m "Bump llama.cpp submodule"
-   ```
+Output: `build/macos/install/lib/libllama.dylib` plus `libggml*.dylib` +
+`libmtmd.dylib`. `@loader_path` rpath baked in; sibling dylibs are picked
+up by `dyld` automatically.
 
-2. Navigate to the `darwin` directory:
-   ```bash
-   cd darwin
-   ```
+Used by:
 
-3. Create a custom build script (`build.sh`) with these contents:
-   ```bash
-   #!/bin/bash
-   
-   # Exit on error
-   set -e
-   
-   # Get the directory where the script is located
-   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-   
-   # Function to build and fix rpaths for a platform
-   build_platform() {
-       local platform=$1
-       local dev_team=$2
-       
-       echo "Building for ${platform}..."
-       bash "${script_dir}/run_build.sh" src/llama.cpp $dev_team ${platform}
-       
-       cd "${script_dir}"
-       echo "Fixing rpaths for ${platform}..."
-       bash "fix_rpath.sh" ${platform}
-       cd "${script_dir}/.."
-   }
-   
-   # Replace YOUR_DEVELOPER_TEAM_ID with your actual Apple Developer Team ID
-   # Uncomment the platforms you need to build
-   build_platform "MAC_ARM64" "YOUR_DEVELOPER_TEAM_ID"
-   # build_platform "OS64" "YOUR_DEVELOPER_TEAM_ID"
-   # build_platform "SIMULATOR64" "YOUR_DEVELOPER_TEAM_ID"
-   # build_platform "SIMULATORARM64" "YOUR_DEVELOPER_TEAM_ID"
-   # build_platform "MAC_CATALYST_ARM64" "YOUR_DEVELOPER_TEAM_ID"
-   
-   echo "Build completed successfully for all platforms."
-   ```
+```dart
+LlamaEngine.spawn(libraryPath: '<repo>/build/macos/install/lib/libllama.dylib', ...);
+```
 
-4. Make your build script executable:
-   ```bash
-   chmod +x build.sh
-   ```
+Requirements: Xcode command-line tools, CMake 3.28+, Ninja
+(`brew install ninja`).
 
-5. Run the build script:
-   ```bash
-   ./darwin/build.sh
-   ```
+## Apple xcframework (iOS device + iOS simulator + macOS)
 
-### Available Platforms
+```bash
+tool/build_apple_xcframework.sh
+```
 
-You can build for various Apple platforms by uncommenting the relevant lines in the build script:
+Output: `build/apple/llama.xcframework/` with three slices:
 
-- `MAC_ARM64` - For Apple Silicon Macs
-- `OS64` - For iOS devices with arm64 architecture
-- `SIMULATOR64` - For iOS Simulator on Intel Macs
-- `SIMULATORARM64` - For iOS Simulator on Apple Silicon Macs
-- `MAC_CATALYST_ARM64` - For Mac Catalyst on Apple Silicon
+- `ios-arm64` (real iPhone/iPad, iOS 14+)
+- `ios-arm64-simulator` (Apple Silicon Mac running iOS Simulator)
+- `macos-arm64` (Apple Silicon macOS app, 12+)
 
-### Troubleshooting
+Each slice is a static `llama.framework/llama` binary (~9 MB) merged
+from libllama + libggml{base,cpu,metal,blas} + libmtmd. Metal shader
+source is embedded (`GGML_METAL_EMBED_LIBRARY=ON`).
 
-- If you encounter "code signature invalid" errors, make sure your Developer Team ID is correct
-- For deployment target issues, you may need to modify the `run_build.sh` script to set a higher iOS version (13.0 or above)
-- If libraries fail to load at runtime, check the output of:
-  ```bash
-  DYLD_PRINT_LIBRARIES=1 DYLD_PRINT_RPATHS=1 dart example/simple.dart
-  ```
+Used by iOS / macOS apps:
 
-### Notes
+```dart
+LlamaEngine.spawnFromProcess(...)  // Xcode static-links the framework
+```
 
-- The built libraries will be placed in the `bin/[PLATFORM]` directory
-- The build process automatically handles fixing rpaths and code signing for each platform
-- Model compatibility depends on the llama.cpp version - ensure you're using a version that supports your target models
+Drag the `.xcframework` into Xcode, mark "Embed & Sign" on the app
+target. No `LlamaLibrary.load` path needed.
 
-## Ubuntu CUDA Build
+Requirements: Xcode 15+ (with `xcodebuild` and `libtool`).
 
-Use the Ubuntu helper script to produce CUDA-enabled shared libraries:
+## Android AAR (arm64-v8a, CPU + mtmd)
 
-1. Install the CUDA toolkit (with `nvcc` on your PATH), CMake ≥ 3.22, and optionally Ninja for faster builds.
-2. Make sure the `src/llama.cpp` submodule is initialized.
-3. Run the build script from the repo root (it defaults to `src/llama.cpp` but you can pass a custom path as the first argument):
-   ```bash
-   ./ubuntu/run_build.sh \
-       --cuda-arch "86;89" \
-       --output linux-cuda
-   ```
+```bash
+tool/build_android_aar.sh                                # auto-discovers NDK
+tool/build_android_aar.sh --ndk /path/to/ndk --abi arm64-v8a
+```
 
-Key flags:
+Output: `build/android/llama-cpp-dart.aar` — ~2 MB containing
+`jni/arm64-v8a/{libllama,libggml,libggml-base,libggml-cpu,libmtmd}.so`.
+minSdk 26 (Android 8.0).
 
-- `--cuda-arch` sets `CMAKE_CUDA_ARCHITECTURES` (default `native`).
-- `--output` chooses the subdirectory inside `bin/` (default `linux-cuda`).
-- `--clean` forces a rebuild, and `--cmake-arg` lets you forward extra `-D` options.
+Used by Flutter Android apps. Two integration paths:
 
-The resulting `.so` files (including `libllama.so`, `libggml*.so`, `libggml-cuda.so`, and `libmtmd.so`) are copied to `bin/<output>`. Point the Dart bindings at that directory when running on Ubuntu with NVIDIA GPUs.
+1. `android/app/libs/llama-cpp-dart.aar` + `implementation files('libs/llama-cpp-dart.aar')` in Gradle.
+2. Drop the raw `.so` files into `android/src/main/jniLibs/arm64-v8a/`.
 
-The build script now sets each shared library's `RPATH` to `$ORIGIN`, so the libraries find their peers automatically without exporting `LD_LIBRARY_PATH` or using `dart-run.sh`.
+Then in Dart:
+
+```dart
+LlamaEngine.spawn(libraryPath: 'libllama.so', ...);  // basename — Android resolves
+```
+
+Requirements: Android NDK r25+ (path via `--ndk` or `$ANDROID_NDK_ROOT`,
+or auto-discover under `~/Library/Android/sdk/ndk/<latest>`), CMake,
+Ninja.
+
+## Hexagon NPU (post-1.0, M8.5)
+
+Not built today. Requires the Qualcomm **Hexagon SDK** (separate
+download — QAIRT/QNN does not include the DSP compiler toolchain that
+`ggml-hexagon` needs). Plan: use the
+`ghcr.io/snapdragon-toolchain/arm64-android` Docker image once a
+validation device is on hand.
+
+## Regenerating bindings
+
+```bash
+dart pub get
+dart run ffigen
+```
+
+Reads `pubspec.yaml`'s `ffigen:` block, regenerates
+`lib/src/ffi/bindings.dart` against the pinned llama.cpp + mtmd headers.
+Run this whenever `src/llama.cpp` is bumped.
