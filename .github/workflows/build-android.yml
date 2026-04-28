@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write   # needed for action-gh-release to upload assets
+
 jobs:
   cpu:
     name: Android AAR (arm64-v8a, CPU + mtmd)

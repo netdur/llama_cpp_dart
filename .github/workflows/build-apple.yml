@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write   # needed for action-gh-release to upload assets
+
 jobs:
   build:
     name: macOS dylib + Apple xcframework
