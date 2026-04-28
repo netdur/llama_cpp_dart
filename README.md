@@ -4,6 +4,16 @@ Dart FFI binding for [llama.cpp](https://github.com/ggml-org/llama.cpp), targeti
 
 > **Status:** 0.9.x — clean rewrite of the 0.2 binding. Public API will likely have one more breaking pass before 1.0.
 
+## Project direction
+
+I originally intended this to be a Dart-only binding that also worked from Flutter — same package serving CLI, server, desktop, and mobile use cases.
+
+In practice that scope ran into hard limits: continuous batching, multi-process agent runtimes, OpenAI-compatible HTTP, and tool-use orchestration are all easier to express in a language with proper threads, fewer FFI quirks, and a richer ecosystem. So I started a separate project — [netdur/hugind](https://github.com/netdur/hugind) — that takes the server / agent / desktop role in Rust.
+
+This repo (`llama_cpp_dart`) now focuses on one thing: **llama.cpp inside a Flutter mobile app**. The 0.9.x rewrite reflects that scope: the public API is single-active-session, off-thread, multimodal-aware, and packaged for iOS / Android only. macOS sticks around as a development target because that's what Flutter devs build on.
+
+I also build and ship the native binaries from this repo's CI — Apple xcframework, macOS dylib, Android CPU AAR, and Android Hexagon AAR — so consumers don't need to touch CMake, NDK, or the Snapdragon Docker toolchain.
+
 ## Highlights
 
 - Streaming token output via `Stream<GenerationEvent>`.
@@ -176,13 +186,6 @@ LlamaModel / LlamaContext / LlamaSession / LlamaBatch / Tokenizer / Sampler
 | Android with AAR / jniLibs | `LlamaEngine.spawn(libraryPath: 'libllama.so', ...)` (basename — Android resolves) |
 
 `mtmd` resolution mirrors the same logic — opened by basename if `libllama` was a basename, by sibling path otherwise.
-
-## What's not in this binding
-
-- **No HTTP server**, no OpenAI-compatible surface — call llama.cpp directly.
-- **No MCP, no agent runtime** — application-layer concerns.
-- **Hexagon NPU** is built but **not yet validated on a physical Snapdragon device** — the artifact is in `tool/build_android_hexagon_aar.sh`'s output and the AAR contains all six HTP DSP variants (v68 → v81). Treat as experimental until verified end-to-end on hardware.
-- **No real Jinja parser** — `llama_chat_apply_template` does substring-pattern matching against ~55 known families. Custom Jinja templates fall back to manual prompt rendering. See `KnownChatTemplates` and the gemma probes for the workaround.
 
 ## Layout
 
