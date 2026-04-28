@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Android AAR (arm64-v8a)
+  cpu:
+    name: Android AAR (arm64-v8a, CPU + mtmd)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +41,6 @@ jobs:
             llama-cpp-dart.aar
             llama-cpp-dart.aar.sha256
 
-      # ----- attach to GitHub Release on tag push -----
       - name: attach to release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -49,4 +48,40 @@ jobs:
           files: |
             llama-cpp-dart.aar
             llama-cpp-dart.aar.sha256
+          fail_on_unmatched_files: true
+
+  hexagon:
+    name: Android AAR (arm64-v8a, Hexagon NPU + OpenCL + CPU + mtmd)
+    runs-on: ubuntu-latest
+    # The Snapdragon toolchain image is amd64-only. ubuntu-latest is x86_64
+    # so this runs natively (no Rosetta needed); ~5-10 min for a clean build.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: build AAR (Snapdragon toolchain)
+        run: tool/build_android_hexagon_aar.sh --clean
+        # Pulls ghcr.io/snapdragon-toolchain/arm64-android:v0.3 (~8 GB).
+
+      - name: stage and checksum
+        run: |
+          cp build/android-hexagon/llama-cpp-dart-hexagon.aar .
+          shasum -a 256 llama-cpp-dart-hexagon.aar > llama-cpp-dart-hexagon.aar.sha256
+
+      - name: upload AAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-cpp-dart-hexagon-aar
+          path: |
+            llama-cpp-dart-hexagon.aar
+            llama-cpp-dart-hexagon.aar.sha256
+
+      - name: attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            llama-cpp-dart-hexagon.aar
+            llama-cpp-dart-hexagon.aar.sha256
           fail_on_unmatched_files: true

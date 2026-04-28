@@ -12,7 +12,7 @@ Dart FFI binding for [llama.cpp](https://github.com/ggml-org/llama.cpp), targeti
 - **Chat**: uses the model's embedded Jinja chat template via `llama_chat_apply_template`. Falls back to manual prompt rendering for models with custom Jinja the C API can't parse.
 - **Persistence**: KV-cache + token history + chat messages save/restore to a single self-describing file with metadata-validated reload.
 - **Context shift**: `llama-server`-style auto-shift when the context fills (off by default, opt in per request, blocked on caches that can't shift).
-- Apple **Metal** + Android **CPU** acceleration. Hexagon NPU is post-1.0.
+- Apple **Metal** + Android **CPU** + Snapdragon **Hexagon NPU** + **OpenCL** acceleration (Hexagon AAR pending physical-device validation).
 
 ## Install
 
@@ -29,14 +29,15 @@ Then download the platform binary for your project:
 |---|---|---|
 | macOS (dev/test) | `libllama.dylib` + sibling `libggml*.dylib`, `libmtmd.dylib` | anywhere on disk; pass path to `LlamaEngine.spawn` |
 | iOS / macOS app | `llama.xcframework` (3 slices: `ios-arm64`, `ios-arm64-simulator`, `macos-arm64`) | drag into Xcode → "Embed & Sign" → call `LlamaEngine.spawnFromProcess` |
-| Android | `llama-cpp-dart.aar` (CPU, arm64-v8a) | `android/app/libs/` and `implementation files('libs/llama-cpp-dart.aar')` in Gradle |
+| Android | `llama-cpp-dart.aar` (CPU + mtmd, arm64-v8a) **or** `llama-cpp-dart-hexagon.aar` (CPU + OpenCL + Hexagon NPU + mtmd, arm64-v8a, Snapdragon) | `android/app/libs/` and `implementation files('libs/llama-cpp-dart.aar')` in Gradle |
 
 Build artifacts yourself with:
 
 ```bash
 tool/build_native.sh --platform macos --with-mtmd
 tool/build_apple_xcframework.sh
-tool/build_android_aar.sh
+tool/build_android_aar.sh                 # CPU AAR
+tool/build_android_hexagon_aar.sh         # Hexagon NPU + OpenCL AAR (Snapdragon)
 ```
 
 ## Quick start
@@ -180,7 +181,7 @@ LlamaModel / LlamaContext / LlamaSession / LlamaBatch / Tokenizer / Sampler
 
 - **No HTTP server**, no OpenAI-compatible surface — call llama.cpp directly.
 - **No MCP, no agent runtime** — application-layer concerns.
-- **No Hexagon NPU yet** — needs the Hexagon SDK install. Tracked as M8.5 in `plan.md`.
+- **Hexagon NPU** is built but **not yet validated on a physical Snapdragon device** — the artifact is in `tool/build_android_hexagon_aar.sh`'s output and the AAR contains all six HTP DSP variants (v68 → v81). Treat as experimental until verified end-to-end on hardware.
 - **No real Jinja parser** — `llama_chat_apply_template` does substring-pattern matching against ~55 known families. Custom Jinja templates fall back to manual prompt rendering. See `KnownChatTemplates` and the gemma probes for the workaround.
 
 ## Layout

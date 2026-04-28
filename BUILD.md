@@ -80,13 +80,58 @@ Requirements: Android NDK r25+ (path via `--ndk` or `$ANDROID_NDK_ROOT`,
 or auto-discover under `~/Library/Android/sdk/ndk/<latest>`), CMake,
 Ninja.
 
-## Hexagon NPU (post-1.0, M8.5)
+## Android AAR with Hexagon NPU + OpenCL (Snapdragon-only)
 
-Not built today. Requires the Qualcomm **Hexagon SDK** (separate
-download — QAIRT/QNN does not include the DSP compiler toolchain that
-`ggml-hexagon` needs). Plan: use the
-`ghcr.io/snapdragon-toolchain/arm64-android` Docker image once a
-validation device is on hand.
+```bash
+tool/build_android_hexagon_aar.sh                # first run pulls 8 GB
+tool/build_android_hexagon_aar.sh --no-pull      # subsequent runs
+tool/build_android_hexagon_aar.sh --clean        # wipe and rebuild
+```
+
+Output: `build/android-hexagon/llama-cpp-dart-hexagon.aar` — ~3.7 MB
+containing 11 `.so` files in `jni/arm64-v8a/`:
+
+- ARM64 host-side: `libllama.so`, `libggml{,-base,-cpu,-opencl,-hexagon}.so`, `libmtmd.so`
+- Hexagon DSP-side: `libggml-htp-v{68,69,73,75,79,81}.so`
+
+Variant-to-device mapping:
+
+| HTP variant | Snapdragon |
+|---|---|
+| v68 | 865 / 870 (2020) |
+| v69 | 8 Gen 1 (2022) |
+| v73 | 8 Gen 2 (2023) |
+| v75 | 8 Gen 3 (2024) |
+| v79 | 8 Gen 4 / 8 Elite (2025) |
+| v81 | future |
+
+The runtime picks the right HTP at load time. On non-Snapdragon Android
+devices the Hexagon backend reports unavailable and the engine falls
+back to CPU + OpenCL automatically.
+
+Used by:
+
+```dart
+LlamaEngine.spawn(libraryPath: 'libllama.so', ...);
+// Same API — backend selection happens inside ggml-backend.
+```
+
+Requirements:
+
+- Docker (Docker Desktop on macOS, native daemon on Linux).
+- ~8 GB free disk for the toolchain image.
+- On Apple Silicon: Docker runs the amd64 image through Rosetta 2,
+  which is slow (~15–20 min for a clean build) and memory-tight
+  (the script disables `-flto` and caps `-j 2` to avoid OOM-killing
+  cpp-httplib). Native amd64 hosts get a clean ~5–10 min build.
+
+The Snapdragon toolchain image
+(`ghcr.io/snapdragon-toolchain/arm64-android:v0.3`) bundles:
+
+- Android NDK r28b
+- Hexagon SDK 6.4.0.2 (DSP compiler + IDL tools)
+- OpenCL SDK
+- CMake, Ninja
 
 ## Regenerating bindings
 

@@ -57,8 +57,11 @@ not preserve names from 0.2.
 
 - Custom Jinja chat templates (some Unsloth quants) require manual prompt
   rendering. Real Jinja support is post-1.0.
-- Hexagon NPU is not built. Needs the Hexagon SDK + Snapdragon toolchain
-  Docker image. Tracked as M8.5 in `plan.md`.
+- Hexagon NPU AAR is built (`tool/build_android_hexagon_aar.sh`,
+  using `ghcr.io/snapdragon-toolchain/arm64-android:v0.3`) but **not
+  yet validated on a physical Snapdragon device**. The AAR ships
+  six HTP DSP variants (v68/v69/v73/v75/v79/v81) covering Snapdragon
+  865 → 8 Elite + future. Total ~3.7 MB stripped.
 - Multimodal generation does not auto-shift on context overflow (matches
   llama-server's behaviour). Long multimodal sessions need to be
   segmented at the application level.
