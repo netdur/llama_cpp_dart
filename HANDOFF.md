@@ -237,13 +237,38 @@ android {
 - **CPU AAR** (`llama-cpp-dart.aar`): `minSdkVersion 26` (Android 8.0).
 - **Hexagon AAR** (`llama-cpp-dart-hexagon.aar`): `minSdkVersion 31` (Android 12). The AAR's manifest declares 31 because OpenCL on Android requires the vendor-lib opt-in introduced in API 31, and Gradle's manifest merger refuses to lower it.
 
-If you're using the Hexagon AAR, you also need this in your app's `AndroidManifest.xml` inside `<application>`:
+### Hexagon AAR — five mandatory ingredients
+
+Validated end-to-end on Galaxy S23 Ultra (SD 8 Gen 2) and Galaxy Fold7 (SD 8 Elite). Miss **any** of these and the HTP backend silently disappears from `engine.devices`.
+
+**1. minSdk 31 + arm64-v8a-only Gradle.** Already covered above for the Hexagon AAR.
+
+**2. Two `<uses-native-library>` opt-ins** in your app's `AndroidManifest.xml` inside `<application>`:
 
 ```xml
-<uses-native-library android:name="libOpenCL.so" android:required="false" />
+<application ... android:extractNativeLibs="true">
+    <uses-native-library android:name="libOpenCL.so"  android:required="false" />
+    <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+    ...
+</application>
 ```
 
-Without it, `dlopen` of `libllama.so` fails on first load — the Hexagon-built `libllama.so` has a hard `DT_NEEDED` on `libggml-opencl.so`, which itself needs `libOpenCL.so` from the device's vendor partition. The `<uses-native-library>` declaration is what tells Android (>= 11) to make `libOpenCL.so` accessible to the app sandbox. `required="false"` means the app still installs on devices without OpenCL — the runtime falls back to CPU on those.
+- `libOpenCL.so` — the Hexagon-built `libllama.so` has a hard `DT_NEEDED` on `libggml-opencl.so`, which transitively needs vendor `libOpenCL.so`. Without it `dlopen` fails on first load.
+- `libcdsprpc.so` — `ggml-hexagon` does `dlopen("libcdsprpc.so")` by basename. Without this opt-in, Android's per-app linker namespace blocks access and the HTP backend silently fails to register (the failure log goes to stderr, which is invisible on Android — see `LlamaLog.captureToFile` below).
+
+`required="false"` lets the app still install on devices without OpenCL/cDSP — runtime falls back to CPU.
+
+**3. `android:extractNativeLibs="true"`** (shown above). Modern AGP defaults to `false`, which leaves `.so` files inside the APK and mmaps them. That works for the app's own linker but **not** for FastRPC: the cDSP-side skeleton libs (`libggml-htp-v73.so` etc.) are loaded by `cdsprpcd` (a separate system process) via `fopen()`, which can't read inside an APK. With `extractNativeLibs="true"`, libs are extracted to `applicationInfo.nativeLibraryDir` at install time where `cdsprpcd` can read them.
+
+Without it you'll see (only via stderr capture):
+```
+W cdsprpcd: apps_std_fopen_with_env failed with 0x2 for libggml-htp-v73.so
+E ggml-hex: remote_handle_open_domain: dynamic loading failed
+```
+
+**4. `ADSP_LIBRARY_PATH`** is now auto-set by the binding. As of `0.9.0-dev.2`, `LlamaLibrary.load()` reads `/proc/self/maps` to find the resolved `libllama.so` path on Android and calls `setenv("ADSP_LIBRARY_PATH", dir, 1)` before `ggml_backend_load_all`. **No app-side wiring required.** If you were carrying a `MethodChannel` + manual `setenv` hack from earlier dev builds, you can drop it.
+
+**5. llama.cpp pin must include the URI-fallback fix** (commit `63d2fc46` or later — already in `0.9.0-dev.1`). On SD 8 Gen 2 specifically, `remote_session_control(FASTRPC_GET_URI, ...)` returns error `0x14` and ggml-hex aborts HTP init without it.
 
 You may also see harmless warnings at install time:
 
@@ -306,12 +331,17 @@ debugPrint('hasAccelerator     = ${engine.hasAccelerator}');
 debugPrint('primaryAccelerator = ${engine.primaryAcceleratorName}');
 ```
 
-Expected output by AAR (Galaxy S23 Ultra / SD 8 Gen 2):
+Expected output by AAR (observed on Galaxy S23 Ultra / SD 8 Gen 2 + Fold7 / SD 8 Elite):
 
 | AAR | `engine.devices` should include | `primaryAcceleratorName` |
 |---|---|---|
 | CPU AAR | `CPU (cpu, CPU)` only | `null` |
-| Hexagon AAR | `HTP0 (accel, Hexagon)`, `OpenCL0 (igpu, OpenCL): Adreno 740`, `CPU (cpu, CPU)` | `HTP0` |
+| Hexagon AAR | `GPUOpenCL (gpu, OpenCL): QUALCOMM Adreno(TM)`, `HTP0 (gpu, HTP): Hexagon`, `CPU (cpu, CPU)` | `HTP0` |
+
+Notes:
+- HTP reports `type=gpu, registryName=HTP` (not `accel/Hexagon`) — that's how ggml-backend classifies it.
+- `primaryAcceleratorName` returns `HTP0` because the binding's picker promotes registry name `HTP` above `OpenCL`. (This was fixed in `0.9.0-dev.2`; in `0.9.0-dev.1` the picker followed registration order and returned `GPUOpenCL`.)
+- Apple platforms see Metal + (on iOS) Accelerate BLAS + CPU. Example macOS/M1 Max: `MTL0 (gpu, Metal): Apple M1 Max`, `CPU`.
 
 If the Hexagon AAR is in `android/app/libs/` and the manifest has the
 `<uses-native-library>` line for `libOpenCL.so` but **no `HTP0` shows
@@ -335,32 +365,121 @@ Both paths surface the same data; `engine.devices` is captured once
 inside the worker isolate at engine spawn and survives across
 generate calls.
 
-## Known binding gaps (queue for `0.9.0-dev.2`)
+## Closed binding gaps in `0.9.0-dev.2`
 
-Surfaced during M10 device validation. None are blocking for the demo
-app, but worth knowing about:
+Surfaced during M10 device validation; all four shipped:
 
-- **No `typeK` / `typeV` in `ContextParams`.** Can't quantize the KV
-  cache from Dart — F16 KV is the only option. Fine on 12 GB devices
-  with Q8 models; tight on 8 GB devices. Patch: add the two enum
-  fields to `ContextParams` + thread through to `llama_context_params`.
-- ~~**No backend-inspection API.**~~ ✅ Shipped. Use
-  `engine.devices` (`List<BackendDevice>`), `engine.hasAccelerator`,
-  `engine.primaryAcceleratorName`, or `LlamaBackends.list()` for the
-  pre-engine view. Each device exposes `name`, `description`, `type`
-  (cpu/gpu/igpu/accel/meta), `registryName`, and free/total memory.
-  See `example/probes/list_backends.dart` and `engine_backends.dart`.
-  This still doesn't tell you which device handled an *individual*
-  generation — ggml-backend distributes ops across devices in a
-  single graph — but it answers "is Hexagon loaded? is OpenCL loaded?"
-  cleanly.
-- **No log redirect.** `LlamaLog.silence()` and `useDefault()` exist but
-  no `onMessage(callback)` — so backend-selection messages
-  ("loaded backend: hexagon", "ggml_backend_load_best: ...") don't
-  reach Android logcat. Patch: switch the worker's log silencing to
-  `NativeCallable.isolateGroupShared` and add a Dart-side callback API.
-- **HANDOFF previously said `minSdk 26`** — wrong for the Hexagon AAR
-  (now corrected above to 31).
+- ✅ **`typeK` / `typeV` in `ContextParams`.** Use `KvCacheType.q8_0` (or
+  any other supported ggml type) to quantize the KV cache. Common
+  memory-saver on 8 GB Android devices with longer contexts. Set both
+  `typeK` and `typeV` to the same value when FlashAttention is on —
+  most backends require it.
+- ✅ **Backend inspection API.** `engine.devices` (`List<BackendDevice>`),
+  `engine.hasAccelerator`, `engine.primaryAcceleratorName`, or
+  `LlamaBackends.list()` for the pre-engine view. Doesn't tell you
+  which device ran an individual op (ggml-backend distributes ops
+  across devices) but answers "is Hexagon loaded? is OpenCL loaded?"
+  cleanly. `primaryAcceleratorName` now uses a registry-priority list
+  so HTP wins over OpenCL on Snapdragon (was registration-order
+  before).
+- ✅ **Stderr capture** for llama.cpp / ggml log lines. Toggleable —
+  off by default. Use:
+  ```dart
+  LlamaLog.captureToFile('${docsDir.path}/llama.log');
+  // ... later, to revert:
+  LlamaLog.restoreStderr();
+  ```
+  On Android, tail the file and forward lines to `debugPrint` since
+  stderr is not connected to logcat. This was the single biggest
+  debugging blocker during M10.
+- ✅ **Auto-`setenv ADSP_LIBRARY_PATH`** on Android. `LlamaLibrary.load()`
+  now reads `/proc/self/maps` to find where the linker resolved
+  `libllama.so` and sets the env var so FastRPC can locate
+  `libggml-htp-v*.so`. No `MethodChannel` plumbing needed in the app.
+
+## Things that won't change before `1.0`
+
+- **HTP only engages Q4_0 / Q8_0 quants.** K-quants (`Q4_K_*`,
+  `Q5_K_*`) and I-quants (`IQ*`) have no HTP kernels in upstream
+  ggml-hexagon. Pick `Q4_0` if you want NPU acceleration; `Q4_K_M`
+  will run on OpenCL+CPU only on Snapdragon devices.
+- **HTP REPACK budget is ~2 GB per session.** Models larger than that
+  get partial-offload (some layers HTP, rest OpenCL). For `≥7B`-class
+  models you need the `NDEV=2` multi-session pattern, which the
+  binding does not expose yet.
+- **Engine spawn time on Hexagon AAR is ~11–13s** (vs ~6s for CPU
+  AAR). Most of the extra time is OpenCL kernel pre-compilation +
+  HTP REPACK buffer mmap. Plan a splash screen on first launch.
+
+## Apple integration (iOS / macOS)
+
+If you're building the same app for iPhone / iPad / Mac as well, there are **two distinct paths**. Pick the wrong one and you'll get `dlsym(RTLD_DEFAULT, llama_backend_init): symbol not found` at runtime.
+
+### Path A — Dev/test on macOS (loose dylib)
+
+For `dart test`, CLI probes, and Flutter macOS apps where you control where the dylib lives:
+
+```dart
+final engine = await LlamaEngine.spawn(
+  libraryPath: '/abs/path/to/libllama.dylib',
+  modelParams: ModelParams(path: modelPath, gpuLayers: 99),
+  contextParams: const ContextParams(nCtx: 2048),
+);
+```
+
+`LlamaLibrary.load(path: ...)` resolves siblings (`libggml-metal.dylib`, `libmtmd.dylib`, ...) from the same directory automatically. Metal lights up on first matmul.
+
+For Flutter macOS specifically, **disable App Sandbox in `DebugProfile.entitlements`** if the dylib or model files live outside the app bundle — sandboxed apps can't read arbitrary `/Users/...` paths. Keep `Release.entitlements` sandboxed for distribution; that means Release builds need Path B.
+
+### Path B — Shippable iOS / macOS app (xcframework via CocoaPods)
+
+Required for any iOS app and any sandboxed Release macOS app. Uses `build/apple/llama.xcframework` from this repo.
+
+**The xcframework is static**, not dynamic — `file build/apple/llama.xcframework/ios-arm64/llama.framework/llama` reports `current ar archive`. This means:
+
+1. **"Embed & Sign" is wrong.** Use **"Do Not Embed"**.
+2. **`-force_load` is mandatory** — without it, the linker drops every llama symbol because nothing in `AppDelegate.swift` references them, and you get `dlsym not found` at runtime.
+
+A working podspec ships at `llama_cpp.podspec` in this repo. From a Flutter app's `ios/Podfile` (and `macos/Podfile`):
+
+```ruby
+platform :ios, '14.0'   # xcframework's MinimumOSVersion is 14.0
+target 'Runner' do
+  use_frameworks!
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  pod 'llama_cpp', :path => '../../llama_cpp_dart'
+end
+```
+
+The podspec wires `OTHER_LDFLAGS = -force_load $(PODS_XCFRAMEWORKS_BUILD_DIR)/llama_cpp/llama.framework/llama` for both `pod_target_xcconfig` and `user_target_xcconfig`.
+
+After `pod install`, verify with:
+
+```bash
+nm -gU build/ios/iphoneos/Runner.app/Runner.debug.dylib | grep llama_backend_init
+```
+
+— if `_llama_backend_init` shows up, link succeeded.
+
+In Dart, **use `spawnFromProcess` not `spawn`**:
+
+```dart
+final engine = await LlamaEngine.spawnFromProcess(
+  modelParams: ModelParams(path: modelPath, gpuLayers: 99),
+  contextParams: const ContextParams(nCtx: 2048),
+);
+```
+
+There's nothing to `dlopen` by path on iOS — symbols are already in the running process.
+
+### iOS gotchas (validated on iPad M1, iOS 26.3)
+
+- **iOS apps cannot `dlopen` arbitrary dylib paths.** Path A is fundamentally not available on iOS. Always Path B.
+- **Model files must live in the app's Documents directory** (`getApplicationDocumentsDirectory()`). Push large models with `xcrun devicectl device copy to --domain-type appDataContainer --domain-identifier <bundle-id> --source <local> --destination Documents/<file>`. Set `UIFileSharingEnabled = YES` and `LSSupportsOpeningDocumentsInPlace = YES` in `Info.plist`.
+- **First-run Metal shader compile is ~18s on iPad M1**, ~9.5s on M1 Max — show a splash screen. After the binary cache is built, subsequent spawns are sub-second.
+- **Free Apple Developer profile caps you at 3 installed apps from that team.** A fourth install fails silently (`flutter run` hangs at "Dart VM Service was not discovered after 60 seconds"). Delete one to install another.
+- **Flutter's Profile xcconfig is missing by default.** `flutter create` only generates `Debug.xcconfig` and `Release.xcconfig` but Xcode has three configs. Profile inherits Release, so CocoaPods' Profile pods xcconfig is never included. Fix once per project: create `ios/Flutter/Profile.xcconfig` with `#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"` + `#include "Generated.xcconfig"`, then set Runner's Profile config base to it. Otherwise Profile builds (e.g. `xcodebuild archive`) fail with `Framework 'Pods_Runner' not found`.
+- **`engine.devices` on iOS reports 3 backends**: `MTL0` (Metal), `BLAS` (Accelerate), `CPU`. On macOS only Metal + CPU. Both are correct.
 
 ## Things that will trip you up
 
