@@ -289,6 +289,52 @@ Future<String> ensureModelOnDisk() async {
 }
 ```
 
+## Verifying which backends actually loaded
+
+**No AAR rebuild needed for this** — it's a pure-Dart addition. Just
+`git pull` the binding and `flutter pub get` in the demo app.
+
+After spawning the engine:
+
+```dart
+final engine = await LlamaEngine.spawn(...);
+debugPrint('=== backends ===');
+for (final d in engine.devices) {
+  debugPrint('$d');
+}
+debugPrint('hasAccelerator     = ${engine.hasAccelerator}');
+debugPrint('primaryAccelerator = ${engine.primaryAcceleratorName}');
+```
+
+Expected output by AAR (Galaxy S23 Ultra / SD 8 Gen 2):
+
+| AAR | `engine.devices` should include | `primaryAcceleratorName` |
+|---|---|---|
+| CPU AAR | `CPU (cpu, CPU)` only | `null` |
+| Hexagon AAR | `HTP0 (accel, Hexagon)`, `OpenCL0 (igpu, OpenCL): Adreno 740`, `CPU (cpu, CPU)` | `HTP0` |
+
+If the Hexagon AAR is in `android/app/libs/` and the manifest has the
+`<uses-native-library>` line for `libOpenCL.so` but **no `HTP0` shows
+up** in `engine.devices`, the DSP libraries failed to load silently.
+Most likely causes:
+- Missing one of the six `libggml-htp-v*.so` files from the AAR.
+- Device's HTP firmware is too old for the variants we ship (v68
+  through v81 covers Snapdragon 865 → 8 Elite; older devices fall back
+  to CPU).
+- FastRPC service unreachable (Android security policy or selinux).
+
+Pre-engine variant (no model load required) is also available for
+quicker probes:
+
+```dart
+LlamaLibrary.load(path: 'libllama.so');
+final devices = LlamaBackends.list();
+```
+
+Both paths surface the same data; `engine.devices` is captured once
+inside the worker isolate at engine spawn and survives across
+generate calls.
+
 ## Known binding gaps (queue for `0.9.0-dev.2`)
 
 Surfaced during M10 device validation. None are blocking for the demo
