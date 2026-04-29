@@ -13,6 +13,7 @@ export 'src/context/context_params.dart'
     show ContextParams, FlashAttention, KvCacheType;
 export 'src/ffi/backends.dart'
     show BackendDevice, BackendDeviceType, LlamaBackends;
+export 'src/ffi/bindings.dart' show LlamaBindings;
 export 'src/ffi/library_loader.dart' show LlamaLibrary;
 export 'src/ffi/log.dart' show LlamaLog, LlamaLogException;
 export 'src/generation/context_shift.dart'
@@ -40,3 +41,4 @@ export 'src/session/state_codec.dart'
 export 'src/tokenizer/tokenizer.dart' show Tokenizer;
 export 'src/tokenizer/utf8_accumulator.dart' show Utf8Accumulator;
 export 'src/types/exceptions.dart';
+export 'src/version.dart' show LlamaVersion;

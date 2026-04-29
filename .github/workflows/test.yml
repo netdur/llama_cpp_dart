@@ -28,6 +28,15 @@ jobs:
       - name: dart format check
         run: dart format --output=none --set-exit-if-changed lib/ test/
 
+      - name: version.dart matches submodule
+        run: |
+          tool/generate_version.sh
+          dart format lib/src/version.dart
+          if ! git diff --exit-code lib/src/version.dart; then
+            echo "::error::lib/src/version.dart is out of date — run tool/generate_version.sh and commit"
+            exit 1
+          fi
+
       # Only the pure-Dart tests run here. Integration tests (smoke,
       # generation, engine, chat, multimodal, persistence, context_shift)
       # need a built libllama.dylib + a GGUF model and live in the
