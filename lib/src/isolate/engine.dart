@@ -3,6 +3,7 @@ import 'dart:isolate';
 
 import '../chat/chat_message.dart';
 import '../context/context_params.dart';
+import '../ffi/backends.dart';
 import '../generation/context_shift.dart';
 import '../generation/event.dart';
 import '../model/model_params.dart';
@@ -54,6 +55,35 @@ final class LlamaEngine {
   /// configurations (e.g. some Qwen3, Gemma 3 with SWA).
   bool get canShift => _canShift;
   bool _canShift = true;
+
+  /// Snapshot of every ggml-backend device the runtime loaded inside
+  /// the worker isolate. Use to tell whether Hexagon / OpenCL / Metal
+  /// is actually available: if there's no entry whose `registryName`
+  /// is `Hexagon`, the Hexagon AAR's DSP libs didn't load. The list
+  /// is captured once at engine spawn and never changes thereafter.
+  List<BackendDevice> get devices => _devices;
+  List<BackendDevice> _devices = const <BackendDevice>[];
+
+  /// Convenience: true if any non-CPU device is loaded.
+  bool get hasAccelerator =>
+      _devices.any((d) => d.type != BackendDeviceType.cpu);
+
+  /// Convenience: name of the highest-priority accelerator (Hexagon
+  /// before OpenCL before Metal before integrated GPU). `null` if the
+  /// runtime is CPU-only.
+  String? get primaryAcceleratorName {
+    const order = [
+      BackendDeviceType.accel, // Hexagon, ANE
+      BackendDeviceType.gpu, // discrete GPU
+      BackendDeviceType.igpu, // OpenCL on Adreno, Apple iGPU, etc.
+    ];
+    for (final t in order) {
+      for (final d in _devices) {
+        if (d.type == t) return d.name;
+      }
+    }
+    return null;
+  }
 
   final Map<int, Completer<EngineResponse>> _pending =
       <int, Completer<EngineResponse>>{};
@@ -148,6 +178,7 @@ final class LlamaEngine {
     built._supportsAudio = readyResponse.supportsAudio;
     built._audioSampleRate = readyResponse.audioSampleRate;
     built._canShift = readyResponse.canShift;
+    built._devices = readyResponse.devices;
     built._responseSub = sub;
     engine = built;
     return built;

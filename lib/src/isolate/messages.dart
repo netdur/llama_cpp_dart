@@ -2,6 +2,7 @@ import 'dart:isolate';
 
 import '../chat/chat_message.dart';
 import '../context/context_params.dart';
+import '../ffi/backends.dart';
 import '../generation/context_shift.dart';
 import '../generation/event.dart';
 import '../model/model_params.dart';
@@ -221,6 +222,11 @@ final class EngineReadyResponse extends EngineResponse {
   /// `ContextShiftPolicy.auto` is rejected at generate-time.
   final bool canShift;
 
+  /// Snapshot of every ggml-backend device the runtime loaded. Lets
+  /// callers decide UI affordances ("Hexagon NPU is active") and
+  /// debug performance differences without parsing logs.
+  final List<BackendDevice> devices;
+
   const EngineReadyResponse(
     super.requestId,
     this.commandPort, {
@@ -230,6 +236,7 @@ final class EngineReadyResponse extends EngineResponse {
     this.supportsAudio = false,
     this.audioSampleRate = -1,
     this.canShift = true,
+    this.devices = const <BackendDevice>[],
   });
 }
 

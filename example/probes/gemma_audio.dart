@@ -20,9 +20,8 @@ void main(List<String> args) async {
     exit(2);
   }
   final audioPath = args[0];
-  final userText = args.length > 1
-      ? args.sublist(1).join(' ')
-      : 'Transcribe this audio.';
+  final userText =
+      args.length > 1 ? args.sublist(1).join(' ') : 'Transcribe this audio.';
 
   stdout.writeln('starting engine ...');
   final engine = await LlamaEngine.spawn(

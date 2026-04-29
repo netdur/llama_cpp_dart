@@ -298,9 +298,16 @@ app, but worth knowing about:
   cache from Dart — F16 KV is the only option. Fine on 12 GB devices
   with Q8 models; tight on 8 GB devices. Patch: add the two enum
   fields to `ContextParams` + thread through to `llama_context_params`.
-- **No backend-inspection API.** Can't tell from Dart whether a
-  generation ran on Hexagon, OpenCL, or CPU fallback. Patch: expose
-  `LlamaBackend.list()` reading `ggml_backend_dev_*` / `llama_print_system_info`.
+- ~~**No backend-inspection API.**~~ ✅ Shipped. Use
+  `engine.devices` (`List<BackendDevice>`), `engine.hasAccelerator`,
+  `engine.primaryAcceleratorName`, or `LlamaBackends.list()` for the
+  pre-engine view. Each device exposes `name`, `description`, `type`
+  (cpu/gpu/igpu/accel/meta), `registryName`, and free/total memory.
+  See `example/probes/list_backends.dart` and `engine_backends.dart`.
+  This still doesn't tell you which device handled an *individual*
+  generation — ggml-backend distributes ops across devices in a
+  single graph — but it answers "is Hexagon loaded? is OpenCL loaded?"
+  cleanly.
 - **No log redirect.** `LlamaLog.silence()` and `useDefault()` exist but
   no `onMessage(callback)` — so backend-selection messages
   ("loaded backend: hexagon", "ggml_backend_load_best: ...") don't

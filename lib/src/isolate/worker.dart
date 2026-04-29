@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import '../batch/batch.dart';
 import '../chat/chat_template.dart';
 import '../context/context.dart';
+import '../ffi/backends.dart';
 import '../ffi/library_loader.dart';
 import '../generation/context_shift.dart';
 import '../generation/event.dart';
@@ -77,6 +78,7 @@ Future<void> runEngineWorker(EngineBootstrap bootstrap) async {
     supportsAudio: mtmd?.supportsAudio ?? false,
     audioSampleRate: mtmd?.audioSampleRate ?? -1,
     canShift: context.canShift,
+    devices: LlamaBackends.list(),
   ));
 
   final state = _WorkerState(

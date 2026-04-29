@@ -109,9 +109,15 @@ Queued for `0.9.0-dev.2`:
    in their manifest or `dlopen` of `libllama.so` fails on first load.
    Documented in HANDOFF.md; consider whether a soft-load path is worth
    it on the binding side.
-4. **No backend-inspection API.** Can't tell from Dart whether a
-   generation ran on Hexagon / OpenCL / CPU. Patch: expose
-   `LlamaBackend.list()` reading `ggml_backend_dev_*`.
+4. ~~**No backend-inspection API.**~~ ✅ shipped. `engine.devices`
+   returns the full list captured at spawn; `BackendDevice` carries
+   name / description / type (cpu/gpu/igpu/accel/meta) / registry /
+   memory. `engine.hasAccelerator` and `engine.primaryAcceleratorName`
+   give the common-case shortcut. Probes:
+   `example/probes/{list_backends,engine_backends}.dart`. Doesn't
+   identify the specific device that ran a single generation
+   (ggml-backend's scheduler distributes ops in one graph) but
+   answers "is Hexagon loaded?" / "is OpenCL loaded?" cleanly.
 5. **No log redirect.** `LlamaLog` has `silence()` / `useDefault()` but
    no `onMessage(cb)` — backend selection messages don't reach logcat.
    Patch: switch worker log to `NativeCallable.isolateGroupShared`,

@@ -10,6 +10,8 @@ export 'src/chat/chat_template.dart' show ChatTemplate, ChatTemplateException;
 export 'src/chat/known_templates.dart' show KnownChatTemplates;
 export 'src/context/context.dart' show LlamaContext;
 export 'src/context/context_params.dart' show ContextParams, FlashAttention;
+export 'src/ffi/backends.dart'
+    show BackendDevice, BackendDeviceType, LlamaBackends;
 export 'src/ffi/library_loader.dart' show LlamaLibrary;
 export 'src/ffi/log.dart' show LlamaLog;
 export 'src/generation/context_shift.dart'

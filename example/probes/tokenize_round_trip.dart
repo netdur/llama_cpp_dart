@@ -19,8 +19,9 @@ void main(List<String> args) {
     exit(2);
   }
 
-  final input =
-      args.isEmpty ? 'The quick brown fox jumps over the lazy dog.' : args.join(' ');
+  final input = args.isEmpty
+      ? 'The quick brown fox jumps over the lazy dog.'
+      : args.join(' ');
 
   LlamaLibrary.load(path: libPath);
   final model = LlamaModel.load(
