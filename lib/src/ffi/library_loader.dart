@@ -123,7 +123,8 @@ final class LlamaLibrary {
 
     _bindings = bindings;
     _libraryPath = path;
-    _libraryDir = dir ?? (Platform.isAndroid ? _resolveAndroidLibraryDir(path) : null);
+    _libraryDir =
+        dir ?? (Platform.isAndroid ? _resolveAndroidLibraryDir(path) : null);
   }
 
   /// True when the optional libmtmd dylib was successfully opened

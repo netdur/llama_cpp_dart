@@ -138,7 +138,8 @@ final class LlamaLog {
   }
 
   static Pointer<Void>? _stderrFilePtr(DynamicLibrary libc) {
-    final symbol = (Platform.isMacOS || Platform.isIOS) ? '__stderrp' : 'stderr';
+    final symbol =
+        (Platform.isMacOS || Platform.isIOS) ? '__stderrp' : 'stderr';
     try {
       return libc.lookup<Pointer<Void>>(symbol).cast<Pointer<Void>>().value;
     } on ArgumentError {
