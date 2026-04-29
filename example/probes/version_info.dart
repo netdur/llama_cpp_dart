@@ -9,10 +9,9 @@ import 'dart:io';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 void main() {
-  stdout.writeln('package          = ${LlamaVersion.package}');
-  stdout.writeln('llamaCppCommit   = ${LlamaVersion.llamaCppCommit}');
-  stdout.writeln('llamaCppDescribe = ${LlamaVersion.llamaCppDescribe}');
-  stdout.writeln('generatedAt      = ${LlamaVersion.generatedAt}');
+  stdout.writeln('package            = ${LlamaVersion.package}');
+  stdout.writeln('llamaCppCommit     = ${LlamaVersion.llamaCppCommit}');
+  stdout.writeln('llamaCppCommitDate = ${LlamaVersion.llamaCppCommitDate}');
 
   final libPath = Platform.environment['LLAMA_CPP_DART_LIB'];
   if (libPath == null) {
