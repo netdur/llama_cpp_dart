@@ -10,6 +10,21 @@ enum FlashAttention {
   on,
 }
 
+/// Tensor types usable for the K/V cache. Mirrors a curated subset of
+/// `ggml_type`. `f16` is the llama.cpp default; `q8_0` roughly halves
+/// KV-cache memory at a small quality cost and is the common choice on
+/// memory-constrained mobile devices.
+enum KvCacheType {
+  f32,
+  f16,
+  bf16,
+  q8_0,
+  q4_0,
+  q4_1,
+  q5_0,
+  q5_1,
+}
+
 /// Declarative configuration for [LlamaContext.create].
 ///
 /// Immutable, JSON-friendly. Holds no native memory.
@@ -41,6 +56,13 @@ final class ContextParams {
   /// Configure context for embedding extraction.
   final bool embeddings;
 
+  /// K-cache tensor type. Defaults to `f16` (llama.cpp default).
+  final KvCacheType typeK;
+
+  /// V-cache tensor type. Defaults to `f16` (llama.cpp default).
+  /// FlashAttention requires `typeK == typeV` on most backends.
+  final KvCacheType typeV;
+
   /// Random seed used internally for stateful ops. -1 picks a runtime value.
   final int seed;
 
@@ -54,6 +76,8 @@ final class ContextParams {
     this.flashAttn = FlashAttention.auto,
     this.offloadKqv = true,
     this.embeddings = false,
+    this.typeK = KvCacheType.f16,
+    this.typeV = KvCacheType.f16,
     this.seed = -1,
   });
 
@@ -67,6 +91,8 @@ final class ContextParams {
     FlashAttention? flashAttn,
     bool? offloadKqv,
     bool? embeddings,
+    KvCacheType? typeK,
+    KvCacheType? typeV,
     int? seed,
   }) {
     return ContextParams(
@@ -79,6 +105,8 @@ final class ContextParams {
       flashAttn: flashAttn ?? this.flashAttn,
       offloadKqv: offloadKqv ?? this.offloadKqv,
       embeddings: embeddings ?? this.embeddings,
+      typeK: typeK ?? this.typeK,
+      typeV: typeV ?? this.typeV,
       seed: seed ?? this.seed,
     );
   }
@@ -93,6 +121,8 @@ final class ContextParams {
         'flashAttn': flashAttn.name,
         'offloadKqv': offloadKqv,
         'embeddings': embeddings,
+        'typeK': typeK.name,
+        'typeV': typeV.name,
         'seed': seed,
       };
 
@@ -109,6 +139,14 @@ final class ContextParams {
         ),
         offloadKqv: (json['offloadKqv'] as bool?) ?? true,
         embeddings: (json['embeddings'] as bool?) ?? false,
+        typeK: KvCacheType.values.firstWhere(
+          (e) => e.name == json['typeK'],
+          orElse: () => KvCacheType.f16,
+        ),
+        typeV: KvCacheType.values.firstWhere(
+          (e) => e.name == json['typeV'],
+          orElse: () => KvCacheType.f16,
+        ),
         seed: (json['seed'] as int?) ?? -1,
       );
 }

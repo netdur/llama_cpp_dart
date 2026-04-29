@@ -29,7 +29,9 @@ final class LlamaContext implements Finalizable {
       ..n_threads_batch = params.nThreadsBatch
       ..flash_attn_typeAsInt = _flashAttnInt(params.flashAttn)
       ..offload_kqv = params.offloadKqv
-      ..embeddings = params.embeddings;
+      ..embeddings = params.embeddings
+      ..type_kAsInt = _kvCacheTypeInt(params.typeK)
+      ..type_vAsInt = _kvCacheTypeInt(params.typeV);
 
     final ptr = b.llama_init_from_model(model.pointer, cp);
     if (ptr == nullptr) {
@@ -80,5 +82,16 @@ final class LlamaContext implements Finalizable {
           llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_DISABLED.value,
         FlashAttention.on =>
           llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_ENABLED.value,
+      };
+
+  static int _kvCacheTypeInt(KvCacheType v) => switch (v) {
+        KvCacheType.f32 => ggml_type.GGML_TYPE_F32.value,
+        KvCacheType.f16 => ggml_type.GGML_TYPE_F16.value,
+        KvCacheType.bf16 => ggml_type.GGML_TYPE_BF16.value,
+        KvCacheType.q8_0 => ggml_type.GGML_TYPE_Q8_0.value,
+        KvCacheType.q4_0 => ggml_type.GGML_TYPE_Q4_0.value,
+        KvCacheType.q4_1 => ggml_type.GGML_TYPE_Q4_1.value,
+        KvCacheType.q5_0 => ggml_type.GGML_TYPE_Q5_0.value,
+        KvCacheType.q5_1 => ggml_type.GGML_TYPE_Q5_1.value,
       };
 }

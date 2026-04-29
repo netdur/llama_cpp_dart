@@ -68,17 +68,39 @@ final class LlamaEngine {
   bool get hasAccelerator =>
       _devices.any((d) => d.type != BackendDeviceType.cpu);
 
-  /// Convenience: name of the highest-priority accelerator (Hexagon
-  /// before OpenCL before Metal before integrated GPU). `null` if the
-  /// runtime is CPU-only.
+  /// Convenience: name of the highest-priority accelerator (Hexagon NPU
+  /// before discrete GPU before iGPU). `null` if the runtime is CPU-only.
+  ///
+  /// Ordering is registry-driven first, type-driven second, because
+  /// ggml-hexagon reports HTP devices as `type=gpu` rather than
+  /// `type=accel` — a pure type-based pick would treat OpenCL/Adreno and
+  /// Hexagon equally and return whichever registered first (typically
+  /// OpenCL, which is the wrong UX hint).
   String? get primaryAcceleratorName {
-    const order = [
-      BackendDeviceType.accel, // Hexagon, ANE
-      BackendDeviceType.gpu, // discrete GPU
-      BackendDeviceType.igpu, // OpenCL on Adreno, Apple iGPU, etc.
+    const registryPriority = <String>[
+      'HTP', // Snapdragon Hexagon NPU (current ggml-hexagon registry name)
+      'Hexagon', // legacy / alternative naming
+      'Metal', // Apple GPU
+      'CUDA', // NVIDIA
+      'Vulkan',
     ];
-    for (final t in order) {
+    for (final reg in registryPriority) {
       for (final d in _devices) {
+        if (d.registryName == reg && d.type != BackendDeviceType.cpu) {
+          return d.name;
+        }
+      }
+    }
+    const typeOrder = [
+      BackendDeviceType.accel,
+      BackendDeviceType.gpu,
+      BackendDeviceType.igpu,
+    ];
+    for (final t in typeOrder) {
+      for (final d in _devices) {
+        // Skip CPU-class accelerators like Apple Accelerate (BLAS): they
+        // help, but the device's real accelerator is Metal/Hexagon.
+        if (d.registryName == 'BLAS') continue;
         if (d.type == t) return d.name;
       }
     }

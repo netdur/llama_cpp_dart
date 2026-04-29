@@ -1,5 +1,5 @@
 import 'dart:ffi';
-import 'dart:io' show File, Platform;
+import 'dart:io' show File, FileSystemException, Platform;
 
 import 'package:ffi/ffi.dart';
 
@@ -98,6 +98,18 @@ final class LlamaLibrary {
     final bindings = LlamaBindings.fromLookup(_routedLookup);
     bindings.llama_backend_init();
 
+    // On Android, set ADSP_LIBRARY_PATH so the Hexagon/FastRPC layer can
+    // locate `libggml-htp-v*.so` skeleton libs. Must happen before
+    // ggml_backend_load_all triggers ggml-hexagon's backend init. The dir
+    // is the directory holding the loaded `libllama.so` — discovered from
+    // `/proc/self/maps` when [path] was a basename.
+    if (Platform.isAndroid) {
+      final adspDir = dir ?? _resolveAndroidLibraryDir(path);
+      if (adspDir != null) {
+        _setAdspLibraryPath(adspDir);
+      }
+    }
+
     if (dir != null) {
       final dirPtr = dir.toNativeUtf8(allocator: calloc);
       try {
@@ -111,7 +123,7 @@ final class LlamaLibrary {
 
     _bindings = bindings;
     _libraryPath = path;
-    _libraryDir = dir;
+    _libraryDir = dir ?? (Platform.isAndroid ? _resolveAndroidLibraryDir(path) : null);
   }
 
   /// True when the optional libmtmd dylib was successfully opened
@@ -199,5 +211,55 @@ final class LlamaLibrary {
     final i = path.lastIndexOf(Platform.pathSeparator);
     if (i < 0) return null;
     return path.substring(0, i);
+  }
+
+  /// Find where Android's linker resolved `libllama.so` from by reading
+  /// `/proc/self/maps`. Returns the dirname of the matching mapping, or
+  /// `null` if the library can't be found in the maps (e.g. process
+  /// failed to load it). [requestedPath] is the path passed to [load] —
+  /// either a basename (`libllama.so`) or an absolute path.
+  static String? _resolveAndroidLibraryDir(String requestedPath) {
+    final basename = requestedPath.contains('/')
+        ? requestedPath.substring(requestedPath.lastIndexOf('/') + 1)
+        : requestedPath;
+    try {
+      final maps = File('/proc/self/maps').readAsLinesSync();
+      for (final line in maps) {
+        // Format: "addr-addr perms offset dev inode  /path/to/lib.so"
+        final slash = line.indexOf('/');
+        if (slash < 0) continue;
+        final libPath = line.substring(slash).trim();
+        if (libPath.endsWith('/$basename')) {
+          final i = libPath.lastIndexOf('/');
+          return libPath.substring(0, i);
+        }
+      }
+    } on FileSystemException {
+      // /proc not readable — bail.
+    }
+    return null;
+  }
+
+  /// `setenv("ADSP_LIBRARY_PATH", dir, 1)` via libc on Android. Used so
+  /// FastRPC can find `libggml-htp-v*.so` skeleton libs at HTP backend
+  /// init time. Failures are swallowed: this is a hint, not a contract,
+  /// and the rest of the binding still works without it.
+  static void _setAdspLibraryPath(String dir) {
+    try {
+      final libc = DynamicLibrary.open('libc.so');
+      final setenv = libc.lookupFunction<
+          Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Int32),
+          int Function(Pointer<Utf8>, Pointer<Utf8>, int)>('setenv');
+      final keyPtr = 'ADSP_LIBRARY_PATH'.toNativeUtf8();
+      final valPtr = dir.toNativeUtf8();
+      try {
+        setenv(keyPtr, valPtr, 1);
+      } finally {
+        malloc.free(keyPtr);
+        malloc.free(valPtr);
+      }
+    } on ArgumentError {
+      // libc lookup failed — older NDK or non-Android-Linux. Skip.
+    }
   }
 }
