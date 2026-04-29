@@ -1,5 +1,97 @@
 # Changelog
 
+## 0.9.0-dev.5 — first pub.dev publish of the rewrite
+
+Consolidates `0.9.0-dev.0` through `0.9.0-dev.5` (none of dev.0–dev.4
+were published to pub.dev). The 0.2.x line is a separate package shape
+— see [MIGRATION.md](MIGRATION.md).
+
+### Highlights since 0.2.x
+
+- `LlamaEngine` worker isolate is the primary public API. Streaming
+  token output via `Stream<GenerationEvent>` (sealed:
+  `TokenEvent` | `ShiftEvent` | `DoneEvent`). Cancellation via stream
+  subscription cancel.
+- `EngineSession` (raw prompt) and `EngineChat` (message-history with
+  chat template) on top of the engine isolate.
+- Multimodal (vision + audio) via llama.cpp's `mtmd`.
+- Persistence: `EngineSession.saveState/loadState` and
+  `EngineChat.saveState/loadState` with metadata-validated reload.
+- `llama-server`-style context shift (`ContextShiftPolicy.auto`) gated
+  on `engine.canShift`.
+- Three platform artifacts shipped from GitHub Releases:
+  - macOS dylib (for `dart test`)
+  - Apple xcframework (`ios-arm64`, `ios-arm64-simulator`, `macos-arm64`)
+  - Android AAR for `arm64-v8a`, two flavors: CPU+mtmd (~2 MB) and
+    Hexagon NPU + OpenCL + mtmd (~3.7 MB)
+
+### Validated end-to-end on real devices
+
+- Galaxy S23 Ultra (Snapdragon 8 Gen 2, Android 14) — Hexagon NPU
+  reachable from a third-party Flutter app on commercial firmware.
+- Galaxy Fold7 (Snapdragon 8 Elite, Android 16) — same APK runs unchanged.
+- MacBook Pro M1 Max (macOS 26) — Metal via dylib path.
+- iPad M1 (iOS 26) — Metal + Accelerate BLAS via the bundled
+  CocoaPods `llama_cpp.podspec`.
+
+### Bindings
+
+- **Backend inspection.** `engine.devices` (`List<BackendDevice>`),
+  `engine.hasAccelerator`, `engine.primaryAcceleratorName`, and the
+  pre-engine `LlamaBackends.list()`. Tells you which backends loaded
+  on the current device.
+- **`primaryAcceleratorName` priority** orders by registry name (HTP →
+  Hexagon → Metal → CUDA → Vulkan) before type, so Snapdragon HTP wins
+  over OpenCL even when ggml reports both as `type=gpu`.
+- **KV-cache quantization.** `ContextParams.typeK` / `typeV` accept any
+  of `KvCacheType.{f32, f16, bf16, q8_0, q4_0, q4_1, q5_0, q5_1}`.
+  `q8_0` halves KV memory at small quality cost; useful on 8 GB Android
+  devices with longer contexts.
+- **Stderr capture.** `LlamaLog.captureToFile(path)` /
+  `LlamaLog.restoreStderr()`. Toggleable redirect of llama.cpp/ggml
+  log lines for Android, where stderr is not connected to logcat.
+- **Auto `ADSP_LIBRARY_PATH`.** `LlamaLibrary.load()` reads
+  `/proc/self/maps` on Android and exports `ADSP_LIBRARY_PATH` so
+  FastRPC finds `libggml-htp-v*.so` skeleton libs without app-side
+  `MethodChannel` plumbing.
+- **`LlamaBindings`** is now exported. Lets callers using the raw FFI
+  surface type variables / pass them around without reaching into
+  `src/`.
+- **`LlamaVersion`** is generated at build time. Exposes the package
+  version, the llama.cpp submodule SHA + author date, and a runtime
+  `systemInfo()` wrapper around `llama_print_system_info()` (e.g.
+  `MTL : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ACCELERATE = 1 | ...`).
+
+### Removed since 0.2.x
+
+- The `Llama` god-class.
+- `LlamaParent` / `LlamaChild` / `IsolateScope` (replaced by `LlamaEngine`).
+- `LlamaService` multi-session scheduler. Mobile apps do one
+  conversation at a time; multi-session can be added back as a higher
+  layer if needed.
+- The MCP client / server / agent surface.
+- `TextChunker` (RAG helper).
+- Hand-written chat-format classes (ChatML, Alpaca, Gemma, Harmony).
+  Modern llama.cpp embeds Jinja templates in the GGUF; we use
+  `llama_chat_apply_template` instead.
+- All non-mobile platform code: Linux, Windows, CUDA, Vulkan desktop.
+  macOS is kept as a dev/test target.
+- Bundled binary distribution. Native artifacts ship from GitHub
+  Releases instead.
+
+### Known limitations
+
+- Custom Jinja chat templates (some Unsloth quants) require manual
+  prompt rendering. Real Jinja support is post-1.0.
+- HTP only engages Q4_0 / Q8_0 quants in upstream ggml-hexagon.
+  K-quants (`Q4_K_*`, `Q5_K_*`) and I-quants (`IQ*`) run on OpenCL+CPU.
+- HTP REPACK budget is ~2 GB per session; ≥7B-class models need a
+  multi-session pattern not yet exposed by the binding.
+- Multimodal generation does not auto-shift on context overflow
+  (matches `llama-server`'s behaviour).
+- Cosmetic: `ggml_metal_device_free` asserts at process exit because
+  the worker doesn't dispose model/context. Harmless.
+
 ## 0.9.0-dev.0 — full rewrite
 
 This is effectively a new package. The 0.2.x line was a single-class FFI

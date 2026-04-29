@@ -1,14 +1,29 @@
-src/llama.cpp/**
+# Files NOT to ship to pub.dev. Pub falls back to .gitignore by default;
+# this file overrides that for files git tracks but pub shouldn't ship.
 
-# Ignore build directories
-build/
-*.build/
+# llama.cpp submodule — users provide their own native libraries.
+# Anchored with leading `/` so it doesn't also match `lib/src/`.
+/src/
+
+# Native build artifacts and build scripts. The package itself is
+# pure Dart; consumers pull native artifacts from GitHub Releases
+# and call `LlamaLibrary.load(path:)` against them.
+/build/
+/tool/
+
+# Internal hand-off docs. Useful in the repo, noise on pub.dev.
+HANDOFF.md
+HANDOFF_M10.md
+llama_cpp.podspec
+
+# CI workflow definitions (not useful to package consumers).
+.github/
+
+# Editor / OS junk.
+.vscode/
+.idea/
+*.iml
 .dart_tool/
-
-# Ignore example outputs
-rag_log.txt
-
-# OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -17,16 +32,5 @@ rag_log.txt
 ehthumbs.db
 Thumbs.db
 
-# IDE files
-.idea/
-.vscode/
-*.iml
-
-src/llama.cpp/
-src/llama.cpp/models/*
-src/llama.cpp/examples/*
-
-src/llama.cpp/build-xcframework.sh
-src/llama.cpp/docs/build-riscv64-spacemit.md
-src/llama.cpp/docs/build-s390x.md
-src/llama.cpp/examples/llama.swiftui/llama.swiftui.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+# Stray example log files.
+rag_log.txt
