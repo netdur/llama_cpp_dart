@@ -233,7 +233,25 @@ android {
 }
 ```
 
-`minSdkVersion` should be 26 or higher (matches the AAR's manifest).
+`minSdkVersion` requirements differ per AAR:
+- **CPU AAR** (`llama-cpp-dart.aar`): `minSdkVersion 26` (Android 8.0).
+- **Hexagon AAR** (`llama-cpp-dart-hexagon.aar`): `minSdkVersion 31` (Android 12). The AAR's manifest declares 31 because OpenCL on Android requires the vendor-lib opt-in introduced in API 31, and Gradle's manifest merger refuses to lower it.
+
+If you're using the Hexagon AAR, you also need this in your app's `AndroidManifest.xml` inside `<application>`:
+
+```xml
+<uses-native-library android:name="libOpenCL.so" android:required="false" />
+```
+
+Without it, `dlopen` of `libllama.so` fails on first load — the Hexagon-built `libllama.so` has a hard `DT_NEEDED` on `libggml-opencl.so`, which itself needs `libOpenCL.so` from the device's vendor partition. The `<uses-native-library>` declaration is what tells Android (>= 11) to make `libOpenCL.so` accessible to the app sandbox. `required="false"` means the app still installs on devices without OpenCL — the runtime falls back to CPU on those.
+
+You may also see harmless warnings at install time:
+
+```
+Failed to punch uncompressed elf file: libggml-htp-v*.so
+```
+
+These are the Hexagon DSP-target ELFs (one per HTP variant). The Android linker doesn't recognize the Hexagon machine type so it skips ELF page-alignment optimization. Cosmetic only — the DSP libraries are loaded by the Hexagon backend at runtime via FastRPC, not by the Android linker.
 
 ## Bundling a model
 
@@ -270,6 +288,26 @@ Future<String> ensureModelOnDisk() async {
   return dest;
 }
 ```
+
+## Known binding gaps (queue for `0.9.0-dev.2`)
+
+Surfaced during M10 device validation. None are blocking for the demo
+app, but worth knowing about:
+
+- **No `typeK` / `typeV` in `ContextParams`.** Can't quantize the KV
+  cache from Dart — F16 KV is the only option. Fine on 12 GB devices
+  with Q8 models; tight on 8 GB devices. Patch: add the two enum
+  fields to `ContextParams` + thread through to `llama_context_params`.
+- **No backend-inspection API.** Can't tell from Dart whether a
+  generation ran on Hexagon, OpenCL, or CPU fallback. Patch: expose
+  `LlamaBackend.list()` reading `ggml_backend_dev_*` / `llama_print_system_info`.
+- **No log redirect.** `LlamaLog.silence()` and `useDefault()` exist but
+  no `onMessage(callback)` — so backend-selection messages
+  ("loaded backend: hexagon", "ggml_backend_load_best: ...") don't
+  reach Android logcat. Patch: switch the worker's log silencing to
+  `NativeCallable.isolateGroupShared` and add a Dart-side callback API.
+- **HANDOFF previously said `minSdk 26`** — wrong for the Hexagon AAR
+  (now corrected above to 31).
 
 ## Things that will trip you up
 

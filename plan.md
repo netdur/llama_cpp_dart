@@ -24,7 +24,7 @@ Live tracking doc for the 0.9.x rewrite line. Updated as work lands.
 | M8 | Android CPU AAR | ✅ shipped | arm64-v8a, ~2 MB stripped |
 | M8.5 | Android Hexagon AAR | ⚠️ built but not validated | 6 HTP variants v68→v81, ~3.7 MB |
 | M9 | Release pipeline | ✅ shipped | CI green; v0.9.0-dev.1 attached artifacts |
-| **M10** | **On-device validation** | **⏳ next** | iOS + Android, with focus on Hexagon NPU |
+| **M10** | **On-device validation** | ⚠️ in progress | Android-Hexagon proven on Galaxy S23 Ultra; iOS + vision smoke + binding-gap fixes still pending |
 | M11 | Real Jinja chat templates | 🟡 deferred | needed for Gemma-4-Unsloth and similar |
 | M12 | pub.dev publish | 🟡 deferred | needs `dart pub publish` from CI |
 
@@ -76,6 +76,53 @@ These were called out as goals/non-goals at the start of the rewrite. Recording 
 - **Persistence file format** carries metadata (model identity, context params, mmproj fingerprint, token checksum) so loading into an incompatible engine throws with a discriminator instead of corrupting state.
 - **Context shift** is opt-in (`ContextShiftPolicy.auto`), gated on `engine.canShift`. Recurrent and iSWA caches return false and the policy throws.
 - **Versioning**: `0.9.x` is the rewrite line. Public API may break once more before 1.0.
+
+## M10 device validation — first pass (Galaxy S23 Ultra, SD 8 Gen 2, Android 14)
+
+Reported by the demo-app instance. Same Gemma-4-E2B-it-Q8_0 + mmproj-F16
+on both AAR flavors, push-and-go from `/sdcard/Android/data/<app>/files/`.
+
+| Test | CPU AAR | Hexagon AAR |
+|---|---|---|
+| Spawn (warm) | 3.7 s | 17 s |
+| Decode (67-tok reply) | 7.8 tok/s | **12.2 tok/s** (1.6×) |
+| `canShift` | true | true |
+| `supportsVision` / `supportsAudio` | true | true |
+| Reply quality (T=0.3) | identical | identical |
+
+Conclusion: Hexagon AAR is the right default. The 1.6× is Hexagon AAR
+vs CPU AAR — could be NPU, OpenCL, or both; backend attribution
+requires the binding gaps below.
+
+### Binding gaps surfaced by M10
+
+Queued for `0.9.0-dev.2`:
+
+1. **`ContextParams` missing `typeK` / `typeV`** — no Dart knob for KV
+   cache quantization. Patch: add both fields, thread to
+   `llama_context_params`.
+2. **HANDOFF.md said `minSdk 26`** — Hexagon AAR ships with manifest
+   `minSdkVersion 31` because OpenCL needs API 31's `<uses-native-library>`
+   opt-in. Fixed in HANDOFF.md.
+3. **Hexagon `libllama.so` has hard `DT_NEEDED` on `libggml-opencl.so`.**
+   Apps need `<uses-native-library android:name="libOpenCL.so" android:required="false" />`
+   in their manifest or `dlopen` of `libllama.so` fails on first load.
+   Documented in HANDOFF.md; consider whether a soft-load path is worth
+   it on the binding side.
+4. **No backend-inspection API.** Can't tell from Dart whether a
+   generation ran on Hexagon / OpenCL / CPU. Patch: expose
+   `LlamaBackend.list()` reading `ggml_backend_dev_*`.
+5. **No log redirect.** `LlamaLog` has `silence()` / `useDefault()` but
+   no `onMessage(cb)` — backend selection messages don't reach logcat.
+   Patch: switch worker log to `NativeCallable.isolateGroupShared`,
+   expose Dart callback.
+
+### M10 still TODO
+
+- Vision smoke on device (push JPEG, describe via `LlamaMedia.imageFile`).
+- iOS validation (xcframework load, Metal shader cold-start time, model on disk via app bundle).
+- Q4_K_M tok/s rerun once a smaller model is on hand. Expectation:
+  ~22–28 tok/s on Hexagon (memory bandwidth halves vs Q8_0).
 
 ## Decisions that flipped during the rewrite
 
