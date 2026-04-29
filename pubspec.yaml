@@ -1,6 +1,6 @@
 name: llama_cpp_dart
 description: Dart FFI binding for llama.cpp targeting iOS, Android, and macOS.
-version: 0.9.0-dev.2
+version: 0.9.0-dev.3
 homepage: https://github.com/netdur/llama_cpp_dart
 repository: https://github.com/netdur/llama_cpp_dart
 

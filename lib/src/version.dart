@@ -11,7 +11,7 @@ final class LlamaVersion {
 
   /// Version of the `llama_cpp_dart` package itself, mirroring
   /// `pubspec.yaml`.
-  static const String package = '0.9.0-dev.2';
+  static const String package = '0.9.0-dev.3';
 
   /// Full SHA of the `src/llama.cpp` submodule the native artifacts
   /// in this release were built against.
@@ -23,7 +23,7 @@ final class LlamaVersion {
   static const String llamaCppDescribe = 'b8963-2-g5d56effde';
 
   /// UTC timestamp of when this file was generated.
-  static const String generatedAt = '2026-04-29T15:13:12Z';
+  static const String generatedAt = '2026-04-29T15:18:21Z';
 
   /// Runtime call to `llama_print_system_info()`. Returns a string with
   /// llama.cpp build date, compiler flags, and enabled backends — useful
