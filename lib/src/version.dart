@@ -18,12 +18,9 @@ final class LlamaVersion {
   static const String llamaCppCommit =
       '5d56effdeea49413da226d4815db58f515832ead';
 
-  /// `git describe --tags --always` output for the llama.cpp pin.
-  /// Useful for "are we ahead of upstream tag bNNNN" checks.
-  static const String llamaCppDescribe = 'b8963-2-g5d56effde';
-
-  /// UTC timestamp of when this file was generated.
-  static const String generatedAt = '2026-04-29T15:18:21Z';
+  /// Author/committer date of [llamaCppCommit] in ISO-8601 form.
+  /// Reproducible across machines (does not depend on local clock).
+  static const String llamaCppCommitDate = '2026-04-28T19:17:57+02:00';
 
   /// Runtime call to `llama_print_system_info()`. Returns a string with
   /// llama.cpp build date, compiler flags, and enabled backends — useful
