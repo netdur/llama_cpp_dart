@@ -85,7 +85,8 @@ final class KvOverride {
       KvOverrideType.floatValue =>
         KvOverride.float(key, (json['float']! as num).toDouble()),
       KvOverrideType.boolValue => KvOverride.bool(key, json['bool']! as bool),
-      KvOverrideType.string => KvOverride.string(key, json['string']! as String),
+      KvOverrideType.string =>
+        KvOverride.string(key, json['string']! as String),
     };
   }
 }

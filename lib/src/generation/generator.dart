@@ -53,8 +53,7 @@ final class Generator implements Finalizable {
     final vocab = context.model.vocab;
     final accumulator = Utf8Accumulator();
 
-    final sampler =
-        SamplerFactory.build(request.sampler, model: context.model);
+    final sampler = SamplerFactory.build(request.sampler, model: context.model);
     try {
       var pos = await _prefill(request, sampler);
       var generated = 0;

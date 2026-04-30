@@ -205,7 +205,8 @@ final class AdaptivePConfig {
         'seed': seed,
       };
 
-  factory AdaptivePConfig.fromJson(Map<String, Object?> json) => AdaptivePConfig(
+  factory AdaptivePConfig.fromJson(Map<String, Object?> json) =>
+      AdaptivePConfig(
         target: (json['target'] as num?)?.toDouble() ?? -1.0,
         decay: (json['decay'] as num?)?.toDouble() ?? 0.96,
         seed: (json['seed'] as int?) ?? defaultSeed,

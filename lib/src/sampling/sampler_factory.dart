@@ -82,8 +82,8 @@ final class SamplerFactory {
       final vocab = requireVocab('DRY sampler');
       final m = model!;
       final breakers = params.dry.seqBreakers;
-      final breakerPtrs = calloc<Pointer<Char>>(
-          breakers.isEmpty ? 1 : breakers.length);
+      final breakerPtrs =
+          calloc<Pointer<Char>>(breakers.isEmpty ? 1 : breakers.length);
       final allocated = <Pointer<Utf8>>[];
       for (var i = 0; i < breakers.length; i++) {
         final s = breakers[i].toNativeUtf8(allocator: calloc);
@@ -295,8 +295,8 @@ final class SamplerFactory {
       }
 
       final patterns = cfg.triggerPatterns;
-      final patternPtrs = calloc<Pointer<Char>>(
-          patterns.isEmpty ? 1 : patterns.length);
+      final patternPtrs =
+          calloc<Pointer<Char>>(patterns.isEmpty ? 1 : patterns.length);
       final allocated = <Pointer<Utf8>>[];
       for (var i = 0; i < patterns.length; i++) {
         final s = patterns[i].toNativeUtf8(allocator: calloc);
