@@ -10,7 +10,13 @@ export 'src/chat/chat_template.dart' show ChatTemplate, ChatTemplateException;
 export 'src/chat/known_templates.dart' show KnownChatTemplates;
 export 'src/context/context.dart' show LlamaContext;
 export 'src/context/context_params.dart'
-    show ContextParams, FlashAttention, KvCacheType;
+    show
+        AttentionType,
+        ContextParams,
+        FlashAttention,
+        KvCacheType,
+        PoolingType,
+        RopeScalingType;
 export 'src/ffi/backends.dart'
     show BackendDevice, BackendDeviceType, LlamaBackends;
 export 'src/ffi/bindings.dart' show LlamaBindings;
@@ -26,7 +32,8 @@ export 'src/generation/stop.dart'
     show StopReason, StopEog, StopMaxTokens, StopUserAbort;
 export 'src/isolate/engine.dart' show EngineChat, EngineSession, LlamaEngine;
 export 'src/model/model.dart' show LlamaModel;
-export 'src/model/model_params.dart' show ModelParams;
+export 'src/model/model_params.dart'
+    show KvOverride, KvOverrideType, ModelParams, SplitMode;
 export 'src/model/vocab.dart' show LlamaVocab;
 export 'src/multimodal/media.dart' show LlamaMedia, MediaKind;
 export 'src/multimodal/multimodal_context.dart'
@@ -34,7 +41,18 @@ export 'src/multimodal/multimodal_context.dart'
 export 'src/multimodal/multimodal_params.dart' show MultimodalParams;
 export 'src/sampling/sampler.dart' show Sampler;
 export 'src/sampling/sampler_factory.dart' show SamplerFactory;
-export 'src/sampling/sampler_params.dart' show SamplerParams, defaultSeed;
+export 'src/sampling/sampler_params.dart'
+    show
+        AdaptivePConfig,
+        DryConfig,
+        DynamicTempConfig,
+        GrammarConfig,
+        LogitBiasEntry,
+        MirostatConfig,
+        MirostatVersion,
+        SamplerParams,
+        XtcConfig,
+        defaultSeed;
 export 'src/session/session.dart' show LlamaSession;
 export 'src/session/state_codec.dart'
     show LlamaStateError, LlamaStateException, StateMetadata, stateCodecVersion;

@@ -11,7 +11,7 @@ final class LlamaVersion {
 
   /// Version of the `llama_cpp_dart` package itself, mirroring
   /// `pubspec.yaml`.
-  static const String package = '0.9.0-dev.5';
+  static const String package = '0.9.0-dev.6';
 
   /// Full SHA of the `src/llama.cpp` submodule the native artifacts
   /// in this release were built against.

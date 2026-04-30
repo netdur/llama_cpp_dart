@@ -28,8 +28,23 @@ final class LlamaContext implements Finalizable {
       ..n_threads = params.nThreads
       ..n_threads_batch = params.nThreadsBatch
       ..flash_attn_typeAsInt = _flashAttnInt(params.flashAttn)
+      ..rope_scaling_typeAsInt = _ropeScalingInt(params.ropeScalingType)
+      ..pooling_typeAsInt = _poolingInt(params.poolingType)
+      ..attention_typeAsInt = _attentionInt(params.attentionType)
+      ..rope_freq_base = params.ropeFreqBase
+      ..rope_freq_scale = params.ropeFreqScale
+      ..yarn_ext_factor = params.yarnExtFactor
+      ..yarn_attn_factor = params.yarnAttnFactor
+      ..yarn_beta_fast = params.yarnBetaFast
+      ..yarn_beta_slow = params.yarnBetaSlow
+      ..yarn_orig_ctx = params.yarnOrigCtx
+      ..defrag_thold = params.defragThreshold
       ..offload_kqv = params.offloadKqv
       ..embeddings = params.embeddings
+      ..no_perf = params.noPerf
+      ..op_offload = params.opOffload
+      ..swa_full = params.swaFull
+      ..kv_unified = params.kvUnified
       ..type_kAsInt = _kvCacheTypeInt(params.typeK)
       ..type_vAsInt = _kvCacheTypeInt(params.typeV);
 
@@ -82,6 +97,38 @@ final class LlamaContext implements Finalizable {
           llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_DISABLED.value,
         FlashAttention.on =>
           llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_ENABLED.value,
+      };
+
+  static int _ropeScalingInt(RopeScalingType v) => switch (v) {
+        RopeScalingType.auto =>
+          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED.value,
+        RopeScalingType.none =>
+          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_NONE.value,
+        RopeScalingType.linear =>
+          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_LINEAR.value,
+        RopeScalingType.yarn =>
+          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_YARN.value,
+        RopeScalingType.longrope =>
+          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_LONGROPE.value,
+      };
+
+  static int _poolingInt(PoolingType v) => switch (v) {
+        PoolingType.auto =>
+          llama_pooling_type.LLAMA_POOLING_TYPE_UNSPECIFIED.value,
+        PoolingType.none => llama_pooling_type.LLAMA_POOLING_TYPE_NONE.value,
+        PoolingType.mean => llama_pooling_type.LLAMA_POOLING_TYPE_MEAN.value,
+        PoolingType.cls => llama_pooling_type.LLAMA_POOLING_TYPE_CLS.value,
+        PoolingType.last => llama_pooling_type.LLAMA_POOLING_TYPE_LAST.value,
+        PoolingType.rank => llama_pooling_type.LLAMA_POOLING_TYPE_RANK.value,
+      };
+
+  static int _attentionInt(AttentionType v) => switch (v) {
+        AttentionType.auto =>
+          llama_attention_type.LLAMA_ATTENTION_TYPE_UNSPECIFIED.value,
+        AttentionType.causal =>
+          llama_attention_type.LLAMA_ATTENTION_TYPE_CAUSAL.value,
+        AttentionType.nonCausal =>
+          llama_attention_type.LLAMA_ATTENTION_TYPE_NON_CAUSAL.value,
       };
 
   static int _kvCacheTypeInt(KvCacheType v) => switch (v) {

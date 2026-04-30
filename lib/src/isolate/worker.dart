@@ -539,7 +539,7 @@ Future<void> _streamSampleAfterPrefill({
   final tokenizer = Tokenizer(state.model.vocab);
   final accumulator = Utf8Accumulator();
   final batch = LlamaBatch(ctx.nBatch);
-  final samplerHandle = SamplerFactory.build(sampler);
+  final samplerHandle = SamplerFactory.build(sampler, model: state.model);
 
   var pos = initialPos;
   var generated = 0;

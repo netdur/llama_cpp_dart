@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.9.0-dev.6 — option coverage pass
+
+Closes the gap between the Dart binding's option surface and the
+underlying llama.cpp params. Purely additive — existing code keeps
+working with previous defaults.
+
+### Sampling — `SamplerParams`
+
+- `MirostatConfig` (v1 + v2 with `tau`, `eta`, `m`). Terminal sampler
+  when enabled — replaces the `dist` stage.
+- `GrammarConfig` — GBNF grammar plus optional lazy-trigger patterns
+  and trigger tokens (`llama_sampler_init_grammar` /
+  `llama_sampler_init_grammar_lazy_patterns`).
+- `DryConfig` — DRY sampler (multiplier, base, allowed length, last-N,
+  seq breakers).
+- `XtcConfig` — XTC sampler (probability, threshold, min keep, seed).
+- `DynamicTempConfig` — dynamic temperature (`temp_ext`: range,
+  exponent).
+- `AdaptivePConfig` — adaptive-P terminal sampler (target, decay,
+  seed).
+- `LogitBiasEntry` list applied at the start of the chain.
+- `topNSigma`, `infill`, and shared `minKeep` for top-p / min-p /
+  typical / xtc.
+- `SamplerFactory.build(params, model: ...)` — `model:` is now
+  required when the chain uses grammar, DRY, infill, logit-bias, or
+  Mirostat v1 (anything that needs the vocab or `n_ctx_train`).
+
+### Context — `ContextParams`
+
+- `RopeScalingType`, `PoolingType`, `AttentionType` enums.
+- `ropeFreqBase`, `ropeFreqScale`.
+- YaRN: `yarnExtFactor`, `yarnAttnFactor`, `yarnBetaFast`,
+  `yarnBetaSlow`, `yarnOrigCtx`.
+- `defragThreshold`, `noPerf`, `opOffload`, `swaFull`, `kvUnified`.
+
+### Model — `ModelParams`
+
+- `SplitMode` enum + `mainGpu` + `tensorSplit` (allocated to
+  `llama_max_devices()` at load time).
+- `devices` — list of backend device names (resolved from
+  `LlamaBackends.list()`).
+- `kvOverrides` — int / float / bool / string GGUF metadata overrides
+  with the standard NULL-terminated array layout.
+- `useDirectIo`, `useExtraBufts`, `noHost`, `noAlloc`.
+
+### Docs
+
+- README points at the [`aichat`](https://github.com/netdur/imaged-sdk-examples/tree/main/aichat)
+  sample app as a working Flutter integration reference.
+
+### Deferred (tracked for a later cycle)
+
+- `progress_callback`, `cb_eval`, `abort_callback` — need a
+  `NativeCallable.listener` wrapper with isolate-affinity rules.
+- `tensor_buft_overrides` — needs a per-device buffer-type accessor in
+  `BackendDevice` first.
+- Backend sampler chain (`llama_context_params.samplers`) — still
+  marked `[EXPERIMENTAL]` upstream.
+
 ## 0.9.0-dev.5 — first pub.dev publish of the rewrite
 
 Consolidates `0.9.0-dev.0` through `0.9.0-dev.5` (none of dev.0–dev.4

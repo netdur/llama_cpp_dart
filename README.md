@@ -50,6 +50,10 @@ tool/build_android_aar.sh                 # CPU AAR
 tool/build_android_hexagon_aar.sh         # Hexagon NPU + OpenCL AAR (Snapdragon)
 ```
 
+## Example app
+
+A working Flutter chat app built on this binding lives at [netdur/imaged-sdk-examples — `aichat`](https://github.com/netdur/imaged-sdk-examples/tree/main/aichat). Useful as a reference for wiring `LlamaEngine`, streaming events, and chat templates into a real UI.
+
 ## Quick start
 
 ### Streaming generation
