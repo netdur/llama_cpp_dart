@@ -13,6 +13,7 @@ import '../generation/request.dart';
 import '../sampling/sampler_params.dart';
 import '../tokenizer/tokenizer.dart';
 import '../types/exceptions.dart';
+import 'state_seq_flags.dart';
 
 /// In-RAM conversation state on top of a [LlamaContext].
 ///
@@ -215,6 +216,39 @@ final class LlamaSession {
     }
   }
 
+  /// Like [captureRawState], but uses the `_ext` form so the caller can
+  /// request partial-only state ([StateSeqFlags.partialOnly]) or keep the
+  /// snapshot on-device ([StateSeqFlags.onDevice]).
+  ///
+  /// When [flags] includes [StateSeqFlags.onDevice] the returned buffer
+  /// may be a host-side handle rather than the actual KV bytes — only
+  /// valid for round-trip through [restoreRawStateExt] on the same
+  /// context. Don't ship the buffer to disk in that case.
+  Uint8List captureRawStateExt({required StateSeqFlags flags}) {
+    final b = LlamaLibrary.bindings;
+    final ctxPtr = context.pointer;
+    final size = b.llama_state_seq_get_size_ext(ctxPtr, seqId, flags.value);
+    if (size == 0) return Uint8List(0);
+    final buf = calloc<Uint8>(size);
+    try {
+      final written = b.llama_state_seq_get_data_ext(
+        ctxPtr,
+        buf,
+        size,
+        seqId,
+        flags.value,
+      );
+      if (written == 0) {
+        throw const LlamaContextException(
+          'llama_state_seq_get_data_ext wrote 0 bytes',
+        );
+      }
+      return Uint8List.fromList(buf.asTypedList(written));
+    } finally {
+      calloc.free(buf);
+    }
+  }
+
   /// Apply a previously captured KV blob to this session's sequence and
   /// replace the in-memory token history with [tokens]. The caller is
   /// responsible for verifying that [bytes] came from a compatible model.
@@ -238,6 +272,47 @@ final class LlamaSession {
         if (read == 0) {
           throw const LlamaContextException(
             'llama_state_seq_set_data rejected the buffer',
+          );
+        }
+      } finally {
+        calloc.free(buf);
+      }
+    }
+
+    _tokens
+      ..clear()
+      ..addAll(tokens);
+    _kvHead = kvHead;
+  }
+
+  /// `_ext` counterpart to [restoreRawState]. Passes [flags] through to
+  /// `llama_state_seq_set_data_ext`. [bytes] must have been produced by
+  /// [captureRawStateExt] with a compatible flag set.
+  void restoreRawStateExt(
+    Uint8List bytes,
+    List<int> tokens,
+    int kvHead, {
+    required StateSeqFlags flags,
+  }) {
+    final b = LlamaLibrary.bindings;
+    final ctxPtr = context.pointer;
+    final mem = b.llama_get_memory(ctxPtr);
+    b.llama_memory_seq_rm(mem, seqId, -1, -1);
+
+    if (bytes.isNotEmpty) {
+      final buf = calloc<Uint8>(bytes.length);
+      try {
+        buf.asTypedList(bytes.length).setAll(0, bytes);
+        final read = b.llama_state_seq_set_data_ext(
+          ctxPtr,
+          buf,
+          bytes.length,
+          seqId,
+          flags.value,
+        );
+        if (read == 0) {
+          throw const LlamaContextException(
+            'llama_state_seq_set_data_ext rejected the buffer',
           );
         }
       } finally {

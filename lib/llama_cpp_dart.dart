@@ -59,6 +59,7 @@ export 'src/sampling/sampler_params.dart'
 export 'src/session/session.dart' show LlamaSession;
 export 'src/session/state_codec.dart'
     show LlamaStateError, LlamaStateException, StateMetadata, stateCodecVersion;
+export 'src/session/state_seq_flags.dart' show StateSeqFlags;
 export 'src/tokenizer/tokenizer.dart' show Tokenizer;
 export 'src/tokenizer/utf8_accumulator.dart' show Utf8Accumulator;
 export 'src/types/exceptions.dart';
