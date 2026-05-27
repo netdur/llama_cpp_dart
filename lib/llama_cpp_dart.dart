@@ -4,6 +4,7 @@
 /// architecture.
 library;
 
+export 'src/adapter/lora.dart' show LlamaLora, LoraBinding;
 export 'src/batch/batch.dart' show LlamaBatch;
 export 'src/chat/chat_message.dart' show ChatMessage;
 export 'src/chat/chat_template.dart' show ChatTemplate, ChatTemplateException;

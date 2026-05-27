@@ -1,6 +1,9 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
+
+import '../adapter/lora.dart';
 import '../diagnostics/perf.dart';
 import '../ffi/bindings.dart';
 import '../ffi/library_loader.dart';
@@ -309,6 +312,89 @@ final class LlamaContext implements Finalizable {
   /// Mostly useful when the wrapper's logging is wired to a sink.
   void printPerf() {
     LlamaLibrary.bindings.llama_perf_context_print(pointer);
+  }
+
+  /// Replace this context's active LoRA stack with [bindings]. Pass an
+  /// empty list to clear all adapters. Mirrors `llama_set_adapters_lora`
+  /// which is a wholesale swap, not a per-adapter mutation.
+  ///
+  /// Every [LlamaLora] in [bindings] must have been loaded against the
+  /// same [LlamaModel] backing this context; otherwise llama.cpp rejects
+  /// the call and throws [LlamaLibraryException].
+  void setLoraAdapters(List<LoraBinding> bindings) {
+    final lib = LlamaLibrary.bindings;
+    if (bindings.isEmpty) {
+      final rc = lib.llama_set_adapters_lora(pointer, nullptr, 0, nullptr);
+      if (rc != 0) {
+        throw LlamaLibraryException('llama_set_adapters_lora rc=$rc');
+      }
+      return;
+    }
+    final adaptersPtr = calloc<Pointer<llama_adapter_lora>>(bindings.length);
+    final scalesPtr = calloc<Float>(bindings.length);
+    try {
+      for (var i = 0; i < bindings.length; i++) {
+        adaptersPtr[i] = bindings[i].adapter.pointer;
+        scalesPtr[i] = bindings[i].scale;
+      }
+      final rc = lib.llama_set_adapters_lora(
+        pointer,
+        adaptersPtr,
+        bindings.length,
+        scalesPtr,
+      );
+      if (rc != 0) {
+        throw LlamaLibraryException('llama_set_adapters_lora rc=$rc');
+      }
+    } finally {
+      calloc.free(adaptersPtr);
+      calloc.free(scalesPtr);
+    }
+  }
+
+  /// Detach every active LoRA adapter from this context.
+  void clearLoraAdapters() => setLoraAdapters(const <LoraBinding>[]);
+
+  /// Apply a representation-engineering control vector to a layer range.
+  ///
+  /// [data] must hold `(ilEnd - ilStart) * nEmbd` floats, laid out as one
+  /// `nEmbd`-length vector per layer. Pass an empty [data] to clear the
+  /// control vector. [nEmbd] usually matches [LlamaModel.nEmbd].
+  ///
+  /// Mirrors `llama_set_adapter_cvec`. Most users won't need this — it's
+  /// for ReFT-style runtime steering of activations.
+  void setControlVector({
+    required Float32List data,
+    required int nEmbd,
+    required int ilStart,
+    required int ilEnd,
+  }) {
+    final lib = LlamaLibrary.bindings;
+    if (data.isEmpty) {
+      final rc =
+          lib.llama_set_adapter_cvec(pointer, nullptr, 0, nEmbd, ilStart, ilEnd);
+      if (rc != 0) {
+        throw LlamaLibraryException('llama_set_adapter_cvec rc=$rc');
+      }
+      return;
+    }
+    final buf = calloc<Float>(data.length);
+    try {
+      buf.asTypedList(data.length).setAll(0, data);
+      final rc = lib.llama_set_adapter_cvec(
+        pointer,
+        buf,
+        data.length,
+        nEmbd,
+        ilStart,
+        ilEnd,
+      );
+      if (rc != 0) {
+        throw LlamaLibraryException('llama_set_adapter_cvec rc=$rc');
+      }
+    } finally {
+      calloc.free(buf);
+    }
   }
 
   void dispose() {
