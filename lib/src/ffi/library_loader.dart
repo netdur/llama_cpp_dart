@@ -59,6 +59,24 @@ final class LlamaLibrary {
   /// Convenient for matching log timestamps against your own measurements.
   static int get timeUs => bindings.llama_time_us();
 
+  /// One-line summary of the build (CPU features, BLAS, GPU backends).
+  /// Useful for crash reports and CI logs. Empty when the runtime returns
+  /// null.
+  static String systemInfo() {
+    final ptr = bindings.llama_print_system_info();
+    if (ptr == nullptr) return '';
+    return ptr.cast<Utf8>().toDartString();
+  }
+
+  /// Configure NUMA awareness. Call **before** the first model load if you
+  /// need a non-default strategy; calling later has no effect. Defaults to
+  /// disabled and only matters on multi-socket Linux servers.
+  static void initNuma(NumaStrategy strategy) {
+    bindings.llama_numa_init(
+      ggml_numa_strategy.fromValue(strategy.value),
+    );
+  }
+
   /// Load the native library and initialize llama / ggml backends.
   ///
   /// [path] is the absolute path to `libllama.dylib` / `libllama.so`.
@@ -287,4 +305,27 @@ final class LlamaLibrary {
       // libc lookup failed — older NDK or non-Android-Linux. Skip.
     }
   }
+}
+
+/// NUMA strategy passed to [LlamaLibrary.initNuma]. Only meaningful on
+/// multi-socket Linux servers; ignored elsewhere.
+enum NumaStrategy {
+  /// NUMA awareness disabled (default).
+  disabled(0),
+
+  /// Spread threads across NUMA nodes.
+  distribute(1),
+
+  /// Pin threads to a single NUMA node.
+  isolate(2),
+
+  /// Honor an external `numactl --cpunodebind` placement.
+  numactl(3),
+
+  /// Mirror model weights on every NUMA node (uses more RAM, lower
+  /// cross-socket traffic).
+  mirror(4);
+
+  final int value;
+  const NumaStrategy(this.value);
 }

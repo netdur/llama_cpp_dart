@@ -23,7 +23,7 @@ export 'src/diagnostics/perf.dart' show ContextPerf, SamplerPerf;
 export 'src/ffi/backends.dart'
     show BackendDevice, BackendDeviceType, LlamaBackends;
 export 'src/ffi/bindings.dart' show LlamaBindings;
-export 'src/ffi/library_loader.dart' show LlamaLibrary;
+export 'src/ffi/library_loader.dart' show LlamaLibrary, NumaStrategy;
 export 'src/ffi/log.dart' show LlamaLog, LlamaLogException;
 export 'src/generation/context_shift.dart'
     show ContextShift, ContextShiftPolicy;
@@ -38,6 +38,7 @@ export 'src/isolate/engine.dart' show EngineChat, EngineSession, LlamaEngine;
 export 'src/model/model.dart' show LlamaModel;
 export 'src/model/model_params.dart'
     show KvOverride, KvOverrideType, ModelParams, RopeType, SplitMode;
+export 'src/model/split_path.dart' show SplitPath;
 export 'src/model/vocab.dart' show LlamaVocab;
 export 'src/multimodal/media.dart' show LlamaMedia, MediaKind;
 export 'src/multimodal/mtmd_bitmap.dart' show MtmdBitmap, MtmdCapabilities;
