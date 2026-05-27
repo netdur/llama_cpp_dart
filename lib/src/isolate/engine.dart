@@ -5,6 +5,7 @@ import '../chat/chat_message.dart';
 import '../context/context_params.dart';
 import '../ffi/backends.dart';
 import '../generation/context_shift.dart';
+import '../generation/embedding.dart';
 import '../generation/event.dart';
 import '../model/model_params.dart';
 import '../multimodal/media.dart';
@@ -252,6 +253,53 @@ final class LlamaEngine {
         ));
     _sessionIds.add(sessionId);
     return EngineSession._(this, sessionId, seqId);
+  }
+
+  /// Run a single embedding pass on the worker and return the resulting
+  /// vector(s).
+  ///
+  /// Requires the engine to have been spawned with
+  /// `ContextParams(embeddings: true)`. The chosen [PoolingType] controls
+  /// the shape of the result:
+  ///
+  /// * Pooled (`mean` / `cls` / `last` / `rank`): one vector of length
+  ///   `nEmbd` per call.
+  /// * `none`: one row per input token, flattened row-major into
+  ///   `nTokens * nEmbd` floats.
+  ///
+  /// The KV cache for [seqId] is cleared before each call; embeds do not
+  /// interact with any [EngineSession] history. Embedding and generate
+  /// requests share the worker's single in-flight slot, so they are
+  /// serialized rather than overlapping.
+  ///
+  /// When [normalize] is true the result is L2-normalized in-place (per
+  /// vector for pooled, per row for unpooled).
+  Future<EmbeddingResult> embed(
+    String text, {
+    bool addSpecial = true,
+    bool parseSpecial = true,
+    bool normalize = true,
+    int seqId = 0,
+  }) async {
+    _ensureAlive();
+    final response = await _request<EmbedResponse>(
+      (id) => EmbedCommand(
+        id,
+        text: text,
+        addSpecial: addSpecial,
+        parseSpecial: parseSpecial,
+        normalize: normalize,
+        seqId: seqId,
+      ),
+    );
+    return EmbeddingResult(
+      nEmbd: response.nEmbd,
+      nTokens: response.nTokens,
+      pooled: response.pooled,
+      poolingType: response.poolingType,
+      normalized: response.normalized,
+      vector: response.vector,
+    );
   }
 
   /// Shut down the worker isolate. Cancels all in-flight streams.

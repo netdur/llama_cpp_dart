@@ -24,6 +24,7 @@ export 'src/ffi/library_loader.dart' show LlamaLibrary;
 export 'src/ffi/log.dart' show LlamaLog, LlamaLogException;
 export 'src/generation/context_shift.dart'
     show ContextShift, ContextShiftPolicy;
+export 'src/generation/embedding.dart' show EmbeddingResult;
 export 'src/generation/event.dart'
     show DoneEvent, GenerationEvent, ShiftEvent, TokenEvent;
 export 'src/generation/generator.dart' show Generator;

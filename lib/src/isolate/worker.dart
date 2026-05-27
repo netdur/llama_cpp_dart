@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../batch/batch.dart';
 import '../chat/chat_template.dart';
 import '../context/context.dart';
 import '../ffi/backends.dart';
+import '../ffi/bindings.dart';
 import '../ffi/library_loader.dart';
 import '../generation/context_shift.dart';
 import '../generation/event.dart';
@@ -182,6 +185,9 @@ Future<void> _dispatch(
 
       case GenerateChatCommand():
         await _runGenerateChat(cmd, state, reply);
+
+      case EmbedCommand():
+        await _runEmbed(cmd, state, reply);
 
       case SaveSessionStateCommand():
         _runSaveSessionState(cmd, state, reply);
@@ -615,6 +621,144 @@ Future<void> _streamSampleAfterPrefill({
   } finally {
     samplerHandle.dispose();
     batch.dispose();
+  }
+}
+
+Future<void> _runEmbed(
+  EmbedCommand cmd,
+  _WorkerState state,
+  SendPort reply,
+) async {
+  if (!_claimGenerate(cmd.requestId, state, reply)) return;
+  try {
+    if (!state.context.params.embeddings) {
+      reply.send(EngineErrorResponse(
+        cmd.requestId,
+        'embedding requested but ContextParams.embeddings is false; '
+        'rebuild the engine with ContextParams(embeddings: true)',
+      ));
+      return;
+    }
+
+    final lib = LlamaLibrary.bindings;
+    final ctx = state.context;
+    final model = state.model;
+
+    final tokenizer = Tokenizer(model.vocab);
+    final tokens = tokenizer.encode(
+      cmd.text,
+      addSpecial: cmd.addSpecial,
+      parseSpecial: cmd.parseSpecial,
+    );
+
+    if (tokens.isEmpty) {
+      reply.send(EngineErrorResponse(
+        cmd.requestId,
+        'embedding input tokenized to 0 tokens',
+      ));
+      return;
+    }
+
+    if (tokens.length > ctx.nBatch) {
+      reply.send(EngineErrorResponse(
+        cmd.requestId,
+        'embedding input has ${tokens.length} tokens which exceeds nBatch '
+        '(${ctx.nBatch}); raise ContextParams.nBatch / nUbatch',
+      ));
+      return;
+    }
+
+    // Reset KV for this seq so prior calls don't bleed into the pass.
+    lib.llama_memory_seq_rm(
+      lib.llama_get_memory(ctx.pointer),
+      cmd.seqId,
+      -1,
+      -1,
+    );
+
+    final batch = LlamaBatch(ctx.nBatch);
+    try {
+      for (var i = 0; i < tokens.length; i++) {
+        batch.add(tokens[i], i, [cmd.seqId], wantLogits: true);
+      }
+
+      // Encoder-only models (e.g. BERT) want llama_encode; everything else
+      // goes through llama_decode.
+      final usesEncoder = model.hasEncoder && !model.hasDecoder;
+      final rc = usesEncoder
+          ? lib.llama_encode(ctx.pointer, batch.raw)
+          : lib.llama_decode(ctx.pointer, batch.raw);
+      if (rc != 0) {
+        reply.send(EngineErrorResponse(
+          cmd.requestId,
+          '${usesEncoder ? 'llama_encode' : 'llama_decode'} '
+          'failed during embed: rc=$rc',
+        ));
+        return;
+      }
+
+      final nEmbd = model.nEmbd;
+      final poolingInt = lib.llama_pooling_type$1(ctx.pointer).value;
+      final pooled =
+          poolingInt != llama_pooling_type.LLAMA_POOLING_TYPE_NONE.value;
+
+      Float32List vec;
+      if (pooled) {
+        final ptr = lib.llama_get_embeddings_seq(ctx.pointer, cmd.seqId);
+        if (ptr == nullptr) {
+          reply.send(EngineErrorResponse(
+            cmd.requestId,
+            'llama_get_embeddings_seq returned null for seq ${cmd.seqId}; '
+            'check that the model supports this pooling type',
+          ));
+          return;
+        }
+        vec = Float32List.fromList(ptr.asTypedList(nEmbd));
+        if (cmd.normalize) _l2NormInPlace(vec, 0, nEmbd);
+      } else {
+        vec = Float32List(tokens.length * nEmbd);
+        for (var i = 0; i < tokens.length; i++) {
+          final ptr = lib.llama_get_embeddings_ith(ctx.pointer, i);
+          if (ptr == nullptr) continue;
+          vec.setRange(
+            i * nEmbd,
+            (i + 1) * nEmbd,
+            ptr.asTypedList(nEmbd),
+          );
+          if (cmd.normalize) _l2NormInPlace(vec, i * nEmbd, nEmbd);
+        }
+      }
+
+      reply.send(EmbedResponse(
+        cmd.requestId,
+        nEmbd: nEmbd,
+        nTokens: tokens.length,
+        pooled: pooled,
+        poolingType: poolingInt,
+        normalized: cmd.normalize,
+        vector: vec,
+      ));
+    } finally {
+      batch.dispose();
+    }
+  } catch (e, st) {
+    reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
+  } finally {
+    state.inFlightGenerateId = null;
+    state.cancelledRequests.remove(cmd.requestId);
+  }
+}
+
+void _l2NormInPlace(Float32List v, int offset, int len) {
+  var sum = 0.0;
+  for (var i = 0; i < len; i++) {
+    final x = v[offset + i];
+    sum += x * x;
+  }
+  if (sum <= 0) return;
+  final norm = 1.0 / math.sqrt(sum);
+  for (var i = 0; i < len; i++) {
+    v[offset + i] = v[offset + i] * norm;
   }
 }
 

@@ -1,4 +1,5 @@
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import '../chat/chat_message.dart';
 import '../context/context_params.dart';
@@ -131,6 +132,46 @@ final class GenerateChatCommand extends EngineCommand {
     required this.sampler,
     required this.maxTokens,
     this.templateOverride,
+  });
+}
+
+/// Tokenize [text] and run a single embedding pass on the worker. The
+/// session's KV cache for [seqId] is cleared before the pass; this command
+/// does not interact with any [EngineSession] history.
+final class EmbedCommand extends EngineCommand {
+  final String text;
+  final bool addSpecial;
+  final bool parseSpecial;
+  final bool normalize;
+  final int seqId;
+  const EmbedCommand(
+    super.requestId, {
+    required this.text,
+    required this.addSpecial,
+    required this.parseSpecial,
+    required this.normalize,
+    required this.seqId,
+  });
+}
+
+/// Returned for a successful [EmbedCommand]. Carries a snapshot of the
+/// embedding values (not a view onto worker-owned memory) so the main
+/// isolate can read them after the response is received.
+final class EmbedResponse extends EngineResponse {
+  final int nEmbd;
+  final int nTokens;
+  final bool pooled;
+  final int poolingType;
+  final bool normalized;
+  final Float32List vector;
+  const EmbedResponse(
+    super.requestId, {
+    required this.nEmbd,
+    required this.nTokens,
+    required this.pooled,
+    required this.poolingType,
+    required this.normalized,
+    required this.vector,
   });
 }
 
