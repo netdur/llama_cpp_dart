@@ -1,5 +1,82 @@
 # Changelog
 
+## Unreleased — llama.cpp b9360, MTP scaffolding, broad API coverage
+
+llama.cpp submodule bumped from `gguf-v0.18.0-791-g5d56effde` to tag
+**`b9360`** (sha `6b4e4bd58`). 328 commits of upstream history,
+purely-additive C API delta (`llama_context_type`, `llama_n_rs_seq`,
+new `llama_state_seq_flags`, `mtmd_get_cap_from_file`, plus the
+context-params fields `ctx_type` / `n_rs_seq`). Bindings
+regenerated; existing wrapper code unchanged.
+
+### New high-level surfaces
+
+- **`LlamaEngine.embed(text)`** — pooled and per-token embeddings via
+  the worker isolate, with optional L2 normalization. Returns
+  `EmbeddingResult` covering both pooled (mean/cls/last/rank) and
+  unpooled outputs.
+- **`ContextType` + `nRsSeq` on `ContextParams`** — lets advanced
+  users build an MTP draft context against an MTP-capable target
+  model for raw-FFI speculative decoding. A high-level
+  `EngineSpeculative` API is still TBD.
+- **`LlamaLora` + `LoraBinding`**, with
+  `LlamaContext.setLoraAdapters` / `clearLoraAdapters` /
+  `setControlVector`. LoRA stack swaps, metadata accessors, aLoRA
+  invocation-token reads, and ReFT-style control vectors.
+- **`MtmdBitmap` / `MtmdChunk` / `MtmdChunks` /
+  `MtmdCapabilities`** — bitmap construction (raw RGB, raw audio,
+  file decode, buffer decode), `mtmd_input_chunks` introspection
+  (kind, nTokens, nPos, id, text-token reads), plus a cheap
+  `mtmd_get_cap_from_file` probe.
+
+### Context introspection and ops
+
+- `nCtxSeq`, `nRsSeq`, effective `poolingType`.
+- Runtime toggles: `setThreads`, `setEmbeddings`, `setCausalAttn`,
+  `setWarmup`, `synchronize`.
+- Memory ops: `memoryClear`, `memorySeqRm`, `memorySeqCp`,
+  `memorySeqKeep`, `memorySeqAdd`, `memorySeqDiv`,
+  `memorySeqPosMin/Max` — covers forking, rollback, position
+  shifting.
+- Logits & probs: `lastLogits`, `logitsAt`, `sampledTokenAt`,
+  `sampledProbsAt`, `sampledCandidatesAt`, `sampledLogitsAt`.
+
+### Diagnostics
+
+- `ContextPerf` / `SamplerPerf` snapshots with `perf()` / `resetPerf()`
+  / `printPerf()` on `LlamaContext` and `Sampler`. Includes
+  prompt/decoded tokens-per-second convenience getters.
+
+### Model / library accessors
+
+- `LlamaModel`: `isDiffusion`, `isHybrid`, `nSwa`, `nEmbdInp`,
+  `nEmbdOut`, `decoderStartToken`, `nClassifierOut`,
+  `classifierLabel(i)`, `ropeType` (new `RopeType` enum),
+  `ropeFreqScaleTrain`, `metaCount` + `metaKeyAt` / `metaValueAt` /
+  `metaValue(key)` / `metaEntries`.
+- `LlamaLibrary`: `supportsMmap` / `Mlock` / `Rpc`,
+  `maxParallelSequences`, `maxTensorBuftOverrides`, `timeUs`,
+  `systemInfo()`, `initNuma(NumaStrategy.*)`.
+- `SplitPath.compose` / `decomposePrefix` for split-gguf filenames.
+
+### Sampler chain introspection
+
+- `name`, `seed`, `chainCount`, `chainGet(i)` (borrowed),
+  `chainRemove(i)` (owned), `clone()`, `apply(arr)`.
+
+### Session state
+
+- `captureRawStateExt` / `restoreRawStateExt` accepting the new
+  `StateSeqFlags` (mirrors `LLAMA_STATE_SEQ_FLAGS_*` including
+  the b9360 on-device snapshot bit).
+
+### Build
+
+- `tool/build_native.sh` disables `LLAMA_BUILD_SERVER` and
+  `LLAMA_BUILD_APP`: upstream b9360's `tools/server/` references
+  mtmd symbols missing from its own public header. We ship neither
+  target, so turning them off keeps `--with-mtmd` building cleanly.
+
 ## 0.9.0-dev.6 — option coverage pass
 
 Closes the gap between the Dart binding's option surface and the

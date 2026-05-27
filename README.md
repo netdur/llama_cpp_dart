@@ -220,7 +220,7 @@ plan.md                        // milestone-by-milestone roadmap
 
 `0.9.x` is the rewrite line. The Dart API is mostly stable but **may break once more** before 1.0 — most likely around: real Jinja support, on-device validation findings, and final naming for chat-template/policy knobs. Pin to a minor when you ship.
 
-llama.cpp is pinned per release in `src/llama.cpp` (git submodule). Bumps are tested against the full suite before tagging.
+llama.cpp is pinned per release in `src/llama.cpp` (git submodule). Bumps are tested against the full suite before tagging. The current pin is **tag `b9360`** (sha `6b4e4bd58`); if you're building your own native libs to match this package, check out that tag.
 
 ## License
 
