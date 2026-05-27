@@ -105,6 +105,97 @@ final class LlamaContext implements Finalizable {
     return lib.llama_memory_can_shift(lib.llama_get_memory(pointer));
   }
 
+  /// Drop every sequence from the KV cache. When [freeData] is true the
+  /// underlying tensor buffers are released; pass `false` to keep them
+  /// allocated for fast re-fill (the runtime can reuse the allocation
+  /// without going through the device allocator again).
+  void memoryClear({bool freeData = true}) {
+    final lib = LlamaLibrary.bindings;
+    lib.llama_memory_clear(lib.llama_get_memory(pointer), freeData);
+  }
+
+  /// Drop positions `[p0, p1)` for [seqId] from the KV cache. `p0 = -1`
+  /// means "from the start", `p1 = -1` means "to the end" — mirrors
+  /// `llama_memory_seq_rm`. Returns `false` when the backend cannot remove
+  /// the requested range (e.g. recurrent caches with mid-sequence removals).
+  bool memorySeqRm(int seqId, {int p0 = -1, int p1 = -1}) {
+    final lib = LlamaLibrary.bindings;
+    return lib.llama_memory_seq_rm(
+      lib.llama_get_memory(pointer),
+      seqId,
+      p0,
+      p1,
+    );
+  }
+
+  /// Copy positions `[p0, p1)` of [srcSeqId] onto [dstSeqId]. Useful for
+  /// forking a sequence (e.g. evaluating multiple sampling continuations
+  /// against the same prefix). Pass `-1` for either end to mean unbounded.
+  void memorySeqCp(
+    int srcSeqId,
+    int dstSeqId, {
+    int p0 = -1,
+    int p1 = -1,
+  }) {
+    final lib = LlamaLibrary.bindings;
+    lib.llama_memory_seq_cp(
+      lib.llama_get_memory(pointer),
+      srcSeqId,
+      dstSeqId,
+      p0,
+      p1,
+    );
+  }
+
+  /// Drop every sequence except [seqId] from the KV cache. Counterpart to
+  /// [memorySeqCp] — when you fork a working set and want to commit one
+  /// branch back as the canonical seq.
+  void memorySeqKeep(int seqId) {
+    final lib = LlamaLibrary.bindings;
+    lib.llama_memory_seq_keep(lib.llama_get_memory(pointer), seqId);
+  }
+
+  /// Shift positions `[p0, p1)` of [seqId] by [delta]. Requires [canShift]
+  /// to be true; raises no error here when the backend doesn't support it
+  /// — caller is expected to gate on `canShift` themselves.
+  void memorySeqAdd(int seqId, {int p0 = -1, int p1 = -1, required int delta}) {
+    final lib = LlamaLibrary.bindings;
+    lib.llama_memory_seq_add(
+      lib.llama_get_memory(pointer),
+      seqId,
+      p0,
+      p1,
+      delta,
+    );
+  }
+
+  /// Divide every position in `[p0, p1)` of [seqId] by [d]. Used by some
+  /// RoPE-rotation tricks (long-context extrapolation). [d] must be `> 0`.
+  void memorySeqDiv(int seqId, {int p0 = -1, int p1 = -1, required int d}) {
+    final lib = LlamaLibrary.bindings;
+    lib.llama_memory_seq_div(
+      lib.llama_get_memory(pointer),
+      seqId,
+      p0,
+      p1,
+      d,
+    );
+  }
+
+  /// Smallest position currently held in the KV cache for [seqId]. Returns
+  /// `-1` if the sequence is empty.
+  int memorySeqPosMin(int seqId) {
+    final lib = LlamaLibrary.bindings;
+    return lib.llama_memory_seq_pos_min(lib.llama_get_memory(pointer), seqId);
+  }
+
+  /// Largest position currently held in the KV cache for [seqId]. Returns
+  /// `-1` if the sequence is empty.
+  int memorySeqPosMax(int seqId) {
+    final lib = LlamaLibrary.bindings;
+    return lib.llama_memory_seq_pos_max(lib.llama_get_memory(pointer), seqId);
+  }
+
   /// Switch the thread counts at runtime.
   ///
   /// [n] is the generation thread count, [nBatch] the prefill thread count.
