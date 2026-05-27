@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:typed_data';
 
 import '../ffi/bindings.dart';
 import '../ffi/library_loader.dart';
@@ -135,6 +136,61 @@ final class LlamaContext implements Finalizable {
   /// completed. Mostly relevant on GPU backends; a no-op on pure CPU.
   void synchronize() {
     LlamaLibrary.bindings.llama_synchronize(pointer);
+  }
+
+  /// Copy the logits for the last position with `wantLogits = true` in the
+  /// most recently decoded batch. Length matches [LlamaModel.nVocab].
+  /// Returns `null` if the runtime did not produce logits for that position.
+  Float32List? lastLogits() {
+    final ptr = LlamaLibrary.bindings.llama_get_logits(pointer);
+    if (ptr == nullptr) return null;
+    return Float32List.fromList(ptr.asTypedList(model.vocab.nTokens));
+  }
+
+  /// Copy the logits for batch position [i]. Same caveats as [lastLogits].
+  /// Use `-1` to mean "the last position with logits enabled."
+  Float32List? logitsAt(int i) {
+    final ptr = LlamaLibrary.bindings.llama_get_logits_ith(pointer, i);
+    if (ptr == nullptr) return null;
+    return Float32List.fromList(ptr.asTypedList(model.vocab.nTokens));
+  }
+
+  /// Token id picked by the sampler for batch position [i], assuming a
+  /// `llama_sampler_decode_with_*` path produced it. Returns `-1` when no
+  /// sampled token is available for that position.
+  int sampledTokenAt(int i) =>
+      LlamaLibrary.bindings.llama_get_sampled_token_ith(pointer, i);
+
+  /// Top-k sampled probabilities for batch position [i]. Length matches
+  /// the runtime's top-k snapshot for that position.
+  Float32List? sampledProbsAt(int i) {
+    final lib = LlamaLibrary.bindings;
+    final n = lib.llama_get_sampled_probs_count_ith(pointer, i);
+    if (n == 0) return null;
+    final ptr = lib.llama_get_sampled_probs_ith(pointer, i);
+    if (ptr == nullptr) return null;
+    return Float32List.fromList(ptr.asTypedList(n));
+  }
+
+  /// Top-k sampled candidate token ids for batch position [i]. Pairs
+  /// index-for-index with [sampledProbsAt] / [sampledLogitsAt].
+  Int32List? sampledCandidatesAt(int i) {
+    final lib = LlamaLibrary.bindings;
+    final n = lib.llama_get_sampled_candidates_count_ith(pointer, i);
+    if (n == 0) return null;
+    final ptr = lib.llama_get_sampled_candidates_ith(pointer, i);
+    if (ptr == nullptr) return null;
+    return Int32List.fromList(ptr.asTypedList(n));
+  }
+
+  /// Top-k sampled logits for batch position [i].
+  Float32List? sampledLogitsAt(int i) {
+    final lib = LlamaLibrary.bindings;
+    final n = lib.llama_get_sampled_logits_count_ith(pointer, i);
+    if (n == 0) return null;
+    final ptr = lib.llama_get_sampled_logits_ith(pointer, i);
+    if (ptr == nullptr) return null;
+    return Float32List.fromList(ptr.asTypedList(n));
   }
 
   void dispose() {
