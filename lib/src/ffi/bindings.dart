@@ -5123,6 +5123,23 @@ class LlamaBindings {
   late final _ggml_mul_mat_set_prec = _ggml_mul_mat_set_precPtr
       .asFunction<void Function(ffi.Pointer<ggml_tensor>, int)>();
 
+  void ggml_mul_mat_set_hint(
+    ffi.Pointer<ggml_tensor> a,
+    ggml_op_hint hint,
+  ) {
+    return _ggml_mul_mat_set_hint(
+      a,
+      hint.value,
+    );
+  }
+
+  late final _ggml_mul_mat_set_hintPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ggml_tensor>,
+              ffi.UnsignedInt)>>('ggml_mul_mat_set_hint');
+  late final _ggml_mul_mat_set_hint = _ggml_mul_mat_set_hintPtr
+      .asFunction<void Function(ffi.Pointer<ggml_tensor>, int)>();
+
   ffi.Pointer<ggml_tensor> ggml_mul_mat_id(
     ffi.Pointer<ggml_context> ctx,
     ffi.Pointer<ggml_tensor> as,
@@ -13670,6 +13687,54 @@ class LlamaBindings {
       ffi.Pointer<gguf_context> Function(
           ffi.Pointer<ffi.Char>, gguf_init_params)>();
 
+  ffi.Pointer<gguf_context> gguf_init_from_buffer(
+    ffi.Pointer<ffi.Void> data,
+    int size,
+    gguf_init_params params,
+  ) {
+    return _gguf_init_from_buffer(
+      data,
+      size,
+      params,
+    );
+  }
+
+  late final _gguf_init_from_bufferPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<gguf_context> Function(ffi.Pointer<ffi.Void>, ffi.Size,
+              gguf_init_params)>>('gguf_init_from_buffer');
+  late final _gguf_init_from_buffer = _gguf_init_from_bufferPtr.asFunction<
+      ffi.Pointer<gguf_context> Function(
+          ffi.Pointer<ffi.Void>, int, gguf_init_params)>();
+
+  ffi.Pointer<gguf_context> gguf_init_from_callback(
+    gguf_reader_callback_t callback,
+    ffi.Pointer<ffi.Void> userdata,
+    int max_chunk_read,
+    int max_expected_size,
+    gguf_init_params params,
+  ) {
+    return _gguf_init_from_callback(
+      callback,
+      userdata,
+      max_chunk_read,
+      max_expected_size,
+      params,
+    );
+  }
+
+  late final _gguf_init_from_callbackPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<gguf_context> Function(
+              gguf_reader_callback_t,
+              ffi.Pointer<ffi.Void>,
+              ffi.Size,
+              ffi.Uint64,
+              gguf_init_params)>>('gguf_init_from_callback');
+  late final _gguf_init_from_callback = _gguf_init_from_callbackPtr.asFunction<
+      ffi.Pointer<gguf_context> Function(gguf_reader_callback_t,
+          ffi.Pointer<ffi.Void>, int, int, gguf_init_params)>();
+
   void gguf_free(
     ffi.Pointer<gguf_context> ctx,
   ) {
@@ -15107,6 +15172,20 @@ class LlamaBindings {
       'llama_n_seq_max');
   late final _llama_n_seq_max = _llama_n_seq_maxPtr
       .asFunction<int Function(ffi.Pointer<llama_context>)>();
+
+  int llama_n_rs_seq(
+    ffi.Pointer<llama_context> ctx,
+  ) {
+    return _llama_n_rs_seq(
+      ctx,
+    );
+  }
+
+  late final _llama_n_rs_seqPtr = _lookup<
+          ffi.NativeFunction<ffi.Uint32 Function(ffi.Pointer<llama_context>)>>(
+      'llama_n_rs_seq');
+  late final _llama_n_rs_seq =
+      _llama_n_rs_seqPtr.asFunction<int Function(ffi.Pointer<llama_context>)>();
 
   int llama_n_ctx_train(
     ffi.Pointer<llama_model> model,
@@ -19372,6 +19451,20 @@ class LlamaBindings {
   late final _mtmd_log_set = _mtmd_log_setPtr
       .asFunction<void Function(ggml_log_callback, ffi.Pointer<ffi.Void>)>();
 
+  mtmd_caps mtmd_get_cap_from_file(
+    ffi.Pointer<ffi.Char> mmproj_fname,
+  ) {
+    return _mtmd_get_cap_from_file(
+      mmproj_fname,
+    );
+  }
+
+  late final _mtmd_get_cap_from_filePtr =
+      _lookup<ffi.NativeFunction<mtmd_caps Function(ffi.Pointer<ffi.Char>)>>(
+          'mtmd_get_cap_from_file');
+  late final _mtmd_get_cap_from_file = _mtmd_get_cap_from_filePtr
+      .asFunction<mtmd_caps Function(ffi.Pointer<ffi.Char>)>();
+
   /// //////////////////////////////////////
   ffi.Pointer<mtmd_input_chunks> mtmd_test_create_input_chunks() {
     return _mtmd_test_create_input_chunks();
@@ -20068,6 +20161,20 @@ enum ggml_prec {
         0 => GGML_PREC_DEFAULT,
         10 => GGML_PREC_F32,
         _ => throw ArgumentError('Unknown value for ggml_prec: $value'),
+      };
+}
+
+enum ggml_op_hint {
+  GGML_HINT_NONE(0),
+  GGML_HINT_SRC0_IS_HADAMARD(1);
+
+  final int value;
+  const ggml_op_hint(this.value);
+
+  static ggml_op_hint fromValue(int value) => switch (value) {
+        0 => GGML_HINT_NONE,
+        1 => GGML_HINT_SRC0_IS_HADAMARD,
+        _ => throw ArgumentError('Unknown value for ggml_op_hint: $value'),
       };
 }
 
@@ -21295,6 +21402,19 @@ final class gguf_init_params extends ffi.Struct {
   external ffi.Pointer<ffi.Pointer<ggml_context>> ctx;
 }
 
+typedef gguf_reader_callback_tFunction = ffi.Size Function(
+    ffi.Pointer<ffi.Void> userdata,
+    ffi.Pointer<ffi.Void> output,
+    ffi.Uint64 offset,
+    ffi.Size len);
+typedef Dartgguf_reader_callback_tFunction = int Function(
+    ffi.Pointer<ffi.Void> userdata,
+    ffi.Pointer<ffi.Void> output,
+    int offset,
+    int len);
+typedef gguf_reader_callback_t
+    = ffi.Pointer<ffi.NativeFunction<gguf_reader_callback_tFunction>>;
+
 final class llama_vocab extends ffi.Opaque {}
 
 final class llama_model extends ffi.Opaque {}
@@ -21701,6 +21821,21 @@ enum llama_split_mode {
       };
 }
 
+enum llama_context_type {
+  LLAMA_CONTEXT_TYPE_DEFAULT(0),
+  LLAMA_CONTEXT_TYPE_MTP(1);
+
+  final int value;
+  const llama_context_type(this.value);
+
+  static llama_context_type fromValue(int value) => switch (value) {
+        0 => LLAMA_CONTEXT_TYPE_DEFAULT,
+        1 => LLAMA_CONTEXT_TYPE_MTP,
+        _ =>
+          throw ArgumentError('Unknown value for llama_context_type: $value'),
+      };
+}
+
 typedef llama_progress_callbackFunction = ffi.Bool Function(
     ffi.Float progress, ffi.Pointer<ffi.Void> user_data);
 typedef Dartllama_progress_callbackFunction = bool Function(
@@ -21882,11 +22017,20 @@ final class llama_context_params extends ffi.Struct {
   @ffi.Uint32()
   external int n_seq_max;
 
+  @ffi.Uint32()
+  external int n_rs_seq;
+
   @ffi.Int32()
   external int n_threads;
 
   @ffi.Int32()
   external int n_threads_batch;
+
+  @ffi.UnsignedInt()
+  external int ctx_typeAsInt;
+
+  llama_context_type get ctx_type =>
+      llama_context_type.fromValue(ctx_typeAsInt);
 
   @ffi.Int()
   external int rope_scaling_typeAsInt;
@@ -22214,6 +22358,14 @@ final class mtmd_decoder_pos extends ffi.Struct {
 
   @ffi.Uint32()
   external int z;
+}
+
+final class mtmd_caps extends ffi.Struct {
+  @ffi.Bool()
+  external bool inp_vision;
+
+  @ffi.Bool()
+  external bool inp_audio;
 }
 
 const int __bool_true_false_are_defined = 1;
@@ -22586,6 +22738,8 @@ const int __MAC_26_3 = 260300;
 
 const int __MAC_26_4 = 260400;
 
+const int __MAC_26_5 = 260500;
+
 const int __IPHONE_2_0 = 20000;
 
 const int __IPHONE_2_1 = 20100;
@@ -22772,6 +22926,8 @@ const int __IPHONE_26_3 = 260300;
 
 const int __IPHONE_26_4 = 260400;
 
+const int __IPHONE_26_5 = 260500;
+
 const int __WATCHOS_1_0 = 10000;
 
 const int __WATCHOS_2_0 = 20000;
@@ -22895,6 +23051,8 @@ const int __WATCHOS_26_2 = 260200;
 const int __WATCHOS_26_3 = 260300;
 
 const int __WATCHOS_26_4 = 260400;
+
+const int __WATCHOS_26_5 = 260500;
 
 const int __TVOS_9_0 = 90000;
 
@@ -23020,6 +23178,8 @@ const int __TVOS_26_3 = 260300;
 
 const int __TVOS_26_4 = 260400;
 
+const int __TVOS_26_5 = 260500;
+
 const int __BRIDGEOS_2_0 = 20000;
 
 const int __BRIDGEOS_3_0 = 30000;
@@ -23098,6 +23258,8 @@ const int __BRIDGEOS_10_3 = 100300;
 
 const int __BRIDGEOS_10_4 = 100400;
 
+const int __BRIDGEOS_26_5 = 260500;
+
 const int __DRIVERKIT_19_0 = 190000;
 
 const int __DRIVERKIT_20_0 = 200000;
@@ -23150,6 +23312,8 @@ const int __DRIVERKIT_25_3 = 250300;
 
 const int __DRIVERKIT_25_4 = 250400;
 
+const int __DRIVERKIT_25_5 = 250500;
+
 const int __VISIONOS_1_0 = 10000;
 
 const int __VISIONOS_1_1 = 10100;
@@ -23183,6 +23347,8 @@ const int __VISIONOS_26_2 = 260200;
 const int __VISIONOS_26_3 = 260300;
 
 const int __VISIONOS_26_4 = 260400;
+
+const int __VISIONOS_26_5 = 260500;
 
 const int MAC_OS_X_VERSION_10_0 = 1000;
 
@@ -23338,6 +23504,8 @@ const int MAC_OS_VERSION_26_3 = 260300;
 
 const int MAC_OS_VERSION_26_4 = 260400;
 
+const int MAC_OS_VERSION_26_5 = 260500;
+
 const int __AVAILABILITY_VERSIONS_VERSION_HASH = 93585900;
 
 const String __AVAILABILITY_VERSIONS_VERSION_STRING = 'Local';
@@ -23346,7 +23514,7 @@ const String __AVAILABILITY_FILE = 'AvailabilityVersions.h';
 
 const int __MAC_OS_X_VERSION_MIN_REQUIRED = 260000;
 
-const int __MAC_OS_X_VERSION_MAX_ALLOWED = 260400;
+const int __MAC_OS_X_VERSION_MAX_ALLOWED = 260500;
 
 const int __ENABLE_LEGACY_MAC_AVAILABILITY = 1;
 
@@ -23498,6 +23666,10 @@ const int LLAMA_STATE_SEQ_MAGIC = 1734833009;
 
 const int LLAMA_STATE_SEQ_VERSION = 2;
 
+const int LLAMA_STATE_SEQ_FLAGS_NONE = 0;
+
 const int LLAMA_STATE_SEQ_FLAGS_SWA_ONLY = 1;
 
 const int LLAMA_STATE_SEQ_FLAGS_PARTIAL_ONLY = 1;
+
+const int LLAMA_STATE_SEQ_FLAGS_ON_DEVICE = 2;
