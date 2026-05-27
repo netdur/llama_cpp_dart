@@ -13,6 +13,7 @@ export 'src/context/context_params.dart'
     show
         AttentionType,
         ContextParams,
+        ContextType,
         FlashAttention,
         KvCacheType,
         PoolingType,
