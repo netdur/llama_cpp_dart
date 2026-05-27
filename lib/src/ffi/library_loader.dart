@@ -35,6 +35,30 @@ final class LlamaLibrary {
   static String? get libraryPath => _libraryPath;
   static String? get libraryDirectory => _libraryDir;
 
+  /// True if the runtime was built with mmap-based model loading support.
+  /// When false, [ModelParams.useMmap] is silently ignored.
+  static bool get supportsMmap => bindings.llama_supports_mmap();
+
+  /// True if the runtime can lock model memory pages in RAM (mlock).
+  static bool get supportsMlock => bindings.llama_supports_mlock();
+
+  /// True if the runtime was compiled with the RPC backend.
+  static bool get supportsRpc => bindings.llama_supports_rpc();
+
+  /// Maximum number of sequences a context can host concurrently in a
+  /// single batch. Hard upper bound on [ContextParams.nSeqMax].
+  static int get maxParallelSequences =>
+      bindings.llama_max_parallel_sequences();
+
+  /// Maximum number of `TensorBuftOverride` entries accepted by
+  /// `llama_model_load_from_file` per call.
+  static int get maxTensorBuftOverrides =>
+      bindings.llama_max_tensor_buft_overrides();
+
+  /// High-resolution wall clock the runtime uses internally, in microseconds.
+  /// Convenient for matching log timestamps against your own measurements.
+  static int get timeUs => bindings.llama_time_us();
+
   /// Load the native library and initialize llama / ggml backends.
   ///
   /// [path] is the absolute path to `libllama.dylib` / `libllama.so`.

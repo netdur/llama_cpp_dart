@@ -71,6 +71,29 @@ final class LlamaContext implements Finalizable {
   int get nThreads => LlamaLibrary.bindings.llama_n_threads(pointer);
   int get nThreadsBatch => LlamaLibrary.bindings.llama_n_threads_batch(pointer);
 
+  /// Per-sequence context window. Equals [nCtx] when the unified KV cache is
+  /// disabled and divides it when [ContextParams.kvUnified] is true.
+  int get nCtxSeq => LlamaLibrary.bindings.llama_n_ctx_seq(pointer);
+
+  /// Number of recurrent-state rollback snapshots active per sequence.
+  /// Mirrors [ContextParams.nRsSeq] after the runtime resolved it.
+  int get nRsSeq => LlamaLibrary.bindings.llama_n_rs_seq(pointer);
+
+  /// Effective pooling type the context settled on. When
+  /// [ContextParams.poolingType] is `auto` the model decides; this reports
+  /// the result.
+  PoolingType get poolingType {
+    final raw = LlamaLibrary.bindings.llama_pooling_type$1(pointer);
+    return switch (raw) {
+      llama_pooling_type.LLAMA_POOLING_TYPE_NONE => PoolingType.none,
+      llama_pooling_type.LLAMA_POOLING_TYPE_MEAN => PoolingType.mean,
+      llama_pooling_type.LLAMA_POOLING_TYPE_CLS => PoolingType.cls,
+      llama_pooling_type.LLAMA_POOLING_TYPE_LAST => PoolingType.last,
+      llama_pooling_type.LLAMA_POOLING_TYPE_RANK => PoolingType.rank,
+      _ => PoolingType.auto,
+    };
+  }
+
   /// True if this context's memory backend supports `llama_memory_seq_add`
   /// (i.e., position shifting). False for recurrent and most iSWA caches —
   /// shifting them is mathematically unsound. Used to gate context-shift
@@ -78,6 +101,40 @@ final class LlamaContext implements Finalizable {
   bool get canShift {
     final lib = LlamaLibrary.bindings;
     return lib.llama_memory_can_shift(lib.llama_get_memory(pointer));
+  }
+
+  /// Switch the thread counts at runtime.
+  ///
+  /// [n] is the generation thread count, [nBatch] the prefill thread count.
+  /// `0` for either lets llama.cpp pick.
+  void setThreads({required int n, required int nBatch}) {
+    LlamaLibrary.bindings.llama_set_n_threads(pointer, n, nBatch);
+  }
+
+  /// Toggle embedding-output mode. Lets a single context flip between
+  /// generation and embedding without rebuild. The pooling type is fixed
+  /// at create time, so this is mostly useful for embedding models that
+  /// also support causal generation.
+  void setEmbeddings(bool value) {
+    LlamaLibrary.bindings.llama_set_embeddings(pointer, value);
+  }
+
+  /// Toggle causal attention at runtime. Most chat / completion workloads
+  /// want `true`; switch off for bidirectional / encoder-style passes.
+  void setCausalAttn(bool value) {
+    LlamaLibrary.bindings.llama_set_causal_attn(pointer, value);
+  }
+
+  /// Mark the context as in a warmup phase (skips some bookkeeping for
+  /// faster first decode). Call with `false` once warmup completes.
+  void setWarmup(bool value) {
+    LlamaLibrary.bindings.llama_set_warmup(pointer, value);
+  }
+
+  /// Block until pending async work on the context's compute backends has
+  /// completed. Mostly relevant on GPU backends; a no-op on pure CPU.
+  void synchronize() {
+    LlamaLibrary.bindings.llama_synchronize(pointer);
   }
 
   void dispose() {
