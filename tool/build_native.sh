@@ -81,6 +81,14 @@ case "$PLATFORM" in
       -DLLAMA_BUILD_TESTS=OFF
       -DLLAMA_BUILD_EXAMPLES=OFF
       -DLLAMA_CURL=OFF
+      # upstream b9360's tools/server/ references mtmd symbols (mtmd_caps,
+      # mtmd_get_memory_usage, ...) that aren't in its own mtmd public
+      # header, so it fails to compile. We never ship llama-server anyway,
+      # so just turn it off — keeps tools/mtmd/ buildable for --with-mtmd.
+      -DLLAMA_BUILD_SERVER=OFF
+      # The unified `llama` binary links against llama-server-impl, which
+      # we just disabled, so it can't link. We don't ship the CLI either.
+      -DLLAMA_BUILD_APP=OFF
     )
 
     if [[ "$WITH_MTMD" -eq 1 ]]; then
