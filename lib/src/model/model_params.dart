@@ -13,6 +13,28 @@ enum SplitMode {
   tensor,
 }
 
+/// RoPE variant the model was trained with. Read-only model metadata —
+/// not a configuration knob. Mirrors `enum llama_rope_type`.
+enum RopeType {
+  /// Model does not use RoPE.
+  none,
+
+  /// Standard (LLaMA-style) RoPE.
+  norm,
+
+  /// GPT-NeoX layout.
+  neox,
+
+  /// Multi-axis RoPE (e.g. some Qwen vision variants).
+  mrope,
+
+  /// Interleaved multi-axis RoPE.
+  imrope,
+
+  /// Vision-tower RoPE used by some multimodal towers.
+  vision,
+}
+
 /// Type of a [KvOverride] entry.
 enum KvOverrideType {
   intValue,

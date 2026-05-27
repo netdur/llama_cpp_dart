@@ -35,7 +35,7 @@ export 'src/generation/stop.dart'
 export 'src/isolate/engine.dart' show EngineChat, EngineSession, LlamaEngine;
 export 'src/model/model.dart' show LlamaModel;
 export 'src/model/model_params.dart'
-    show KvOverride, KvOverrideType, ModelParams, SplitMode;
+    show KvOverride, KvOverrideType, ModelParams, RopeType, SplitMode;
 export 'src/model/vocab.dart' show LlamaVocab;
 export 'src/multimodal/media.dart' show LlamaMedia, MediaKind;
 export 'src/multimodal/multimodal_context.dart'

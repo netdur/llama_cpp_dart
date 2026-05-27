@@ -197,6 +197,118 @@ final class LlamaModel implements Finalizable {
   bool get hasDecoder => LlamaLibrary.bindings.llama_model_has_decoder(pointer);
   bool get isRecurrent =>
       LlamaLibrary.bindings.llama_model_is_recurrent(pointer);
+  bool get isDiffusion =>
+      LlamaLibrary.bindings.llama_model_is_diffusion(pointer);
+  bool get isHybrid => LlamaLibrary.bindings.llama_model_is_hybrid(pointer);
+
+  /// Token the model expects the decoder to start with in encoder-decoder
+  /// setups (e.g. T5). Returns `-1` for decoder-only models.
+  int get decoderStartToken =>
+      LlamaLibrary.bindings.llama_model_decoder_start_token(pointer);
+
+  /// Embedding dimension for *input* tokens — may differ from [nEmbd] for
+  /// models with a tied input/output but different projection sizes.
+  int get nEmbdInp =>
+      LlamaLibrary.bindings.llama_model_n_embd_inp(pointer);
+
+  /// Embedding dimension for *output* tokens.
+  int get nEmbdOut =>
+      LlamaLibrary.bindings.llama_model_n_embd_out(pointer);
+
+  /// Sliding-window-attention span the model was trained with. `0` for
+  /// models that use full attention.
+  int get nSwa => LlamaLibrary.bindings.llama_model_n_swa(pointer);
+
+  /// Number of classification outputs on the head. `0` for non-classifier
+  /// models. Pairs with [classifierLabel] to read each label.
+  int get nClassifierOut =>
+      LlamaLibrary.bindings.llama_model_n_cls_out(pointer);
+
+  /// Human-readable label for classifier output [index]. Returns `null`
+  /// when the model has no label table for that index.
+  String? classifierLabel(int index) {
+    final ptr =
+        LlamaLibrary.bindings.llama_model_cls_label(pointer, index);
+    if (ptr == nullptr) return null;
+    return ptr.cast<Utf8>().toDartString();
+  }
+
+  /// RoPE frequency-scaling factor the model was trained with. `1.0` when
+  /// the model does not declare one.
+  double get ropeFreqScaleTrain =>
+      LlamaLibrary.bindings.llama_model_rope_freq_scale_train(pointer);
+
+  /// RoPE variant the model uses.
+  RopeType get ropeType {
+    final raw = LlamaLibrary.bindings.llama_model_rope_type(pointer);
+    return switch (raw) {
+      llama_rope_type.LLAMA_ROPE_TYPE_NONE => RopeType.none,
+      llama_rope_type.LLAMA_ROPE_TYPE_NORM => RopeType.norm,
+      llama_rope_type.LLAMA_ROPE_TYPE_NEOX => RopeType.neox,
+      llama_rope_type.LLAMA_ROPE_TYPE_MROPE => RopeType.mrope,
+      llama_rope_type.LLAMA_ROPE_TYPE_IMROPE => RopeType.imrope,
+      llama_rope_type.LLAMA_ROPE_TYPE_VISION => RopeType.vision,
+    };
+  }
+
+  /// Number of GGUF metadata key/value pairs embedded in the model.
+  int get metaCount => LlamaLibrary.bindings.llama_model_meta_count(pointer);
+
+  /// Read the metadata key at [index] (`0 <= index < metaCount`). Returns
+  /// `null` if the index is out of range.
+  String? metaKeyAt(int index) =>
+      _readModelString(maxLen: 256, (buf, size) {
+        return LlamaLibrary.bindings.llama_model_meta_key_by_index(
+          pointer,
+          index,
+          buf,
+          size,
+        );
+      });
+
+  /// Read the metadata value at [index] (`0 <= index < metaCount`).
+  /// Returns `null` if the index is out of range.
+  String? metaValueAt(int index) =>
+      _readModelString(maxLen: 1024, (buf, size) {
+        return LlamaLibrary.bindings.llama_model_meta_val_str_by_index(
+          pointer,
+          index,
+          buf,
+          size,
+        );
+      });
+
+  /// Read the metadata value for [key]. Returns `null` when the key is
+  /// missing. Keys follow GGUF convention, e.g. `general.architecture`.
+  String? metaValue(String key) {
+    final keyPtr = key.toNativeUtf8();
+    try {
+      return _readModelString(maxLen: 1024, (buf, size) {
+        return LlamaLibrary.bindings.llama_model_meta_val_str(
+          pointer,
+          keyPtr.cast<Char>(),
+          buf,
+          size,
+        );
+      });
+    } finally {
+      calloc.free(keyPtr);
+    }
+  }
+
+  /// All metadata entries as a `key -> value` map. Convenience for
+  /// debugging and UI inspection — for large models this materializes
+  /// every entry. Stream via [metaKeyAt] / [metaValueAt] if that matters.
+  Map<String, String> metaEntries() {
+    final n = metaCount;
+    final out = <String, String>{};
+    for (var i = 0; i < n; i++) {
+      final k = metaKeyAt(i);
+      if (k == null) continue;
+      out[k] = metaValueAt(i) ?? '';
+    }
+    return out;
+  }
 
   /// Short, model-provided description (architecture + size hint).
   String describe({int maxLen = 256}) {
@@ -204,6 +316,21 @@ final class LlamaModel implements Finalizable {
     try {
       final n = LlamaLibrary.bindings.llama_model_desc(pointer, buf, maxLen);
       if (n <= 0) return '';
+      return buf.cast<Utf8>().toDartString(length: n);
+    } finally {
+      calloc.free(buf);
+    }
+  }
+
+  String? _readModelString(
+    int Function(Pointer<Char> buf, int size) call, {
+    required int maxLen,
+  }) {
+    final buf = calloc<Char>(maxLen);
+    try {
+      final n = call(buf, maxLen);
+      if (n < 0) return null;
+      if (n == 0) return '';
       return buf.cast<Utf8>().toDartString(length: n);
     } finally {
       calloc.free(buf);
