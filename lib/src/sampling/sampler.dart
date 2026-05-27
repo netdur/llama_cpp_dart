@@ -1,6 +1,7 @@
 import 'dart:ffi';
 
 import '../context/context.dart';
+import '../diagnostics/perf.dart';
 import '../ffi/bindings.dart';
 import '../ffi/library_loader.dart';
 import 'sampler_params.dart';
@@ -36,6 +37,23 @@ final class Sampler implements Finalizable {
   /// Reset stateful samplers (penalties, mirostat) to their initial state.
   void reset() {
     LlamaLibrary.bindings.llama_sampler_reset(pointer);
+  }
+
+  /// Snapshot the chain's performance counters (cumulative sample time and
+  /// number of sample calls). Counters reset only via [resetPerf].
+  SamplerPerf perf() {
+    final d = LlamaLibrary.bindings.llama_perf_sampler(pointer);
+    return SamplerPerf(sampleMs: d.t_sample_ms, nSample: d.n_sample);
+  }
+
+  /// Reset the sampler's performance counters.
+  void resetPerf() {
+    LlamaLibrary.bindings.llama_perf_sampler_reset(pointer);
+  }
+
+  /// Print sampler perf counters via llama.cpp's logger.
+  void printPerf() {
+    LlamaLibrary.bindings.llama_perf_sampler_print(pointer);
   }
 
   void dispose() {

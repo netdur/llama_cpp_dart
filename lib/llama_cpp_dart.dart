@@ -18,6 +18,7 @@ export 'src/context/context_params.dart'
         KvCacheType,
         PoolingType,
         RopeScalingType;
+export 'src/diagnostics/perf.dart' show ContextPerf, SamplerPerf;
 export 'src/ffi/backends.dart'
     show BackendDevice, BackendDeviceType, LlamaBackends;
 export 'src/ffi/bindings.dart' show LlamaBindings;

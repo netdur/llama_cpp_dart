@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'dart:typed_data';
 
+import '../diagnostics/perf.dart';
 import '../ffi/bindings.dart';
 import '../ffi/library_loader.dart';
 import '../model/model.dart';
@@ -191,6 +192,32 @@ final class LlamaContext implements Finalizable {
     final ptr = lib.llama_get_sampled_logits_ith(pointer, i);
     if (ptr == nullptr) return null;
     return Float32List.fromList(ptr.asTypedList(n));
+  }
+
+  /// Snapshot of this context's performance counters. Counters reset only
+  /// on explicit [resetPerf] — they accumulate across multiple decode calls.
+  ContextPerf perf() {
+    final d = LlamaLibrary.bindings.llama_perf_context(pointer);
+    return ContextPerf(
+      startMs: d.t_start_ms,
+      loadMs: d.t_load_ms,
+      promptEvalMs: d.t_p_eval_ms,
+      evalMs: d.t_eval_ms,
+      promptTokens: d.n_p_eval,
+      generatedTokens: d.n_eval,
+      reusedTokens: d.n_reused,
+    );
+  }
+
+  /// Reset the performance counters.
+  void resetPerf() {
+    LlamaLibrary.bindings.llama_perf_context_reset(pointer);
+  }
+
+  /// Print performance counters to stderr through llama.cpp's logger.
+  /// Mostly useful when the wrapper's logging is wired to a sink.
+  void printPerf() {
+    LlamaLibrary.bindings.llama_perf_context_print(pointer);
   }
 
   void dispose() {
