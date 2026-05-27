@@ -8,6 +8,8 @@ import '../ffi/library_loader.dart';
 import '../model/model.dart';
 import '../types/exceptions.dart';
 import 'media.dart';
+import 'mtmd_bitmap.dart';
+import 'mtmd_chunks.dart';
 import 'multimodal_params.dart';
 
 /// Thrown when multimodal init / encoding fails.
@@ -205,6 +207,125 @@ final class MultimodalContext implements Finalizable {
         calloc.free(p);
       }
     }
+  }
+
+  /// True when this projector requires the multi-axis RoPE codepath during
+  /// `llama_decode`. Set by some Qwen-VL-style models. Context-wide flag.
+  bool get usesMRopeDecode =>
+      LlamaLibrary.bindings.mtmd_decode_use_mrope(pointer);
+
+  /// True when the given chunk needs the non-causal-attention codepath
+  /// during `llama_decode`. Per-chunk; ask once for every chunk before
+  /// you feed it to the llama context.
+  bool chunkUsesNonCausalDecode(MtmdChunk chunk) =>
+      LlamaLibrary.bindings
+          .mtmd_decode_use_non_causal(pointer, chunk.pointer);
+
+  /// Tokenize [prompt] + [bitmaps] into a list of `mtmd_input_chunks` that
+  /// the caller can introspect and / or feed back through [evalChunks].
+  ///
+  /// Each `<__media__>` marker in [prompt] consumes the next bitmap in
+  /// order; the count must match. Unlike [evalChunks], this method does
+  /// not touch any llama context — pure tokenization.
+  MtmdChunks tokenize({
+    required String prompt,
+    required List<MtmdBitmap> bitmaps,
+    bool addSpecial = true,
+    bool parseSpecial = true,
+  }) {
+    _ensureAlive();
+    final b = LlamaLibrary.bindings;
+
+    Pointer<Pointer<mtmd_bitmap>>? bitmapArray;
+    Pointer<mtmd_input_text>? textStruct;
+    Pointer<Utf8>? promptPtr;
+    Pointer<mtmd_input_chunks>? chunks;
+
+    try {
+      bitmapArray = calloc<Pointer<mtmd_bitmap>>(bitmaps.length);
+      for (var i = 0; i < bitmaps.length; i++) {
+        bitmapArray[i] = bitmaps[i].pointer;
+      }
+
+      chunks = b.mtmd_input_chunks_init();
+      promptPtr = prompt.toNativeUtf8(allocator: calloc);
+      textStruct = calloc<mtmd_input_text>();
+      textStruct.ref
+        ..text = promptPtr.cast()
+        ..add_special = addSpecial
+        ..parse_special = parseSpecial;
+
+      final rc = b.mtmd_tokenize(
+        pointer,
+        chunks,
+        textStruct,
+        bitmapArray,
+        bitmaps.length,
+      );
+      if (rc != 0) {
+        b.mtmd_input_chunks_free(chunks);
+        chunks = null;
+        throw MultimodalException(
+          'mtmd_tokenize failed: rc=$rc '
+          '(${rc == 1 ? "marker count mismatch" : "preprocessing error"})',
+        );
+      }
+
+      final owned = MtmdChunks.takeOwnership(chunks);
+      chunks = null;
+      return owned;
+    } finally {
+      if (textStruct != null) calloc.free(textStruct);
+      if (promptPtr != null) calloc.free(promptPtr);
+      if (bitmapArray != null) calloc.free(bitmapArray);
+      if (chunks != null) b.mtmd_input_chunks_free(chunks);
+    }
+  }
+
+  /// Encode + decode a pre-tokenized [chunks] list into [llamaContext]'s
+  /// KV cache. Counterpart to [evalChunks] that lets the caller hold
+  /// chunks in their own data structure (e.g. for inspection or caching)
+  /// before driving the llama context.
+  ///
+  /// Returns the new `n_past` (positions consumed). Throws
+  /// [MultimodalException] on encode/decode failure.
+  int evalChunksList({
+    required LlamaContext llamaContext,
+    required MtmdChunks chunks,
+    required int nPast,
+    required int seqId,
+    required int nBatch,
+    bool logitsLast = true,
+  }) {
+    _ensureAlive();
+    final b = LlamaLibrary.bindings;
+    final newNPast = calloc<llama_pos>()..value = nPast;
+    try {
+      final rc = b.mtmd_helper_eval_chunks(
+        pointer,
+        llamaContext.pointer,
+        chunks.pointer,
+        nPast,
+        seqId,
+        nBatch,
+        logitsLast,
+        newNPast,
+      );
+      if (rc != 0) {
+        throw MultimodalException('mtmd_helper_eval_chunks rc=$rc');
+      }
+      return newNPast.value;
+    } finally {
+      calloc.free(newNPast);
+    }
+  }
+
+  /// Tail-position embeddings produced by the last `mtmd_encode_*` call,
+  /// flattened as `nEmbd` floats per encoded token. Returns null when no
+  /// embeddings are available (e.g. before any encode pass ran).
+  Pointer<Float>? lastEncodedEmbeddingsPtr() {
+    final ptr = LlamaLibrary.bindings.mtmd_get_output_embd(pointer);
+    return ptr == nullptr ? null : ptr;
   }
 
   void dispose() {

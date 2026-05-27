@@ -40,6 +40,9 @@ export 'src/model/model_params.dart'
     show KvOverride, KvOverrideType, ModelParams, RopeType, SplitMode;
 export 'src/model/vocab.dart' show LlamaVocab;
 export 'src/multimodal/media.dart' show LlamaMedia, MediaKind;
+export 'src/multimodal/mtmd_bitmap.dart' show MtmdBitmap, MtmdCapabilities;
+export 'src/multimodal/mtmd_chunks.dart'
+    show MtmdChunk, MtmdChunkKind, MtmdChunkOwned, MtmdChunks;
 export 'src/multimodal/multimodal_context.dart'
     show MultimodalContext, MultimodalException;
 export 'src/multimodal/multimodal_params.dart' show MultimodalParams;
