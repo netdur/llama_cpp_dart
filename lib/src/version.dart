@@ -11,16 +11,15 @@ final class LlamaVersion {
 
   /// Version of the `llama_cpp_dart` package itself, mirroring
   /// `pubspec.yaml`.
-  static const String package = '0.9.0-dev.6';
+  static const String package = '0.9.0-dev.7';
 
   /// Full SHA of the `src/llama.cpp` submodule the native artifacts
   /// in this release were built against.
-  static const String llamaCppCommit =
-      '5d56effdeea49413da226d4815db58f515832ead';
+  static const String llamaCppCommit = '6b4e4bd582e457a47ee7cd498058495f47fee228';
 
   /// Author/committer date of [llamaCppCommit] in ISO-8601 form.
   /// Reproducible across machines (does not depend on local clock).
-  static const String llamaCppCommitDate = '2026-04-28T19:17:57+02:00';
+  static const String llamaCppCommitDate = '2026-05-27T14:52:47+03:00';
 
   /// Runtime call to `llama_print_system_info()`. Returns a string with
   /// llama.cpp build date, compiler flags, and enabled backends — useful

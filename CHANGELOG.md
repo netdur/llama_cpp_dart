@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — llama.cpp b9360, MTP scaffolding, broad API coverage
+## 0.9.0-dev.7 — b9360, embeddings, speculative decoding, broad API coverage
 
 llama.cpp submodule bumped from `gguf-v0.18.0-791-g5d56effde` to tag
 **`b9360`** (sha `6b4e4bd58`). 328 commits of upstream history,
@@ -9,16 +9,32 @@ new `llama_state_seq_flags`, `mtmd_get_cap_from_file`, plus the
 context-params fields `ctx_type` / `n_rs_seq`). Bindings
 regenerated; existing wrapper code unchanged.
 
-### New high-level surfaces
+### Embeddings
 
 - **`LlamaEngine.embed(text)`** — pooled and per-token embeddings via
   the worker isolate, with optional L2 normalization. Returns
   `EmbeddingResult` covering both pooled (mean/cls/last/rank) and
   unpooled outputs.
-- **`ContextType` + `nRsSeq` on `ContextParams`** — lets advanced
-  users build an MTP draft context against an MTP-capable target
-  model for raw-FFI speculative decoding. A high-level
-  `EngineSpeculative` API is still TBD.
+- **`BatchEmbedder`** (sync) + **`LlamaEngine.embedBatch(texts)`**
+  (off-thread) — embed N texts in a single decode pass by assigning
+  each its own sequence id; amortizes per-token compute across the
+  batch for RAG-style ingest. Requires `embeddings: true`, a pooled
+  pooling type, and `nSeqMax >= texts.length`.
+
+### Speculative decoding
+
+- **`SpeculativeDecoder`** — synchronous greedy *and* exact stochastic
+  speculative decoding over a target + draft `LlamaContext` sharing a
+  vocab. Greedy output is byte-identical to plain greedy on the target;
+  `temperature > 0` runs the `min(1, p/q)` accept rule with residual
+  resampling (distributionally identical to sampling the target), seed
+  for reproducibility. See `example/probes/speculative_generate.dart`.
+  (MTP-as-draft is blocked upstream — it needs the non-public
+  `llama_set_embeddings_pre_norm`; the draft-model variant works today.)
+- **`ContextType` + `nRsSeq` on `ContextParams`** — build an MTP draft
+  context against an MTP-capable target model for raw-FFI use.
+
+### New high-level surfaces
 - **`LlamaLora` + `LoraBinding`**, with
   `LlamaContext.setLoraAdapters` / `clearLoraAdapters` /
   `setControlVector`. LoRA stack swaps, metadata accessors, aLoRA
