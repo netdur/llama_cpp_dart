@@ -10,6 +10,12 @@ enum MediaKind {
   /// An audio clip. mtmd decodes wav/mp3/flac with miniaudio inside libmtmd
   /// and resamples to the model's expected rate (typically 16 kHz mono).
   audio,
+
+  /// A video clip. mtmd auto-detects the video format (mp4/mov/webm/...) via
+  /// magic bytes, decoded with libmtmd's video decoder. Video frames are
+  /// automatically extracted and processed (e.g., SmolVLM2-256M-Video-Instruct).
+  /// Sendable across isolates like images/audio.
+  video,
 }
 
 /// One image or audio clip attached to a chat turn.
@@ -50,6 +56,16 @@ final class LlamaMedia {
   /// Wrap already-read audio bytes.
   factory LlamaMedia.audioBytes(Uint8List bytes, {String? id}) =>
       LlamaMedia(bytes: bytes, kind: MediaKind.audio, id: id);
+
+  /// Load video bytes from [path]. Format detected from file contents (mp4/mov/webm/...).
+  /// Frames are automatically extracted and processed by llama.cpp's mtmd.
+  factory LlamaMedia.videoFile(String path) =>
+      LlamaMedia(bytes: File(path).readAsBytesSync(), kind: MediaKind.video);
+
+  /// Wrap already-read video bytes.
+  /// Frames are automatically extracted and processed by llama.cpp's mtmd.
+  factory LlamaMedia.videoBytes(Uint8List bytes, {String? id}) =>
+      LlamaMedia(bytes: bytes, kind: MediaKind.video, id: id);
 
   @override
   String toString() =>

@@ -30,6 +30,14 @@ final class MultimodalParams {
   /// model's default.
   final int imageMaxTokens;
 
+  /// Lower bound on the number of video tokens emitted (models with dynamic
+  /// video resolution like SmolVLM2-256M-Video). `0` means use the model's default.
+  final int videoMinTokens;
+
+  /// Upper bound on the number of video tokens emitted. `0` means use the
+  /// model's default.
+  final int videoMaxTokens;
+
   const MultimodalParams({
     required this.mmprojPath,
     this.useGpu = true,
@@ -39,6 +47,8 @@ final class MultimodalParams {
     this.warmup = false,
     this.imageMinTokens = 0,
     this.imageMaxTokens = 0,
+    this.videoMinTokens = 0,
+    this.videoMaxTokens = 0,
   });
 
   MultimodalParams copyWith({
@@ -50,6 +60,8 @@ final class MultimodalParams {
     bool? warmup,
     int? imageMinTokens,
     int? imageMaxTokens,
+    int? videoMinTokens,
+    int? videoMaxTokens,
   }) {
     return MultimodalParams(
       mmprojPath: mmprojPath ?? this.mmprojPath,
@@ -60,6 +72,8 @@ final class MultimodalParams {
       warmup: warmup ?? this.warmup,
       imageMinTokens: imageMinTokens ?? this.imageMinTokens,
       imageMaxTokens: imageMaxTokens ?? this.imageMaxTokens,
+      videoMinTokens: videoMinTokens ?? this.videoMinTokens,
+      videoMaxTokens: videoMaxTokens ?? this.videoMaxTokens,
     );
   }
 
@@ -72,6 +86,8 @@ final class MultimodalParams {
         'warmup': warmup,
         'imageMinTokens': imageMinTokens,
         'imageMaxTokens': imageMaxTokens,
+        'videoMinTokens': videoMinTokens,
+        'videoMaxTokens': videoMaxTokens,
       };
 
   factory MultimodalParams.fromJson(Map<String, Object?> json) =>
@@ -84,5 +100,7 @@ final class MultimodalParams {
         warmup: (json['warmup'] as bool?) ?? false,
         imageMinTokens: (json['imageMinTokens'] as int?) ?? 0,
         imageMaxTokens: (json['imageMaxTokens'] as int?) ?? 0,
+        videoMinTokens: (json['videoMinTokens'] as int?) ?? 0,
+        videoMaxTokens: (json['videoMaxTokens'] as int?) ?? 0,
       );
 }
