@@ -109,6 +109,7 @@ docker run --rm \
       -DLLAMA_BUILD_EXAMPLES=OFF \
       -DLLAMA_BUILD_TESTS=OFF \
       -DLLAMA_BUILD_SERVER=OFF \
+      -DLLAMA_BUILD_APP=OFF \
       -DLLAMA_CURL=OFF \
       -DANDROID_PLATFORM=android-$ANDROID_PLATFORM
     # Cap parallel jobs at 2 to keep peak memory bounded under Rosetta.

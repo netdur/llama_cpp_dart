@@ -59,6 +59,9 @@ COMMON_ARGS=(
   -DLLAMA_BUILD_EXAMPLES=OFF
   -DLLAMA_BUILD_TESTS=OFF
   -DLLAMA_BUILD_SERVER=OFF
+  # b9360's unified `llama` app links llama-server-impl; with the server
+  # off that target fails to link. We don't ship the app, so disable it.
+  -DLLAMA_BUILD_APP=OFF
   -DLLAMA_CURL=OFF
   -DLLAMA_BUILD_TOOLS=ON   # for libmtmd (vision + audio)
   -DGGML_METAL=ON
