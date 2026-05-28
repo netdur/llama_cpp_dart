@@ -137,6 +137,43 @@ void main() {
             reason: 'draftLength=$k should not change the output');
       }
     });
+
+    test('stochastic: same-model draft accepts everything (p == q)', () {
+      final target = newCtx();
+      final draft = newCtx();
+      addTearDown(target.dispose);
+      addTearDown(draft.dispose);
+
+      final result = SpeculativeDecoder(target: target, draft: draft).generate(
+        prompt: 'Once upon a time',
+        maxTokens: 20,
+        draftLength: 4,
+        temperature: 0.8,
+        seed: 123,
+      );
+      // Identical target/draft distributions => acceptance ratio is always 1.
+      expect(result.acceptanceRate, closeTo(1.0, 1e-9));
+      expect(result.tokens.length, lessThanOrEqualTo(20));
+    });
+
+    test('stochastic: reproducible with a fixed seed', () {
+      List<int> run() {
+        final t = newCtx();
+        final d = newCtx();
+        final res = SpeculativeDecoder(target: t, draft: d).generate(
+          prompt: 'The weather today',
+          maxTokens: 16,
+          draftLength: 4,
+          temperature: 0.9,
+          seed: 777,
+        );
+        t.dispose();
+        d.dispose();
+        return res.tokens;
+      }
+
+      expect(run(), equals(run()));
+    });
   });
 }
 
