@@ -51,6 +51,39 @@ final class LlamaMedia {
   factory LlamaMedia.audioBytes(Uint8List bytes, {String? id}) =>
       LlamaMedia(bytes: bytes, kind: MediaKind.audio, id: id);
 
+  /// Turn a list of **pre-extracted** video frames into one image
+  /// [LlamaMedia] per frame, in order.
+  ///
+  /// libmtmd has **no** video decoder — it only decodes still images
+  /// (stb_image) and audio (miniaudio). Video models like
+  /// SmolVLM2-Video consume a video as a *sequence of image frames*, so
+  /// the caller extracts frames first (e.g. with ffmpeg) and passes the
+  /// encoded JPG/PNG bytes here.
+  ///
+  /// Each frame becomes an independent image chunk; pair the returned list
+  /// with one media marker per frame in the prompt. `EngineChat.addUser`
+  /// already inserts one marker per media item automatically, so:
+  ///
+  /// ```dart
+  /// chat.addUser('Describe this video.',
+  ///     media: LlamaMedia.videoFrames(frames));
+  /// ```
+  ///
+  /// [idPrefix], when given, tags frame `i` with `"<idPrefix>-<i>"` for
+  /// diagnostics / KV-cache hashing.
+  static List<LlamaMedia> videoFrames(
+    List<Uint8List> frames, {
+    String? idPrefix,
+  }) =>
+      [
+        for (var i = 0; i < frames.length; i++)
+          LlamaMedia(
+            bytes: frames[i],
+            kind: MediaKind.image,
+            id: idPrefix == null ? null : '$idPrefix-$i',
+          ),
+      ];
+
   @override
   String toString() =>
       'LlamaMedia(${kind.name}, ${bytes.length} bytes${id == null ? '' : ', id=$id'})';
