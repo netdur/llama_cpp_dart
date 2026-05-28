@@ -33,6 +33,8 @@ export 'src/generation/event.dart'
     show DoneEvent, GenerationEvent, ShiftEvent, TokenEvent;
 export 'src/generation/generator.dart' show Generator;
 export 'src/generation/request.dart' show Request;
+export 'src/generation/speculative.dart'
+    show SpeculativeDecoder, SpeculativeResult;
 export 'src/generation/stop.dart'
     show StopReason, StopEog, StopMaxTokens, StopUserAbort;
 export 'src/isolate/engine.dart' show EngineChat, EngineSession, LlamaEngine;
