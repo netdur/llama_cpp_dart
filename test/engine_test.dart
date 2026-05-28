@@ -104,6 +104,37 @@ void main() {
       expect(tail, hasLength(3));
     });
 
+    test('embedBatch returns one pooled vector per text off-thread', () async {
+      final embedEngine = await LlamaEngine.spawn(
+        libraryPath: libPath,
+        modelParams: ModelParams(path: modelPath, gpuLayers: 99),
+        contextParams: const ContextParams(
+          nCtx: 512,
+          nBatch: 512,
+          nUbatch: 512,
+          nSeqMax: 4,
+          embeddings: true,
+          poolingType: PoolingType.mean,
+        ),
+      );
+      addTearDown(embedEngine.dispose);
+
+      final results = await embedEngine.embedBatch(
+        ['the cat sat', 'the cat sat', 'tax law statute'],
+      );
+
+      expect(results, hasLength(3));
+      for (final r in results) {
+        expect(r.pooled, isTrue);
+        expect(r.normalized, isTrue);
+        expect(r.vector, hasLength(r.nEmbd));
+      }
+      // Identical inputs -> identical vectors (per-seq routing intact).
+      expect(results[0].vector, equals(results[1].vector));
+      // Distinct input differs.
+      expect(results[0].vector, isNot(equals(results[2].vector)));
+    });
+
     test('two sessions on different seq ids run in series', () async {
       final engine2 = await LlamaEngine.spawn(
         libraryPath: libPath,

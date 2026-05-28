@@ -175,6 +175,41 @@ final class EmbedResponse extends EngineResponse {
   });
 }
 
+/// Embed several texts in a single decode pass on the worker. Requires the
+/// engine's context to have been spawned with `embeddings: true`, a pooled
+/// pooling type, and `nSeqMax >= texts.length`.
+final class EmbedBatchCommand extends EngineCommand {
+  final List<String> texts;
+  final bool addSpecial;
+  final bool parseSpecial;
+  final bool normalize;
+  const EmbedBatchCommand(
+    super.requestId, {
+    required this.texts,
+    required this.addSpecial,
+    required this.parseSpecial,
+    required this.normalize,
+  });
+}
+
+/// Returned for a successful [EmbedBatchCommand]. One entry per input text,
+/// in order. Each carries a copied vector safe to read on the main isolate.
+final class EmbedBatchResponse extends EngineResponse {
+  final int nEmbd;
+  final int poolingType;
+  final bool normalized;
+  final List<int> tokenCounts;
+  final List<Float32List> vectors;
+  const EmbedBatchResponse(
+    super.requestId, {
+    required this.nEmbd,
+    required this.poolingType,
+    required this.normalized,
+    required this.tokenCounts,
+    required this.vectors,
+  });
+}
+
 final class CancelCommand extends EngineCommand {
   /// Id of the in-flight generate request to cancel.
   final int targetRequestId;

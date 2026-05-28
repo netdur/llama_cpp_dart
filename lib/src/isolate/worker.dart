@@ -11,6 +11,7 @@ import '../context/context.dart';
 import '../ffi/backends.dart';
 import '../ffi/bindings.dart';
 import '../ffi/library_loader.dart';
+import '../generation/batch_embedder.dart';
 import '../generation/context_shift.dart';
 import '../generation/event.dart';
 import '../generation/stop.dart';
@@ -188,6 +189,9 @@ Future<void> _dispatch(
 
       case EmbedCommand():
         await _runEmbed(cmd, state, reply);
+
+      case EmbedBatchCommand():
+        _runEmbedBatch(cmd, state, reply);
 
       case SaveSessionStateCommand():
         _runSaveSessionState(cmd, state, reply);
@@ -621,6 +625,34 @@ Future<void> _streamSampleAfterPrefill({
   } finally {
     samplerHandle.dispose();
     batch.dispose();
+  }
+}
+
+void _runEmbedBatch(
+  EmbedBatchCommand cmd,
+  _WorkerState state,
+  SendPort reply,
+) {
+  if (!_claimGenerate(cmd.requestId, state, reply)) return;
+  try {
+    final results = BatchEmbedder(state.context).embed(
+      cmd.texts,
+      addSpecial: cmd.addSpecial,
+      parseSpecial: cmd.parseSpecial,
+      normalize: cmd.normalize,
+    );
+    reply.send(EmbedBatchResponse(
+      cmd.requestId,
+      nEmbd: results.isEmpty ? state.model.nEmbd : results.first.nEmbd,
+      poolingType: results.isEmpty ? -1 : results.first.poolingType,
+      normalized: cmd.normalize,
+      tokenCounts: [for (final r in results) r.nTokens],
+      vectors: [for (final r in results) r.vector],
+    ));
+  } catch (e, st) {
+    reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
+  } finally {
+    state.inFlightGenerateId = null;
   }
 }
 

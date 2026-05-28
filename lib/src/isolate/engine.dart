@@ -302,6 +302,45 @@ final class LlamaEngine {
     );
   }
 
+  /// Embed several [texts] in a single decode pass on the worker — the
+  /// off-thread counterpart to [BatchEmbedder]. Far faster than calling
+  /// [embed] per text for RAG-style ingest.
+  ///
+  /// Requires the engine to have been spawned with
+  /// `ContextParams(embeddings: true)`, a pooled `poolingType`, and
+  /// `nSeqMax >= texts.length`. Returns one pooled [EmbeddingResult] per
+  /// input, in order. Shares the worker's single in-flight slot with
+  /// generation, so it can't overlap a running generate.
+  Future<List<EmbeddingResult>> embedBatch(
+    List<String> texts, {
+    bool addSpecial = true,
+    bool parseSpecial = true,
+    bool normalize = true,
+  }) async {
+    _ensureAlive();
+    if (texts.isEmpty) return const <EmbeddingResult>[];
+    final response = await _request<EmbedBatchResponse>(
+      (id) => EmbedBatchCommand(
+        id,
+        texts: texts,
+        addSpecial: addSpecial,
+        parseSpecial: parseSpecial,
+        normalize: normalize,
+      ),
+    );
+    return [
+      for (var i = 0; i < response.vectors.length; i++)
+        EmbeddingResult(
+          nEmbd: response.nEmbd,
+          nTokens: response.tokenCounts[i],
+          pooled: true,
+          poolingType: response.poolingType,
+          normalized: response.normalized,
+          vector: response.vectors[i],
+        ),
+    ];
+  }
+
   /// Shut down the worker isolate. Cancels all in-flight streams.
   Future<void> dispose() async {
     if (_disposed) return;
