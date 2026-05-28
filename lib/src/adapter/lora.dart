@@ -54,12 +54,10 @@ final class LlamaLora implements Finalizable {
   }
 
   /// Number of metadata key/value pairs the adapter file exposes.
-  int get metaCount =>
-      LlamaLibrary.bindings.llama_adapter_meta_count(pointer);
+  int get metaCount => LlamaLibrary.bindings.llama_adapter_meta_count(pointer);
 
   /// Read the metadata key at [index].
-  String? metaKeyAt(int index) =>
-      _readString(maxLen: 256, (buf, size) {
+  String? metaKeyAt(int index) => _readString(maxLen: 256, (buf, size) {
         return LlamaLibrary.bindings.llama_adapter_meta_key_by_index(
           pointer,
           index,
@@ -69,8 +67,7 @@ final class LlamaLora implements Finalizable {
       });
 
   /// Read the metadata value at [index].
-  String? metaValueAt(int index) =>
-      _readString(maxLen: 1024, (buf, size) {
+  String? metaValueAt(int index) => _readString(maxLen: 1024, (buf, size) {
         return LlamaLibrary.bindings.llama_adapter_meta_val_str_by_index(
           pointer,
           index,
@@ -111,13 +108,11 @@ final class LlamaLora implements Finalizable {
   /// Trigger tokens the adapter listens for, if it is an Activated LoRA
   /// (aLoRA). Empty for plain LoRAs.
   List<int> get aloraInvocationTokens {
-    final n =
-        LlamaLibrary.bindings.llama_adapter_get_alora_n_invocation_tokens(
+    final n = LlamaLibrary.bindings.llama_adapter_get_alora_n_invocation_tokens(
       pointer,
     );
     if (n <= 0) return const <int>[];
-    final ptr =
-        LlamaLibrary.bindings.llama_adapter_get_alora_invocation_tokens(
+    final ptr = LlamaLibrary.bindings.llama_adapter_get_alora_invocation_tokens(
       pointer,
     );
     if (ptr == nullptr) return const <int>[];

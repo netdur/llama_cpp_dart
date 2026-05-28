@@ -371,8 +371,8 @@ final class LlamaContext implements Finalizable {
   }) {
     final lib = LlamaLibrary.bindings;
     if (data.isEmpty) {
-      final rc =
-          lib.llama_set_adapter_cvec(pointer, nullptr, 0, nEmbd, ilStart, ilEnd);
+      final rc = lib.llama_set_adapter_cvec(
+          pointer, nullptr, 0, nEmbd, ilStart, ilEnd);
       if (rc != 0) {
         throw LlamaLibraryException('llama_set_adapter_cvec rc=$rc');
       }

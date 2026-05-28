@@ -218,8 +218,7 @@ final class MultimodalContext implements Finalizable {
   /// during `llama_decode`. Per-chunk; ask once for every chunk before
   /// you feed it to the llama context.
   bool chunkUsesNonCausalDecode(MtmdChunk chunk) =>
-      LlamaLibrary.bindings
-          .mtmd_decode_use_non_causal(pointer, chunk.pointer);
+      LlamaLibrary.bindings.mtmd_decode_use_non_causal(pointer, chunk.pointer);
 
   /// Tokenize [prompt] + [bitmaps] into a list of `mtmd_input_chunks` that
   /// the caller can introspect and / or feed back through [evalChunks].

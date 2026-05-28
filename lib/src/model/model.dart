@@ -208,12 +208,10 @@ final class LlamaModel implements Finalizable {
 
   /// Embedding dimension for *input* tokens — may differ from [nEmbd] for
   /// models with a tied input/output but different projection sizes.
-  int get nEmbdInp =>
-      LlamaLibrary.bindings.llama_model_n_embd_inp(pointer);
+  int get nEmbdInp => LlamaLibrary.bindings.llama_model_n_embd_inp(pointer);
 
   /// Embedding dimension for *output* tokens.
-  int get nEmbdOut =>
-      LlamaLibrary.bindings.llama_model_n_embd_out(pointer);
+  int get nEmbdOut => LlamaLibrary.bindings.llama_model_n_embd_out(pointer);
 
   /// Sliding-window-attention span the model was trained with. `0` for
   /// models that use full attention.
@@ -227,8 +225,7 @@ final class LlamaModel implements Finalizable {
   /// Human-readable label for classifier output [index]. Returns `null`
   /// when the model has no label table for that index.
   String? classifierLabel(int index) {
-    final ptr =
-        LlamaLibrary.bindings.llama_model_cls_label(pointer, index);
+    final ptr = LlamaLibrary.bindings.llama_model_cls_label(pointer, index);
     if (ptr == nullptr) return null;
     return ptr.cast<Utf8>().toDartString();
   }
@@ -256,8 +253,7 @@ final class LlamaModel implements Finalizable {
 
   /// Read the metadata key at [index] (`0 <= index < metaCount`). Returns
   /// `null` if the index is out of range.
-  String? metaKeyAt(int index) =>
-      _readModelString(maxLen: 256, (buf, size) {
+  String? metaKeyAt(int index) => _readModelString(maxLen: 256, (buf, size) {
         return LlamaLibrary.bindings.llama_model_meta_key_by_index(
           pointer,
           index,
@@ -268,8 +264,7 @@ final class LlamaModel implements Finalizable {
 
   /// Read the metadata value at [index] (`0 <= index < metaCount`).
   /// Returns `null` if the index is out of range.
-  String? metaValueAt(int index) =>
-      _readModelString(maxLen: 1024, (buf, size) {
+  String? metaValueAt(int index) => _readModelString(maxLen: 1024, (buf, size) {
         return LlamaLibrary.bindings.llama_model_meta_val_str_by_index(
           pointer,
           index,

@@ -86,8 +86,7 @@ final class Sampler implements Finalizable {
   /// owned by this chain — do NOT call `dispose` on it. Useful for reading
   /// `.name` or perf counters on a specific stage.
   Sampler chainGet(int index) {
-    final raw =
-        LlamaLibrary.bindings.llama_sampler_chain_get(pointer, index);
+    final raw = LlamaLibrary.bindings.llama_sampler_chain_get(pointer, index);
     if (raw == nullptr) {
       throw RangeError.range(index, 0, chainCount - 1, 'index');
     }

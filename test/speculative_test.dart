@@ -79,8 +79,7 @@ void main() {
   }
 
   group('SpeculativeDecoder', () {
-    test('output matches plain greedy with same-model draft (full accept)',
-        () {
+    test('output matches plain greedy with same-model draft (full accept)', () {
       const prompt = 'The capital of France is';
       const maxTokens = 24;
 

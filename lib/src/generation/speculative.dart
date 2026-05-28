@@ -269,7 +269,8 @@ final class SpeculativeDecoder {
           // the last draft (batch index k).
           final lastLogits = target.logitsAt(k)!;
           bonus = stochastic
-              ? _sampleProbs(_softmax(lastLogits, temperature), rng!.nextDouble())
+              ? _sampleProbs(
+                  _softmax(lastLogits, temperature), rng!.nextDouble())
               : _argmax(lastLogits);
         }
 

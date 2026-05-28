@@ -40,13 +40,11 @@ final class MtmdChunk {
   }
 
   /// Number of llama tokens this chunk contributes to the context.
-  int get nTokens =>
-      LlamaLibrary.bindings.mtmd_input_chunk_get_n_tokens(_ptr);
+  int get nTokens => LlamaLibrary.bindings.mtmd_input_chunk_get_n_tokens(_ptr);
 
   /// Number of position slots this chunk advances by (may differ from
   /// [nTokens] for mrope / patchified image inputs).
-  int get nPos =>
-      LlamaLibrary.bindings.mtmd_input_chunk_get_n_pos(_ptr);
+  int get nPos => LlamaLibrary.bindings.mtmd_input_chunk_get_n_pos(_ptr);
 
   /// Caller-supplied id (typically copied from the source bitmap). Empty
   /// when unset.
@@ -134,8 +132,7 @@ final class MtmdChunks implements Finalizable {
 
   /// Borrowed view of chunk [index].
   MtmdChunk operator [](int index) {
-    final raw =
-        LlamaLibrary.bindings.mtmd_input_chunks_get(pointer, index);
+    final raw = LlamaLibrary.bindings.mtmd_input_chunks_get(pointer, index);
     if (raw == nullptr) {
       throw RangeError.range(index, 0, length - 1, 'index');
     }
@@ -170,4 +167,3 @@ final class MtmdChunks implements Finalizable {
     }
   }
 }
-

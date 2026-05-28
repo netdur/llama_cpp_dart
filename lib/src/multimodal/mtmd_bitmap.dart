@@ -179,8 +179,7 @@ final class MtmdCapabilities {
   factory MtmdCapabilities.probeFromFile(String mmprojPath) {
     final p = mmprojPath.toNativeUtf8();
     try {
-      final caps =
-          LlamaLibrary.bindings.mtmd_get_cap_from_file(p.cast<Char>());
+      final caps = LlamaLibrary.bindings.mtmd_get_cap_from_file(p.cast<Char>());
       return MtmdCapabilities(
         supportsVision: caps.inp_vision,
         supportsAudio: caps.inp_audio,
