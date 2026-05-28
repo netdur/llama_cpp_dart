@@ -25,6 +25,7 @@ export 'src/ffi/backends.dart'
 export 'src/ffi/bindings.dart' show LlamaBindings;
 export 'src/ffi/library_loader.dart' show LlamaLibrary, NumaStrategy;
 export 'src/ffi/log.dart' show LlamaLog, LlamaLogException;
+export 'src/generation/batch_embedder.dart' show BatchEmbedder;
 export 'src/generation/context_shift.dart'
     show ContextShift, ContextShiftPolicy;
 export 'src/generation/embedding.dart' show EmbeddingResult;
