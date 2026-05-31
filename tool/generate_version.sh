@@ -57,6 +57,12 @@ final class LlamaVersion {
 }
 EOF
 
+# Normalize to dart formatting so the committed file passes CI's
+# `dart format --set-exit-if-changed` check (the long commit-SHA line wraps).
+if command -v dart >/dev/null 2>&1; then
+  dart format lib/src/version.dart >/dev/null
+fi
+
 echo "wrote lib/src/version.dart:"
 echo "  package            = $PKG_VERSION"
 echo "  llamaCppCommit     = $LCPP_COMMIT"
