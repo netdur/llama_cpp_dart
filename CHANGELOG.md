@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.9.0-dev.8 — MTP speculative decoding, IQ4_NL KV cache
+
+Pure-Dart release on the same llama.cpp pin (tag **`b9360`**, sha
+`6b4e4bd58`) — no native rebuild required.
+
+### MTP (NextN) speculative decoding
+
+- **`MtpSpeculativeDecoder`** — self-speculative decoding driven by a
+  model's own Multi-Token Prediction / NextN heads (no separate draft
+  model). Pair a normal target `LlamaContext` with a draft context
+  created `ctxType: ContextType.mtp` off the **same** model. Mirrors
+  upstream llama.cpp's MTP loop (PR #22673): the target emits pre-norm
+  hidden states, the NextN head proposes tokens conditioned on them, and
+  the target verifies a round in one pass. Output is byte-identical to
+  plain greedy decoding.
+- Works on **M-RoPE / multimodal** models (Qwen3.6, etc.): rejected
+  drafts roll back via `PARTIAL_ONLY | ON_DEVICE` state checkpoints
+  rather than partial `seq_rm`, which those models forbid.
+- Reads pre-norm hidden states through the `llama_set_embeddings_pre_norm`
+  / `llama_get_embeddings_pre_norm_ith` staging symbols (resolved by hand
+  since they are absent from the public header). This **supersedes** the
+  dev.7 note that MTP-as-draft was blocked — it is now implemented.
+- Performance is hardware-dependent: high acceptance (85–92%, output
+  identical to greedy) but on Apple Metal it is ~break-even on MoE and
+  modestly slower on dense vs plain decode (per-submission overhead);
+  expected to win on cheaper-dispatch backends. Probe:
+  `tool/probe_mtp.dart`.
+
+### KV-cache quantization
+
+- **`KvCacheType.iq4_nl`** — exposes `GGML_TYPE_IQ4_NL`, the last
+  upstream-supported KV cache type the binding was missing. ~4×
+  compression like `q4_0` but better quality from a non-linear codebook.
+  See the README's KV-cache quantization section (incl. the symmetric
+  `_0` integer-dot-product property and a note on fork-only TurboQuant).
+
 ## 0.9.0-dev.7 — b9360, embeddings, speculative decoding, broad API coverage
 
 llama.cpp submodule bumped from `gguf-v0.18.0-791-g5d56effde` to tag
