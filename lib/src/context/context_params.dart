@@ -21,6 +21,12 @@ enum KvCacheType {
   q8_0,
   q4_0,
   q4_1,
+  // IQ4_NL: 4-bit non-linear. Same ~4x KV-cache shrink as q4_0 but better
+  // quality from a non-uniform codebook; the best low-bit KV option upstream
+  // llama.cpp ships natively (no fork). FlashAttention generally required, and
+  // typeK == typeV on most backends.
+  // ignore: constant_identifier_names
+  iq4_nl,
   q5_0,
   q5_1,
 }

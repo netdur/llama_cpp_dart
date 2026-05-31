@@ -463,6 +463,7 @@ final class LlamaContext implements Finalizable {
         KvCacheType.q8_0 => ggml_type.GGML_TYPE_Q8_0.value,
         KvCacheType.q4_0 => ggml_type.GGML_TYPE_Q4_0.value,
         KvCacheType.q4_1 => ggml_type.GGML_TYPE_Q4_1.value,
+        KvCacheType.iq4_nl => ggml_type.GGML_TYPE_IQ4_NL.value,
         KvCacheType.q5_0 => ggml_type.GGML_TYPE_Q5_0.value,
         KvCacheType.q5_1 => ggml_type.GGML_TYPE_Q5_1.value,
       };
