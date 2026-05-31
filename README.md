@@ -185,6 +185,31 @@ How it works (mirrors upstream llama.cpp PR #22673): the target emits **pre-norm
 
 **Performance is hardware-dependent.** On Apple Metal (M1 Max), draft acceptance is high (85–92%) but throughput is roughly **break-even on MoE** and **~8% slower on dense** models versus plain decode — the per-GPU-submission overhead on large models offsets the saved forward passes. It is expected to win on backends with cheaper kernel dispatch (e.g. CUDA). Tuning: MoE models prefer **short** drafts (`draftLength: 2`), dense models prefer **longer** (`draftLength: 3–5`); `pMin` gates low-confidence drafts (keep it — it avoids wasted verify work). Benchmark on your target device with `tool/probe_mtp.dart` before enabling.
 
+### KV-cache quantization (memory)
+
+Shrink the KV cache to fit longer contexts (or bigger models) in the same RAM — the main lever on memory-constrained iOS/Android. Set `typeK`/`typeV` on `ContextParams`; quantized KV generally needs FlashAttention on, and `typeK == typeV` on most backends:
+
+```dart
+ContextParams(
+  typeK: KvCacheType.q8_0,
+  typeV: KvCacheType.q8_0,
+  flashAttn: FlashAttention.on,
+);
+```
+
+| Type | KV memory vs F16 | Notes |
+|---|---|---|
+| `q8_0` | ~2× smaller | near-lossless; the safe default |
+| `q5_1` | ~3.2× | good quality/size balance |
+| `iq4_nl` | ~4× | best quality at 4-bit (non-linear codebook) |
+| `q4_0` / `q4_1` | ~4× | smallest; more quality loss |
+
+This is a **memory** optimization, not a speed one — quantized KV decodes slightly *slower* than F16 on Metal (dequant cost), but lets you run much longer contexts.
+
+**Symmetric vs codebook — why some types are cheaper.** The `_0` types (`q8_0`, `q4_0`, `q5_0`) are *symmetric, scale-only* (`value = int × scale`), so a dot product factors to `scale_a · scale_b · Σ(int_a · int_b)` — the inner sum is a pure **integer dot product on the stored codes**, no dequantization (this is also how llama.cpp does quantized matmul: it quantizes activations to `q8_0`/`q8_1` and uses integer SIMD). The `_1` types add a `min` offset, introducing correction cross-terms. `iq4_nl` is *non-linear*: its codes index a lookup table, so multiplying them needs a codebook lookup (≈ dequant) — it trades a little extra work-per-value for better accuracy at the same 4 bits.
+
+**TurboQuant?** [TurboQuant](https://github.com/ggml-org/llama.cpp/discussions/20969) (Walsh-Hadamard-rotated polar-codebook KV quant, `turbo2/3/4`) compresses harder — ~4–6× — at better quality. But it is **not in upstream llama.cpp**; it lives only in forks (some with Metal kernels). Using it would mean re-pointing the bundled `src/llama.cpp` submodule at a fork and rebuilding, diverging from the pinned upstream release this package tracks. The upstream `q*`/`iq4_nl` types above get you 2–4× today with no fork. Like the upstream types, TurboQuant is a memory win, not a speed win on Apple Silicon.
+
 ## Public API surface
 
 ```
