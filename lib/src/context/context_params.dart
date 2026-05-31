@@ -55,15 +55,16 @@ enum AttentionType {
 ///
 /// * [defaultCtx] is the normal context type — used both standalone and for
 ///   the target side of speculative decoding.
-/// * [mtp] activates the model's Multi-Token Prediction heads so a context
-///   created with the *same* model becomes a draft producer for spec
-///   decoding. Requires a model trained with MTP (e.g. some DeepSeek /
-///   Qwen variants). No draft weights are loaded; the heads are part of
-///   the target model.
+/// * [mtp] activates the model's Multi-Token Prediction (NextN) heads so a
+///   context created with the *same* model becomes a draft producer for
+///   speculative decoding. Requires a model trained with MTP (e.g. some
+///   DeepSeek / GLM / Qwen3.6 variants). No draft weights are loaded; the
+///   heads are part of the target model.
 ///
-/// Driving the speculative loop itself is not yet exposed at the high
-/// level; this enum is provided so advanced users can construct a draft
-/// `LlamaContext` directly off the raw FFI surface.
+/// Pass an [mtp] draft context together with a [defaultCtx] target to
+/// `MtpSpeculativeDecoder` to drive the speculative loop. Do **not** feed an
+/// [mtp] context to the generic `SpeculativeDecoder` — that path treats the
+/// draft as an independent model and crashes on M-RoPE / multimodal models.
 enum ContextType {
   defaultCtx,
   mtp,
