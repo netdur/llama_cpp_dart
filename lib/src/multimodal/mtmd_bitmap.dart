@@ -75,10 +75,15 @@ final class MtmdBitmap implements Finalizable {
   }) {
     final pathPtr = path.toNativeUtf8();
     try {
-      final ptr = LlamaLibrary.bindings.mtmd_helper_bitmap_init_from_file(
+      // placeholder=false: decode the real bitmap now (the video-aware helper
+      // returns a wrapper carrying the bitmap and an optional video context;
+      // we only use the bitmap for image/audio inputs).
+      final wrapper = LlamaLibrary.bindings.mtmd_helper_bitmap_init_from_file(
         context.pointer,
         pathPtr.cast<Char>(),
+        false,
       );
+      final ptr = wrapper.bitmap;
       if (ptr == nullptr) {
         throw MultimodalException('failed to decode image: $path');
       }
@@ -97,11 +102,13 @@ final class MtmdBitmap implements Finalizable {
     final buf = calloc<UnsignedChar>(bytes.length);
     try {
       buf.cast<Uint8>().asTypedList(bytes.length).setAll(0, bytes);
-      final ptr = LlamaLibrary.bindings.mtmd_helper_bitmap_init_from_buf(
+      final wrapper = LlamaLibrary.bindings.mtmd_helper_bitmap_init_from_buf(
         context.pointer,
         buf,
         bytes.length,
+        false,
       );
+      final ptr = wrapper.bitmap;
       if (ptr == nullptr) {
         throw const MultimodalException(
           'failed to decode image from buffer',

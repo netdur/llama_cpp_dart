@@ -13,8 +13,8 @@ import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 // Itanium-mangled names (clang/gcc). On macOS `nm` shows a leading '_' which
 // dlsym strips, so the lookup name starts at '_Z'.
-const _setName = '_Z29llama_set_embeddings_pre_normP13llama_contextbb';
-const _getIthName = '_Z33llama_get_embeddings_pre_norm_ithP13llama_contexti';
+const _setName = '_Z26llama_set_embeddings_nextnP13llama_contextbb';
+const _getIthName = '_Z30llama_get_embeddings_nextn_ithP13llama_contexti';
 
 typedef _SetNative = Void Function(Pointer<Void>, Bool, Bool);
 typedef _SetDart = void Function(Pointer<Void>, bool, bool);
@@ -35,7 +35,7 @@ void main() {
   final dylib = DynamicLibrary.open(libPath);
   final setPreNorm = dylib.lookupFunction<_SetNative, _SetDart>(_setName);
   final getIth = dylib.lookupFunction<_GetIthNative, _GetIthDart>(_getIthName);
-  stdout.writeln('resolved set_embeddings_pre_norm + get_..._ith ✓');
+  stdout.writeln('resolved set_embeddings_nextn + get_..._ith ✓');
 
   final model = LlamaModel.load(ModelParams(path: modelPath, gpuLayers: 99));
   final ctx = LlamaContext.create(

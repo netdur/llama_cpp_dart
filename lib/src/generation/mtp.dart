@@ -11,17 +11,18 @@ import '../tokenizer/tokenizer.dart';
 import '../types/exceptions.dart';
 import 'speculative.dart' show SpeculativeResult;
 
-/// FFI shim over llama.cpp's pre-norm hidden-state staging API
-/// (`src/llama-ext.h`). These are **C++-mangled** (Itanium ABI) symbols, not
-/// part of the public C header, so they are resolved by hand rather than
-/// through the generated bindings. Stable on clang/gcc (iOS/Android/macOS);
-/// would differ under MSVC.
+/// FFI shim over llama.cpp's NextN hidden-state staging API
+/// (`llama_set_embeddings_nextn` / `llama_get_embeddings_nextn_ith` in
+/// `src/llama-ext.h`; renamed upstream from the earlier `*_pre_norm` names).
+/// These are **C++-mangled** (Itanium ABI) symbols, not part of the public C
+/// header, so they are resolved by hand rather than through the generated
+/// bindings. Stable on clang/gcc (iOS/Android/macOS); would differ under MSVC.
 final class _PreNorm {
   // On macOS/Linux `nm` shows a leading '_' that dlsym strips, so lookup
   // names begin at '_Z'.
-  static const _setName = '_Z29llama_set_embeddings_pre_normP13llama_contextbb';
+  static const _setName = '_Z26llama_set_embeddings_nextnP13llama_contextbb';
   static const _getIthName =
-      '_Z33llama_get_embeddings_pre_norm_ithP13llama_contexti';
+      '_Z30llama_get_embeddings_nextn_ithP13llama_contexti';
 
   final void Function(Pointer<Void>, bool, bool) _set;
   final Pointer<Float> Function(Pointer<Void>, int) _getIth;
@@ -42,8 +43,8 @@ final class _PreNorm {
       return _PreNorm._(set, getIth);
     } on ArgumentError catch (e) {
       throw LlamaLibraryException(
-        'MTP requires the pre-norm embeddings staging API '
-        '(llama_set_embeddings_pre_norm / llama_get_embeddings_pre_norm_ith) '
+        'MTP requires the NextN embeddings staging API '
+        '(llama_set_embeddings_nextn / llama_get_embeddings_nextn_ith) '
         'which is missing from this build of libllama: $e',
       );
     }

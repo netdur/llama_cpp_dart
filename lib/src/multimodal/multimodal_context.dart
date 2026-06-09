@@ -125,11 +125,14 @@ final class MultimodalContext implements Finalizable {
         buf.cast<Uint8>().asTypedList(m.bytes.length).setAll(0, m.bytes);
         byteArenas.add(buf);
 
-        final bm = b.mtmd_helper_bitmap_init_from_buf(
-          pointer,
-          buf,
-          m.bytes.length,
-        );
+        final bm = b
+            .mtmd_helper_bitmap_init_from_buf(
+              pointer,
+              buf,
+              m.bytes.length,
+              false,
+            )
+            .bitmap;
         if (bm == nullptr) {
           throw MultimodalException(
             'mtmd_helper_bitmap_init_from_buf returned null '

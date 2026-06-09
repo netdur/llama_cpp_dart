@@ -7032,6 +7032,34 @@ class LlamaBindings {
           int,
           bool)>();
 
+  ffi.Pointer<ggml_tensor> ggml_col2im_1d(
+    ffi.Pointer<ggml_context> ctx,
+    ffi.Pointer<ggml_tensor> a,
+    int s0,
+    int oc,
+    int p0,
+  ) {
+    return _ggml_col2im_1d(
+      ctx,
+      a,
+      s0,
+      oc,
+      p0,
+    );
+  }
+
+  late final _ggml_col2im_1dPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ggml_tensor> Function(
+              ffi.Pointer<ggml_context>,
+              ffi.Pointer<ggml_tensor>,
+              ffi.Int,
+              ffi.Int,
+              ffi.Int)>>('ggml_col2im_1d');
+  late final _ggml_col2im_1d = _ggml_col2im_1dPtr.asFunction<
+      ffi.Pointer<ggml_tensor> Function(ffi.Pointer<ggml_context>,
+          ffi.Pointer<ggml_tensor>, int, int, int)>();
+
   ffi.Pointer<ggml_tensor> ggml_conv_1d(
     ffi.Pointer<ggml_context> ctx,
     ffi.Pointer<ggml_tensor> a,
@@ -18916,6 +18944,21 @@ class LlamaBindings {
   late final _mtmd_get_audio_sample_rate = _mtmd_get_audio_sample_ratePtr
       .asFunction<int Function(ffi.Pointer<mtmd_context>)>();
 
+  ffi.Pointer<ffi.Char> mtmd_get_marker(
+    ffi.Pointer<mtmd_context> ctx,
+  ) {
+    return _mtmd_get_marker(
+      ctx,
+    );
+  }
+
+  late final _mtmd_get_markerPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<ffi.Char> Function(
+              ffi.Pointer<mtmd_context>)>>('mtmd_get_marker');
+  late final _mtmd_get_marker = _mtmd_get_markerPtr
+      .asFunction<ffi.Pointer<ffi.Char> Function(ffi.Pointer<mtmd_context>)>();
+
   ffi.Pointer<mtmd_bitmap> mtmd_bitmap_init(
     int nx,
     int ny,
@@ -19070,6 +19113,34 @@ class LlamaBindings {
               ffi.Pointer<ffi.Char>)>>('mtmd_bitmap_set_id');
   late final _mtmd_bitmap_set_id = _mtmd_bitmap_set_idPtr.asFunction<
       void Function(ffi.Pointer<mtmd_bitmap>, ffi.Pointer<ffi.Char>)>();
+
+  ffi.Pointer<mtmd_bitmap> mtmd_bitmap_init_lazy(
+    ffi.Pointer<mtmd_context> ctx,
+    ffi.Pointer<ffi.Char> id,
+    ffi.Pointer<ffi.Void> user_data,
+    mtmd_bitmap_lazy_callback callback,
+  ) {
+    return _mtmd_bitmap_init_lazy(
+      ctx,
+      id,
+      user_data,
+      callback,
+    );
+  }
+
+  late final _mtmd_bitmap_init_lazyPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<mtmd_bitmap> Function(
+              ffi.Pointer<mtmd_context>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Pointer<ffi.Void>,
+              mtmd_bitmap_lazy_callback)>>('mtmd_bitmap_init_lazy');
+  late final _mtmd_bitmap_init_lazy = _mtmd_bitmap_init_lazyPtr.asFunction<
+      ffi.Pointer<mtmd_bitmap> Function(
+          ffi.Pointer<mtmd_context>,
+          ffi.Pointer<ffi.Char>,
+          ffi.Pointer<ffi.Void>,
+          mtmd_bitmap_lazy_callback)>();
 
   ffi.Pointer<mtmd_input_chunks> mtmd_input_chunks_init() {
     return _mtmd_input_chunks_init();
@@ -19493,47 +19564,68 @@ class LlamaBindings {
   late final _mtmd_helper_log_set = _mtmd_helper_log_setPtr
       .asFunction<void Function(ggml_log_callback, ffi.Pointer<ffi.Void>)>();
 
-  ffi.Pointer<mtmd_bitmap> mtmd_helper_bitmap_init_from_file(
+  bool mtmd_helper_support_video(
+    ffi.Pointer<mtmd_context> ctx,
+  ) {
+    return _mtmd_helper_support_video(
+      ctx,
+    );
+  }
+
+  late final _mtmd_helper_support_videoPtr =
+      _lookup<ffi.NativeFunction<ffi.Bool Function(ffi.Pointer<mtmd_context>)>>(
+          'mtmd_helper_support_video');
+  late final _mtmd_helper_support_video = _mtmd_helper_support_videoPtr
+      .asFunction<bool Function(ffi.Pointer<mtmd_context>)>();
+
+  mtmd_helper_bitmap_wrapper mtmd_helper_bitmap_init_from_file(
     ffi.Pointer<mtmd_context> ctx,
     ffi.Pointer<ffi.Char> fname,
+    bool placeholder,
   ) {
     return _mtmd_helper_bitmap_init_from_file(
       ctx,
       fname,
+      placeholder,
     );
   }
 
   late final _mtmd_helper_bitmap_init_from_filePtr = _lookup<
       ffi.NativeFunction<
-          ffi.Pointer<mtmd_bitmap> Function(ffi.Pointer<mtmd_context>,
-              ffi.Pointer<ffi.Char>)>>('mtmd_helper_bitmap_init_from_file');
+          mtmd_helper_bitmap_wrapper Function(
+              ffi.Pointer<mtmd_context>,
+              ffi.Pointer<ffi.Char>,
+              ffi.Bool)>>('mtmd_helper_bitmap_init_from_file');
   late final _mtmd_helper_bitmap_init_from_file =
       _mtmd_helper_bitmap_init_from_filePtr.asFunction<
-          ffi.Pointer<mtmd_bitmap> Function(
-              ffi.Pointer<mtmd_context>, ffi.Pointer<ffi.Char>)>();
+          mtmd_helper_bitmap_wrapper Function(
+              ffi.Pointer<mtmd_context>, ffi.Pointer<ffi.Char>, bool)>();
 
-  ffi.Pointer<mtmd_bitmap> mtmd_helper_bitmap_init_from_buf(
+  mtmd_helper_bitmap_wrapper mtmd_helper_bitmap_init_from_buf(
     ffi.Pointer<mtmd_context> ctx,
     ffi.Pointer<ffi.UnsignedChar> buf,
     int len,
+    bool placeholder,
   ) {
     return _mtmd_helper_bitmap_init_from_buf(
       ctx,
       buf,
       len,
+      placeholder,
     );
   }
 
   late final _mtmd_helper_bitmap_init_from_bufPtr = _lookup<
       ffi.NativeFunction<
-          ffi.Pointer<mtmd_bitmap> Function(
+          mtmd_helper_bitmap_wrapper Function(
               ffi.Pointer<mtmd_context>,
               ffi.Pointer<ffi.UnsignedChar>,
-              ffi.Size)>>('mtmd_helper_bitmap_init_from_buf');
+              ffi.Size,
+              ffi.Bool)>>('mtmd_helper_bitmap_init_from_buf');
   late final _mtmd_helper_bitmap_init_from_buf =
       _mtmd_helper_bitmap_init_from_bufPtr.asFunction<
-          ffi.Pointer<mtmd_bitmap> Function(
-              ffi.Pointer<mtmd_context>, ffi.Pointer<ffi.UnsignedChar>, int)>();
+          mtmd_helper_bitmap_wrapper Function(ffi.Pointer<mtmd_context>,
+              ffi.Pointer<ffi.UnsignedChar>, int, bool)>();
 
   int mtmd_helper_get_n_tokens(
     ffi.Pointer<mtmd_input_chunks> chunks,
@@ -19720,6 +19812,126 @@ class LlamaBindings {
               int,
               int,
               ffi.Pointer<llama_pos>)>();
+
+  mtmd_helper_video_init_params mtmd_helper_video_init_params_default() {
+    return _mtmd_helper_video_init_params_default();
+  }
+
+  late final _mtmd_helper_video_init_params_defaultPtr =
+      _lookup<ffi.NativeFunction<mtmd_helper_video_init_params Function()>>(
+          'mtmd_helper_video_init_params_default');
+  late final _mtmd_helper_video_init_params_default =
+      _mtmd_helper_video_init_params_defaultPtr
+          .asFunction<mtmd_helper_video_init_params Function()>();
+
+  ffi.Pointer<mtmd_helper_video> mtmd_helper_video_init(
+    ffi.Pointer<mtmd_context> mctx,
+    ffi.Pointer<ffi.Char> path,
+    mtmd_helper_video_init_params params,
+  ) {
+    return _mtmd_helper_video_init(
+      mctx,
+      path,
+      params,
+    );
+  }
+
+  late final _mtmd_helper_video_initPtr = _lookup<
+      ffi.NativeFunction<
+          ffi.Pointer<mtmd_helper_video> Function(
+              ffi.Pointer<mtmd_context>,
+              ffi.Pointer<ffi.Char>,
+              mtmd_helper_video_init_params)>>('mtmd_helper_video_init');
+  late final _mtmd_helper_video_init = _mtmd_helper_video_initPtr.asFunction<
+      ffi.Pointer<mtmd_helper_video> Function(ffi.Pointer<mtmd_context>,
+          ffi.Pointer<ffi.Char>, mtmd_helper_video_init_params)>();
+
+  ffi.Pointer<mtmd_helper_video> mtmd_helper_video_init_from_buf(
+    ffi.Pointer<mtmd_context> mctx,
+    ffi.Pointer<ffi.UnsignedChar> buf,
+    int len,
+    mtmd_helper_video_init_params params,
+  ) {
+    return _mtmd_helper_video_init_from_buf(
+      mctx,
+      buf,
+      len,
+      params,
+    );
+  }
+
+  late final _mtmd_helper_video_init_from_bufPtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Pointer<mtmd_helper_video> Function(
+                  ffi.Pointer<mtmd_context>,
+                  ffi.Pointer<ffi.UnsignedChar>,
+                  ffi.Size,
+                  mtmd_helper_video_init_params)>>(
+      'mtmd_helper_video_init_from_buf');
+  late final _mtmd_helper_video_init_from_buf =
+      _mtmd_helper_video_init_from_bufPtr.asFunction<
+          ffi.Pointer<mtmd_helper_video> Function(
+              ffi.Pointer<mtmd_context>,
+              ffi.Pointer<ffi.UnsignedChar>,
+              int,
+              mtmd_helper_video_init_params)>();
+
+  void mtmd_helper_video_free(
+    ffi.Pointer<mtmd_helper_video> ctx,
+  ) {
+    return _mtmd_helper_video_free(
+      ctx,
+    );
+  }
+
+  late final _mtmd_helper_video_freePtr = _lookup<
+          ffi
+          .NativeFunction<ffi.Void Function(ffi.Pointer<mtmd_helper_video>)>>(
+      'mtmd_helper_video_free');
+  late final _mtmd_helper_video_free = _mtmd_helper_video_freePtr
+      .asFunction<void Function(ffi.Pointer<mtmd_helper_video>)>();
+
+  mtmd_helper_video_info mtmd_helper_video_get_info(
+    ffi.Pointer<mtmd_helper_video> ctx,
+  ) {
+    return _mtmd_helper_video_get_info(
+      ctx,
+    );
+  }
+
+  late final _mtmd_helper_video_get_infoPtr = _lookup<
+      ffi.NativeFunction<
+          mtmd_helper_video_info Function(
+              ffi.Pointer<mtmd_helper_video>)>>('mtmd_helper_video_get_info');
+  late final _mtmd_helper_video_get_info =
+      _mtmd_helper_video_get_infoPtr.asFunction<
+          mtmd_helper_video_info Function(ffi.Pointer<mtmd_helper_video>)>();
+
+  int mtmd_helper_video_read_next(
+    ffi.Pointer<mtmd_helper_video> ctx,
+    ffi.Pointer<ffi.Pointer<mtmd_bitmap>> out_bitmap,
+    ffi.Pointer<ffi.Pointer<ffi.Char>> out_text,
+  ) {
+    return _mtmd_helper_video_read_next(
+      ctx,
+      out_bitmap,
+      out_text,
+    );
+  }
+
+  late final _mtmd_helper_video_read_nextPtr = _lookup<
+          ffi.NativeFunction<
+              ffi.Int32 Function(
+                  ffi.Pointer<mtmd_helper_video>,
+                  ffi.Pointer<ffi.Pointer<mtmd_bitmap>>,
+                  ffi.Pointer<ffi.Pointer<ffi.Char>>)>>(
+      'mtmd_helper_video_read_next');
+  late final _mtmd_helper_video_read_next =
+      _mtmd_helper_video_read_nextPtr.asFunction<
+          int Function(
+              ffi.Pointer<mtmd_helper_video>,
+              ffi.Pointer<ffi.Pointer<mtmd_bitmap>>,
+              ffi.Pointer<ffi.Pointer<ffi.Char>>)>();
 }
 
 typedef __int8_t = ffi.SignedChar;
@@ -20298,48 +20510,49 @@ enum ggml_op {
   GGML_OP_IM2COL(52),
   GGML_OP_IM2COL_BACK(53),
   GGML_OP_IM2COL_3D(54),
-  GGML_OP_CONV_2D(55),
-  GGML_OP_CONV_3D(56),
-  GGML_OP_CONV_2D_DW(57),
-  GGML_OP_CONV_TRANSPOSE_2D(58),
-  GGML_OP_POOL_1D(59),
-  GGML_OP_POOL_2D(60),
-  GGML_OP_POOL_2D_BACK(61),
-  GGML_OP_UPSCALE(62),
-  GGML_OP_PAD(63),
-  GGML_OP_PAD_REFLECT_1D(64),
-  GGML_OP_ROLL(65),
-  GGML_OP_ARANGE(66),
-  GGML_OP_TIMESTEP_EMBEDDING(67),
-  GGML_OP_ARGSORT(68),
-  GGML_OP_TOP_K(69),
-  GGML_OP_LEAKY_RELU(70),
-  GGML_OP_TRI(71),
-  GGML_OP_FILL(72),
-  GGML_OP_FLASH_ATTN_EXT(73),
-  GGML_OP_FLASH_ATTN_BACK(74),
-  GGML_OP_SSM_CONV(75),
-  GGML_OP_SSM_SCAN(76),
-  GGML_OP_WIN_PART(77),
-  GGML_OP_WIN_UNPART(78),
-  GGML_OP_GET_REL_POS(79),
-  GGML_OP_ADD_REL_POS(80),
-  GGML_OP_RWKV_WKV6(81),
-  GGML_OP_GATED_LINEAR_ATTN(82),
-  GGML_OP_RWKV_WKV7(83),
-  GGML_OP_SOLVE_TRI(84),
-  GGML_OP_GATED_DELTA_NET(85),
-  GGML_OP_UNARY(86),
-  GGML_OP_MAP_CUSTOM1(87),
-  GGML_OP_MAP_CUSTOM2(88),
-  GGML_OP_MAP_CUSTOM3(89),
-  GGML_OP_CUSTOM(90),
-  GGML_OP_CROSS_ENTROPY_LOSS(91),
-  GGML_OP_CROSS_ENTROPY_LOSS_BACK(92),
-  GGML_OP_OPT_STEP_ADAMW(93),
-  GGML_OP_OPT_STEP_SGD(94),
-  GGML_OP_GLU(95),
-  GGML_OP_COUNT(96);
+  GGML_OP_COL2IM_1D(55),
+  GGML_OP_CONV_2D(56),
+  GGML_OP_CONV_3D(57),
+  GGML_OP_CONV_2D_DW(58),
+  GGML_OP_CONV_TRANSPOSE_2D(59),
+  GGML_OP_POOL_1D(60),
+  GGML_OP_POOL_2D(61),
+  GGML_OP_POOL_2D_BACK(62),
+  GGML_OP_UPSCALE(63),
+  GGML_OP_PAD(64),
+  GGML_OP_PAD_REFLECT_1D(65),
+  GGML_OP_ROLL(66),
+  GGML_OP_ARANGE(67),
+  GGML_OP_TIMESTEP_EMBEDDING(68),
+  GGML_OP_ARGSORT(69),
+  GGML_OP_TOP_K(70),
+  GGML_OP_LEAKY_RELU(71),
+  GGML_OP_TRI(72),
+  GGML_OP_FILL(73),
+  GGML_OP_FLASH_ATTN_EXT(74),
+  GGML_OP_FLASH_ATTN_BACK(75),
+  GGML_OP_SSM_CONV(76),
+  GGML_OP_SSM_SCAN(77),
+  GGML_OP_WIN_PART(78),
+  GGML_OP_WIN_UNPART(79),
+  GGML_OP_GET_REL_POS(80),
+  GGML_OP_ADD_REL_POS(81),
+  GGML_OP_RWKV_WKV6(82),
+  GGML_OP_GATED_LINEAR_ATTN(83),
+  GGML_OP_RWKV_WKV7(84),
+  GGML_OP_SOLVE_TRI(85),
+  GGML_OP_GATED_DELTA_NET(86),
+  GGML_OP_UNARY(87),
+  GGML_OP_MAP_CUSTOM1(88),
+  GGML_OP_MAP_CUSTOM2(89),
+  GGML_OP_MAP_CUSTOM3(90),
+  GGML_OP_CUSTOM(91),
+  GGML_OP_CROSS_ENTROPY_LOSS(92),
+  GGML_OP_CROSS_ENTROPY_LOSS_BACK(93),
+  GGML_OP_OPT_STEP_ADAMW(94),
+  GGML_OP_OPT_STEP_SGD(95),
+  GGML_OP_GLU(96),
+  GGML_OP_COUNT(97);
 
   final int value;
   const ggml_op(this.value);
@@ -20400,48 +20613,49 @@ enum ggml_op {
         52 => GGML_OP_IM2COL,
         53 => GGML_OP_IM2COL_BACK,
         54 => GGML_OP_IM2COL_3D,
-        55 => GGML_OP_CONV_2D,
-        56 => GGML_OP_CONV_3D,
-        57 => GGML_OP_CONV_2D_DW,
-        58 => GGML_OP_CONV_TRANSPOSE_2D,
-        59 => GGML_OP_POOL_1D,
-        60 => GGML_OP_POOL_2D,
-        61 => GGML_OP_POOL_2D_BACK,
-        62 => GGML_OP_UPSCALE,
-        63 => GGML_OP_PAD,
-        64 => GGML_OP_PAD_REFLECT_1D,
-        65 => GGML_OP_ROLL,
-        66 => GGML_OP_ARANGE,
-        67 => GGML_OP_TIMESTEP_EMBEDDING,
-        68 => GGML_OP_ARGSORT,
-        69 => GGML_OP_TOP_K,
-        70 => GGML_OP_LEAKY_RELU,
-        71 => GGML_OP_TRI,
-        72 => GGML_OP_FILL,
-        73 => GGML_OP_FLASH_ATTN_EXT,
-        74 => GGML_OP_FLASH_ATTN_BACK,
-        75 => GGML_OP_SSM_CONV,
-        76 => GGML_OP_SSM_SCAN,
-        77 => GGML_OP_WIN_PART,
-        78 => GGML_OP_WIN_UNPART,
-        79 => GGML_OP_GET_REL_POS,
-        80 => GGML_OP_ADD_REL_POS,
-        81 => GGML_OP_RWKV_WKV6,
-        82 => GGML_OP_GATED_LINEAR_ATTN,
-        83 => GGML_OP_RWKV_WKV7,
-        84 => GGML_OP_SOLVE_TRI,
-        85 => GGML_OP_GATED_DELTA_NET,
-        86 => GGML_OP_UNARY,
-        87 => GGML_OP_MAP_CUSTOM1,
-        88 => GGML_OP_MAP_CUSTOM2,
-        89 => GGML_OP_MAP_CUSTOM3,
-        90 => GGML_OP_CUSTOM,
-        91 => GGML_OP_CROSS_ENTROPY_LOSS,
-        92 => GGML_OP_CROSS_ENTROPY_LOSS_BACK,
-        93 => GGML_OP_OPT_STEP_ADAMW,
-        94 => GGML_OP_OPT_STEP_SGD,
-        95 => GGML_OP_GLU,
-        96 => GGML_OP_COUNT,
+        55 => GGML_OP_COL2IM_1D,
+        56 => GGML_OP_CONV_2D,
+        57 => GGML_OP_CONV_3D,
+        58 => GGML_OP_CONV_2D_DW,
+        59 => GGML_OP_CONV_TRANSPOSE_2D,
+        60 => GGML_OP_POOL_1D,
+        61 => GGML_OP_POOL_2D,
+        62 => GGML_OP_POOL_2D_BACK,
+        63 => GGML_OP_UPSCALE,
+        64 => GGML_OP_PAD,
+        65 => GGML_OP_PAD_REFLECT_1D,
+        66 => GGML_OP_ROLL,
+        67 => GGML_OP_ARANGE,
+        68 => GGML_OP_TIMESTEP_EMBEDDING,
+        69 => GGML_OP_ARGSORT,
+        70 => GGML_OP_TOP_K,
+        71 => GGML_OP_LEAKY_RELU,
+        72 => GGML_OP_TRI,
+        73 => GGML_OP_FILL,
+        74 => GGML_OP_FLASH_ATTN_EXT,
+        75 => GGML_OP_FLASH_ATTN_BACK,
+        76 => GGML_OP_SSM_CONV,
+        77 => GGML_OP_SSM_SCAN,
+        78 => GGML_OP_WIN_PART,
+        79 => GGML_OP_WIN_UNPART,
+        80 => GGML_OP_GET_REL_POS,
+        81 => GGML_OP_ADD_REL_POS,
+        82 => GGML_OP_RWKV_WKV6,
+        83 => GGML_OP_GATED_LINEAR_ATTN,
+        84 => GGML_OP_RWKV_WKV7,
+        85 => GGML_OP_SOLVE_TRI,
+        86 => GGML_OP_GATED_DELTA_NET,
+        87 => GGML_OP_UNARY,
+        88 => GGML_OP_MAP_CUSTOM1,
+        89 => GGML_OP_MAP_CUSTOM2,
+        90 => GGML_OP_MAP_CUSTOM3,
+        91 => GGML_OP_CUSTOM,
+        92 => GGML_OP_CROSS_ENTROPY_LOSS,
+        93 => GGML_OP_CROSS_ENTROPY_LOSS_BACK,
+        94 => GGML_OP_OPT_STEP_ADAMW,
+        95 => GGML_OP_OPT_STEP_SGD,
+        96 => GGML_OP_GLU,
+        97 => GGML_OP_COUNT,
         _ => throw ArgumentError('Unknown value for ggml_op: $value'),
       };
 }
@@ -21091,6 +21305,9 @@ final class ggml_backend_meta_split_state extends ffi.Struct {
 
   @ffi.Array.multi([256])
   external ffi.Array<ffi.Int64> ne;
+
+  @ffi.Array.multi([16])
+  external ffi.Array<ffi.Uint32> nr;
 
   @ffi.Uint32()
   external int n_segments;
@@ -22020,6 +22237,9 @@ final class llama_context_params extends ffi.Struct {
   @ffi.Uint32()
   external int n_rs_seq;
 
+  @ffi.Uint32()
+  external int n_outputs_max;
+
   @ffi.Int32()
   external int n_threads;
 
@@ -22120,6 +22340,8 @@ final class llama_context_params extends ffi.Struct {
 
   @ffi.Size()
   external int n_samplers;
+
+  external ffi.Pointer<llama_context> ctx_other;
 }
 
 final class llama_model_tensor_override extends ffi.Struct {
@@ -22346,6 +22568,19 @@ final class mtmd_context_params extends ffi.Struct {
   external ffi.Pointer<ffi.Void> cb_eval_user_data;
 }
 
+typedef mtmd_bitmap_lazy_callbackFunction = ffi.Int Function(
+    ffi.Size chunk_idx,
+    ffi.Pointer<ffi.Void> user_data,
+    ffi.Pointer<ffi.Pointer<mtmd_bitmap>> out_bitmap,
+    ffi.Pointer<ffi.Pointer<ffi.Char>> out_text);
+typedef Dartmtmd_bitmap_lazy_callbackFunction = int Function(
+    int chunk_idx,
+    ffi.Pointer<ffi.Void> user_data,
+    ffi.Pointer<ffi.Pointer<mtmd_bitmap>> out_bitmap,
+    ffi.Pointer<ffi.Pointer<ffi.Char>> out_text);
+typedef mtmd_bitmap_lazy_callback
+    = ffi.Pointer<ffi.NativeFunction<mtmd_bitmap_lazy_callbackFunction>>;
+
 final class mtmd_decoder_pos extends ffi.Struct {
   @ffi.Uint32()
   external int t;
@@ -22366,6 +22601,38 @@ final class mtmd_caps extends ffi.Struct {
 
   @ffi.Bool()
   external bool inp_audio;
+}
+
+final class mtmd_helper_video extends ffi.Opaque {}
+
+final class mtmd_helper_bitmap_wrapper extends ffi.Struct {
+  external ffi.Pointer<mtmd_bitmap> bitmap;
+
+  external ffi.Pointer<mtmd_helper_video> video_ctx;
+}
+
+final class mtmd_helper_video_info extends ffi.Struct {
+  @ffi.Uint32()
+  external int width;
+
+  @ffi.Uint32()
+  external int height;
+
+  @ffi.Float()
+  external double fps;
+
+  @ffi.Int32()
+  external int n_frames;
+}
+
+final class mtmd_helper_video_init_params extends ffi.Struct {
+  @ffi.Float()
+  external double fps_target;
+
+  external ffi.Pointer<ffi.Char> ffmpeg_bin_dir;
+
+  @ffi.Int64()
+  external int timestamp_interval_ms;
 }
 
 const int __bool_true_false_are_defined = 1;
