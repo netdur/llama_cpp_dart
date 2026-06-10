@@ -14,7 +14,6 @@ export 'src/context/context_params.dart'
     show
         AttentionType,
         ContextParams,
-        ContextType,
         FlashAttention,
         KvCacheType,
         PoolingType,
@@ -32,7 +31,6 @@ export 'src/generation/embedding.dart' show EmbeddingResult;
 export 'src/generation/event.dart'
     show DoneEvent, GenerationEvent, ShiftEvent, TokenEvent;
 export 'src/generation/generator.dart' show Generator;
-export 'src/generation/mtp.dart' show MtpSpeculativeDecoder;
 export 'src/generation/request.dart' show Request;
 export 'src/generation/speculative.dart'
     show SpeculativeDecoder, SpeculativeResult;

@@ -22,7 +22,7 @@ I also build and ship the native binaries from this repo's CI — Apple xcframew
 - **Chat**: uses the model's embedded Jinja chat template via `llama_chat_apply_template`. Falls back to manual prompt rendering for models with custom Jinja the C API can't parse.
 - **Persistence**: KV-cache + token history + chat messages save/restore to a single self-describing file with metadata-validated reload.
 - **Context shift**: `llama-server`-style auto-shift when the context fills (off by default, opt in per request, blocked on caches that can't shift).
-- **Speculative decoding**: classic target+draft (`SpeculativeDecoder`) and self-speculative **MTP / NextN** (`MtpSpeculativeDecoder`) for models that ship multi-token-prediction heads.
+- **Speculative decoding**: classic target+draft (`SpeculativeDecoder`).
 - Apple **Metal** + Android **CPU** + Snapdragon **Hexagon NPU** + **OpenCL** acceleration (Hexagon AAR pending physical-device validation).
 
 ## Install
@@ -157,34 +157,6 @@ session.generate(
 
 When the next decode would push past `nCtx`, the engine drops the oldest non-keep tokens and slides the rest left, exactly like llama-server's `--context-shift`. Check `engine.canShift` first — recurrent and iSWA caches (Qwen3 SWA, Gemma 3 4B) report false and the policy throws.
 
-### MTP (multi-token prediction) speculative decoding
-
-For models trained with **MTP / NextN** heads (e.g. Qwen3.6, some DeepSeek/GLM variants — look for `*.nextn_predict_layers` in the GGUF metadata), `MtpSpeculativeDecoder` uses the model's own NextN head as a built-in draft. No separate draft model: one target context plus a draft context created with `ContextType.mtp` off the **same** model.
-
-```dart
-final model = LlamaModel.load(ModelParams(path: '/path/to/mtp-model.gguf', gpuLayers: 99));
-final target = LlamaContext.create(model, const ContextParams(nCtx: 2048));
-final draft  = LlamaContext.create(
-  model,
-  const ContextParams(nCtx: 2048).copyWith(ctxType: ContextType.mtp),
-);
-
-final decoder = MtpSpeculativeDecoder(target: target, draft: draft);
-final result = decoder.generate(
-  prompt: 'Write a short paragraph about the ocean.',
-  maxTokens: 256,
-  draftLength: 3, // NextN drafts proposed per round
-);
-
-print(result.text);
-print('${(result.acceptanceRate * 100).toStringAsFixed(1)}% accepted '
-      '(${result.acceptedCount}/${result.draftedCount})');
-```
-
-How it works (mirrors upstream llama.cpp PR #22673): the target emits **pre-norm hidden states**, the NextN head proposes tokens conditioned on them, and the target verifies a whole round in one pass. Output is **identical to plain greedy decoding** on the target — speculation only changes how many forward passes it takes. Rejected drafts roll back via state checkpoints (`llama_state_seq_*_data`), so it works on **M-RoPE / multimodal** models where partial KV removal is forbidden.
-
-**Performance is hardware-dependent.** On Apple Metal (M1 Max), draft acceptance is high (85–92%) but throughput is roughly **break-even on MoE** and **~8% slower on dense** models versus plain decode — the per-GPU-submission overhead on large models offsets the saved forward passes. It is expected to win on backends with cheaper kernel dispatch (e.g. CUDA). Tuning: MoE models prefer **short** drafts (`draftLength: 2`), dense models prefer **longer** (`draftLength: 3–5`); `pMin` gates low-confidence drafts (keep it — it avoids wasted verify work). Benchmark on your target device with `tool/probe_mtp.dart` before enabling.
-
 ### KV-cache quantization (memory)
 
 Shrink the KV cache to fit longer contexts (or bigger models) in the same RAM — the main lever on memory-constrained iOS/Android. Set `typeK`/`typeV` on `ContextParams`; quantized KV generally needs FlashAttention on, and `typeK == typeV` on most backends:
@@ -233,8 +205,8 @@ LlamaLibrary       // load native lib
 LlamaModel / LlamaContext / LlamaSession / LlamaBatch / Tokenizer / Sampler
                    // synchronous API for advanced use; LlamaEngine is the
                    // recommended entry point for app code
-SpeculativeDecoder / MtpSpeculativeDecoder / SpeculativeResult
-                   // speculative decoding (target+draft, and MTP/NextN self-draft)
+SpeculativeDecoder / SpeculativeResult
+                   // speculative decoding (target+draft)
 ```
 
 ## Loading the native library

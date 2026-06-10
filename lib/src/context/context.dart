@@ -33,7 +33,6 @@ final class LlamaContext implements Finalizable {
       ..n_rs_seq = params.nRsSeq
       ..n_threads = params.nThreads
       ..n_threads_batch = params.nThreadsBatch
-      ..ctx_typeAsInt = _ctxTypeInt(params.ctxType)
       ..flash_attn_typeAsInt = _flashAttnInt(params.flashAttn)
       ..rope_scaling_typeAsInt = _ropeScalingInt(params.ropeScalingType)
       ..pooling_typeAsInt = _poolingInt(params.poolingType)
@@ -408,12 +407,6 @@ final class LlamaContext implements Finalizable {
       throw StateError('LlamaContext has been disposed.');
     }
   }
-
-  static int _ctxTypeInt(ContextType v) => switch (v) {
-        ContextType.defaultCtx =>
-          llama_context_type.LLAMA_CONTEXT_TYPE_DEFAULT.value,
-        ContextType.mtp => llama_context_type.LLAMA_CONTEXT_TYPE_MTP.value,
-      };
 
   static int _flashAttnInt(FlashAttention v) => switch (v) {
         FlashAttention.auto =>

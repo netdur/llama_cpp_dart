@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — llama.cpp bump (Gemma-4), MTP removed
+
+Native rebuild required — `src/llama.cpp` moved `6b4e4bd58` → `d6d0ce82`
+(picks up Gemma-4 E2B/E4B MTP support, #24282).
+
+### Removed: MTP / NextN speculative decoding
+
+- **`MtpSpeculativeDecoder` is gone**, along with `ContextType` /
+  `ContextParams.ctxType`. It relied on the NextN hidden-state staging
+  API (`llama_set_embeddings_nextn` / `llama_get_embeddings_nextn_ith`,
+  formerly `*_pre_norm`), which lives only in llama.cpp's private C++
+  header and had to be resolved by hand via C++-mangled symbols. That
+  approach is ABI-fragile (broke on the upstream `pre_norm`→`nextn`
+  rename; would not work under MSVC) and reaches past the public C API.
+  The binding now uses **only** the ffigen-generated public C headers
+  (`llama.h` + mtmd). Classic target+draft `SpeculativeDecoder` (pure C
+  API) is unaffected.
+
+### Changed
+
+- Regenerated FFI bindings against the new pin: `llama_context_params`
+  gains `ctx_other` + `n_outputs_max`; `llama_set_warmup` is deprecated.
+- mtmd: adapt to the upstream video refactor —
+  `mtmd_helper_bitmap_init_from_{file,buf}` now take a `placeholder` bool
+  and return a `mtmd_helper_bitmap_wrapper` (use `.bitmap`).
+
 ## 0.9.0-dev.8 — MTP speculative decoding, IQ4_NL KV cache
 
 Pure-Dart release on the same llama.cpp pin (tag **`b9360`**, sha

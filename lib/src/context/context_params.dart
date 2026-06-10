@@ -57,25 +57,6 @@ enum AttentionType {
   nonCausal,
 }
 
-/// Role this context plays in a target + draft speculative-decoding setup.
-///
-/// * [defaultCtx] is the normal context type — used both standalone and for
-///   the target side of speculative decoding.
-/// * [mtp] activates the model's Multi-Token Prediction (NextN) heads so a
-///   context created with the *same* model becomes a draft producer for
-///   speculative decoding. Requires a model trained with MTP (e.g. some
-///   DeepSeek / GLM / Qwen3.6 variants). No draft weights are loaded; the
-///   heads are part of the target model.
-///
-/// Pass an [mtp] draft context together with a [defaultCtx] target to
-/// `MtpSpeculativeDecoder` to drive the speculative loop. Do **not** feed an
-/// [mtp] context to the generic `SpeculativeDecoder` — that path treats the
-/// draft as an independent model and crashes on M-RoPE / multimodal models.
-enum ContextType {
-  defaultCtx,
-  mtp,
-}
-
 /// Declarative configuration for [LlamaContext.create].
 ///
 /// Immutable, JSON-friendly. Holds no native memory.
@@ -165,11 +146,6 @@ final class ContextParams {
   /// Random seed used internally for stateful ops. -1 picks a runtime value.
   final int seed;
 
-  /// Role this context plays. Keep [ContextType.defaultCtx] unless you are
-  /// hand-rolling a draft context for speculative decoding against an
-  /// MTP-capable model.
-  final ContextType ctxType;
-
   /// Number of recurrent-state snapshots per sequence to keep for rollback.
   /// `0` disables rollback. Marked **experimental** upstream; leave at the
   /// default unless you specifically need it for recurrent models.
@@ -203,7 +179,6 @@ final class ContextParams {
     this.typeK = KvCacheType.f16,
     this.typeV = KvCacheType.f16,
     this.seed = -1,
-    this.ctxType = ContextType.defaultCtx,
     this.nRsSeq = 0,
   });
 
@@ -235,7 +210,6 @@ final class ContextParams {
     KvCacheType? typeK,
     KvCacheType? typeV,
     int? seed,
-    ContextType? ctxType,
     int? nRsSeq,
   }) {
     return ContextParams(
@@ -266,7 +240,6 @@ final class ContextParams {
       typeK: typeK ?? this.typeK,
       typeV: typeV ?? this.typeV,
       seed: seed ?? this.seed,
-      ctxType: ctxType ?? this.ctxType,
       nRsSeq: nRsSeq ?? this.nRsSeq,
     );
   }
@@ -299,7 +272,6 @@ final class ContextParams {
         'typeK': typeK.name,
         'typeV': typeV.name,
         'seed': seed,
-        'ctxType': ctxType.name,
         'nRsSeq': nRsSeq,
       };
 
@@ -349,10 +321,6 @@ final class ContextParams {
           orElse: () => KvCacheType.f16,
         ),
         seed: (json['seed'] as int?) ?? -1,
-        ctxType: ContextType.values.firstWhere(
-          (e) => e.name == json['ctxType'],
-          orElse: () => ContextType.defaultCtx,
-        ),
         nRsSeq: (json['nRsSeq'] as int?) ?? 0,
       );
 }
