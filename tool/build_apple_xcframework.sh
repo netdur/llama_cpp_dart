@@ -162,8 +162,8 @@ build_slice() {
     -Wl,-all_load "${archives[@]}" \
     -framework Foundation -framework Metal -framework MetalKit -framework Accelerate \
     -o "$fw_dir/llama"
-  # Ad-hoc sign so the slice validates standalone; the app re-signs on embed.
-  codesign --force --sign - "$fw_dir/llama"
+  # (framework bundle is ad-hoc signed at the end of build_slice, after the
+  # Info.plist exists, so the signing identifier is the CFBundleIdentifier)
 
   # Copy headers.
   for h in "${HEADERS[@]}"; do
@@ -217,8 +217,15 @@ EOF
     ln -sfn Versions/Current/Headers   "$fw_dir/Headers"
     ln -sfn Versions/Current/Modules   "$fw_dir/Modules"
     ln -sfn Versions/Current/Resources "$fw_dir/Resources"
-    codesign --force --sign - "$fw_dir"
   fi
+
+  # Ad-hoc sign the framework BUNDLE (not the bare binary) now that the
+  # Info.plist exists: codesign then takes the signing identifier from the
+  # CFBundleIdentifier (org.ggml.llama). Signing the binary alone gives a
+  # `llama-<hash>` identifier that iOS device installs reject with
+  # "MismatchedBundleIDSigningIdentifier". The app re-signs on Embed & Sign
+  # but preserves this identifier, so it must match the bundle id here.
+  codesign --force --sign - "$fw_dir"
 
   echo "  slice ready: $fw_dir"
 }
