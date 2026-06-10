@@ -16,7 +16,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'llama_cpp'
-  s.version          = '0.9.0-dev.1'
+  s.version          = '0.9.0-dev.9'
   s.summary          = 'llama.cpp xcframework for iOS / macOS via llama_cpp_dart.'
   s.description      = <<-DESC
     Prebuilt llama.cpp + ggml + mtmd as an xcframework, vendored for use from

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — llama.cpp bump (Gemma-4), MTP removed
+## 0.9.0-dev.9 — Gemma-4, MTP removed, dynamic Apple framework
 
 Native rebuild required — `src/llama.cpp` moved `6b4e4bd58` → `d6d0ce82`
 (picks up Gemma-4 E2B/E4B MTP support, #24282).
@@ -25,6 +25,15 @@ Native rebuild required — `src/llama.cpp` moved `6b4e4bd58` → `d6d0ce82`
 - mtmd: adapt to the upstream video refactor —
   `mtmd_helper_bitmap_init_from_{file,buf}` now take a `placeholder` bool
   and return a `mtmd_helper_bitmap_wrapper` (use `.bitmap`).
+
+### Native (Apple)
+
+- The Apple xcframework now ships as a **dynamic** framework (was a static
+  archive). Consumers just **Embed & Sign** — no `-force_load`, which fixes
+  the iOS `dlsym`/dead-strip failure (#104) and a static-framework clean-build
+  ordering trap. It bundles `common` and links Metal/Accelerate internally;
+  the macOS slice uses the versioned bundle layout and each slice is signed
+  with the `org.ggml.llama` identifier so on-device installs validate.
 
 ## 0.9.0-dev.8 — MTP speculative decoding, IQ4_NL KV cache
 
