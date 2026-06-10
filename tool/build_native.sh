@@ -92,7 +92,8 @@ case "$PLATFORM" in
     )
 
     if [[ "$WITH_MTMD" -eq 1 ]]; then
-      CMAKE_ARGS+=(-DLLAMA_BUILD_TOOLS=ON)
+      # MTMD_VIDEO spawns ffmpeg via posix_spawn — not shipped; keep it off.
+      CMAKE_ARGS+=(-DLLAMA_BUILD_TOOLS=ON -DMTMD_VIDEO=OFF)
     else
       CMAKE_ARGS+=(-DLLAMA_BUILD_TOOLS=OFF)
     fi

@@ -73,6 +73,10 @@ COMMON_ARGS=(
   # self-contained (no OpenSSL to bundle/sign per slice).
   -DLLAMA_OPENSSL=OFF
   -DLLAMA_BUILD_TOOLS=ON   # for libmtmd (vision + audio)
+  # mtmd video decoding spawns an ffmpeg binary via posix_spawn — never
+  # present in a shipped framework, and posix_spawn breaks the Android NDK
+  # build. Disable everywhere for a consistent, smaller mtmd.
+  -DMTMD_VIDEO=OFF
   -DGGML_METAL=ON
   -DGGML_METAL_EMBED_LIBRARY=ON
   -DGGML_METAL_USE_BF16=ON
