@@ -214,7 +214,7 @@ SpeculativeDecoder / SpeculativeResult
 | Where | How |
 |---|---|
 | `dart test`, CLI, macOS dev | `LlamaEngine.spawn(libraryPath: '/path/to/libllama.dylib', ...)` |
-| iOS / macOS app with xcframework | `LlamaEngine.spawnFromProcess(...)` (Xcode static-links the framework into the app binary) |
+| iOS / macOS app with xcframework | `LlamaEngine.spawnFromProcess(...)` (Embed & Sign the dynamic framework; dyld loads it at launch, symbols are in the process) |
 | Android with AAR / jniLibs | `LlamaEngine.spawn(libraryPath: 'libllama.so', ...)` (basename — Android resolves) |
 
 `mtmd` resolution mirrors the same logic — opened by basename if `libllama` was a basename, by sibling path otherwise.

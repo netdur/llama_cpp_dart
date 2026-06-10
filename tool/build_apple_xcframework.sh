@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
 # Build an Apple xcframework with three slices: ios-arm64,
-# ios-arm64-simulator, macos-arm64. Each slice is a static `.framework`
-# bundle containing a merged `libllama` archive (llama + ggml + mtmd),
-# all public headers, and a module map.
+# ios-arm64-simulator, macos-arm64. Each slice is a DYNAMIC `.framework`
+# bundle with a self-contained `llama` dylib (llama + ggml + mtmd + common,
+# with Foundation/Metal/MetalKit/Accelerate linked in), all public headers,
+# and a module map. Dynamic so consumers just Embed & Sign — no -force_load,
+# no dead-strip of dlsym'd symbols (the static-archive trap).
 #
 # Output: build/apple/llama.xcframework/
 #
@@ -63,6 +65,13 @@ COMMON_ARGS=(
   # off that target fails to link. We don't ship the app, so disable it.
   -DLLAMA_BUILD_APP=OFF
   -DLLAMA_CURL=OFF
+  # Disable httplib's OpenSSL/TLS: on the macOS host cmake finds system
+  # OpenSSL and compiles cpp-httplib with SSL, which then leaves unresolved
+  # X509_*/SSL_* symbols when we link `common` into the dylib. We only need
+  # common's symbols to *link* (mobile apps bundle models, they don't
+  # download), so HTTP-only httplib is fine and keeps the framework
+  # self-contained (no OpenSSL to bundle/sign per slice).
+  -DLLAMA_OPENSSL=OFF
   -DLLAMA_BUILD_TOOLS=ON   # for libmtmd (vision + audio)
   -DGGML_METAL=ON
   -DGGML_METAL_EMBED_LIBRARY=ON
@@ -119,29 +128,42 @@ build_slice() {
 
   cmake --build "$build_dir" --config Release --parallel
 
-  # Collect every static archive cmake produced, merge into one library.
+  # Collect every static archive cmake produced (llama + ggml + mtmd +
+  # common + httplib — ship them all so apps using llama.cpp's `common`
+  # helper API link too).
   # Xcode names build dirs Release/, Release-iphoneos/, Release-iphonesimulator/
   # depending on the slice — match all three with one path glob.
   local archives=()
   while IFS= read -r -d '' a; do archives+=("$a"); done < <(
     find "$build_dir" -name '*.a' \( -path '*/Release/*' -o -path '*/Release-*' \) -print0 2>/dev/null
   )
-  # Drop archives we don't want to ship (httplib, llama-common server-only bits).
-  local kept=()
-  for a in "${archives[@]}"; do
-    case "$a" in
-      */libllama-common*) ;;
-      */libcpp-httplib*) ;;
-      *) kept+=("$a") ;;
-    esac
-  done
-  archives=("${kept[@]}")
   if [[ ${#archives[@]} -eq 0 ]]; then
     echo "error: no .a archives found under $build_dir" >&2
     exit 1
   fi
-  echo "  merging ${#archives[@]} archives into framework binary"
-  libtool -static -o "$fw_dir/llama" "${archives[@]}" 2>/dev/null
+
+  # Link all archives into one self-contained DYNAMIC framework binary.
+  # -all_load keeps every object — ggml backends self-register through static
+  # constructors, so they must not be dead-stripped. The system frameworks
+  # resolve BLAS/vDSP (Accelerate) and the Metal backend. @rpath install name
+  # lets the consumer Embed & Sign with no extra linker flags.
+  local sdk_path min_flag
+  sdk_path="$(xcrun --sdk "$sysroot" --show-sdk-path)"
+  case "$sysroot" in
+    iphoneos)        min_flag="-miphoneos-version-min=$min_version" ;;
+    iphonesimulator) min_flag="-mios-simulator-version-min=$min_version" ;;
+    macosx)          min_flag="-mmacosx-version-min=$min_version" ;;
+    *) echo "error: unknown sysroot $sysroot" >&2; exit 1 ;;
+  esac
+  echo "  linking ${#archives[@]} archives into dynamic framework binary"
+  xcrun --sdk "$sysroot" clang++ -dynamiclib \
+    -arch arm64 -isysroot "$sdk_path" "$min_flag" \
+    -install_name @rpath/llama.framework/llama \
+    -Wl,-all_load "${archives[@]}" \
+    -framework Foundation -framework Metal -framework MetalKit -framework Accelerate \
+    -o "$fw_dir/llama"
+  # Ad-hoc sign so the slice validates standalone; the app re-signs on embed.
+  codesign --force --sign - "$fw_dir/llama"
 
   # Copy headers.
   for h in "${HEADERS[@]}"; do
@@ -178,6 +200,25 @@ EOF
 </dict>
 </plist>
 EOF
+
+  # macOS frameworks must use the versioned (non-shallow) bundle layout
+  # (Versions/A/... with symlinks); iOS/simulator use the flat layout built
+  # above. Xcode rejects a flat framework on macOS ("expected
+  # Versions/Current/Resources/Info.plist").
+  if [[ "$sys_name" == "Darwin" ]]; then
+    local v="$fw_dir/Versions/A"
+    mkdir -p "$v/Resources"
+    mv "$fw_dir/llama"      "$v/llama"
+    mv "$fw_dir/Headers"    "$v/Headers"
+    mv "$fw_dir/Modules"    "$v/Modules"
+    mv "$fw_dir/Info.plist" "$v/Resources/Info.plist"
+    ln -sfn A                         "$fw_dir/Versions/Current"
+    ln -sfn Versions/Current/llama     "$fw_dir/llama"
+    ln -sfn Versions/Current/Headers   "$fw_dir/Headers"
+    ln -sfn Versions/Current/Modules   "$fw_dir/Modules"
+    ln -sfn Versions/Current/Resources "$fw_dir/Resources"
+    codesign --force --sign - "$fw_dir"
+  fi
 
   echo "  slice ready: $fw_dir"
 }

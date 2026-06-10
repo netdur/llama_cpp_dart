@@ -8,10 +8,11 @@
 #     pod 'llama_cpp', :path => '../../llama_cpp_dart'   # adjust path
 #   end
 #
-# This points the Flutter target at the prebuilt xcframework so it gets
-# embedded + signed automatically. App code should call
-# `LlamaEngine.spawnFromProcess(...)` (the framework is static-linked into
-# the app binary, no runtime dlopen path needed).
+# This points the Flutter target at the prebuilt DYNAMIC xcframework so it
+# gets embedded + signed automatically. App code calls
+# `LlamaEngine.spawnFromProcess(...)`: dyld loads the embedded framework at
+# launch, so its symbols are already in the process (no -force_load, no
+# runtime dlopen path needed).
 #
 Pod::Spec.new do |s|
   s.name             = 'llama_cpp'
@@ -32,18 +33,15 @@ Pod::Spec.new do |s|
 
   s.vendored_frameworks = 'build/apple/llama.xcframework'
 
-  # Frameworks the xcframework links against.
+  # System frameworks the dynamic llama.framework links against. They are
+  # already recorded as load commands inside the dylib, so dyld pulls them
+  # in automatically; declaring them here is belt-and-suspenders.
   s.frameworks = 'Metal', 'MetalKit', 'Foundation', 'Accelerate'
 
-  # The xcframework is a static archive wrapped in a .framework. Without
-  # -force_load, the linker drops all of its symbols because nothing in
-  # the Flutter Runner / App.framework references them at compile time.
-  # Dart's DynamicLibrary.process() (used by LlamaEngine.spawnFromProcess)
-  # then can't find e.g. llama_backend_init at runtime.
-  s.user_target_xcconfig = {
-    'OTHER_LDFLAGS' => '$(inherited) -force_load $(PODS_XCFRAMEWORKS_BUILD_DIR)/llama_cpp/llama.framework/llama',
-  }
-  s.pod_target_xcconfig = {
-    'OTHER_LDFLAGS' => '$(inherited) -force_load $(PODS_XCFRAMEWORKS_BUILD_DIR)/llama_cpp/llama.framework/llama',
-  }
+  # NOTE: llama.framework is a *dynamic* framework (self-contained dylib with
+  # @rpath/llama.framework/llama install name). CocoaPods embeds + signs it,
+  # dyld loads it at launch, and its symbols are visible to
+  # DynamicLibrary.process(). No -force_load — that was only needed back when
+  # the framework shipped as a static archive, and it actively breaks a
+  # dynamic one.
 end
