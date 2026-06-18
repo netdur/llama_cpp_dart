@@ -557,6 +557,10 @@ Future<void> _streamSampleAfterPrefill({
 
   try {
     while (true) {
+      // FIX: this synchronous decode loop never yields to the event loop, so a
+      // CancelCommand (an event-loop event) is starved and never registered
+      // mid-generation. Force one event-loop turn per token.
+      await Future<void>.delayed(Duration.zero);
       if (state.cancelledRequests.remove(requestId)) {
         cancelled = true;
         break;
@@ -823,6 +827,12 @@ Future<void> _streamSessionGenerate({
     shiftPolicy: shiftPolicy,
     shift: shift,
   )) {
+    // FIX: an async* generate stream delivers via microtasks; a CancelCommand
+    // arrives as an event-loop event. The tight yield→consume→decode loop never
+    // drains to the event loop, starving the cancel callback. Force one
+    // event-loop turn per token so a pending cancel is registered before this
+    // check.
+    await Future<void>.delayed(Duration.zero);
     if (state.cancelledRequests.remove(requestId)) {
       cancelled = true;
       break;
