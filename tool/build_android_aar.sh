@@ -39,7 +39,7 @@ done
 
 # Auto-discover NDK if not specified.
 if [[ -z "$NDK" ]]; then
-  CANDIDATE="/Users/adel/Library/Android/sdk/ndk"
+  CANDIDATE="$HOME/Library/Android/sdk/ndk"
   if [[ -d "$CANDIDATE" ]]; then
     # Pick the lexicographically-largest version (safe enough for our SDKs).
     NDK="$CANDIDATE/$(ls -1 "$CANDIDATE" | sort -V | tail -1)"
