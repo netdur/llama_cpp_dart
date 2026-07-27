@@ -32,3 +32,17 @@ ffigen:
     - '-Isrc/llama.cpp/tools/mtmd'
   preamble: |
     // ignore_for_file: type=lint, type=warning, unused_field, unused_element, camel_case_types, non_constant_identifier_names
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+      ios:
+        ffiPlugin: true
+      macos:
+        ffiPlugin: true
+      windows:
+        ffiPlugin: true
+      linux:
+        ffiPlugin: true
