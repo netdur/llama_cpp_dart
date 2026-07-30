@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.9.0-dev.10 — llama.cpp b10182, load-mode API, isolate log-callback fix
+
+Native rebuild required — `src/llama.cpp` moved `d6d0ce82` → `afeebe10`
+(tag `b10182`), about seven weeks of upstream work.
+
+### Changed
+
+- Adapted to upstream `e6dd0e29a`, which collapsed the `use_mmap` /
+  `use_direct_io` / `use_mlock` booleans in `llama_model_params` into a
+  single `llama_load_mode` enum. **`ModelParams` keeps its three
+  booleans** — they are mapped at the FFI boundary, so callers are
+  unaffected. One semantic caveat: the enum has no direct-I/O-plus-mlock
+  value, so when both are requested direct I/O wins and mlock is dropped.
+  `useDirectIo` keeps its documented precedence over `useMmap`.
+- Regenerated FFI bindings against the new pin. New upstream C API now
+  reachable but not yet wrapped: `llama_model_n_layer_nextn`,
+  `llama_model_ftype`, `llama_ftype_name`,
+  `llama_vocab_get_suppress_tokens`, and the mtmd batch-encoding API
+  (`mtmd_batch_init` / `_add_chunk` / `_encode` / `_get_output_embd`).
+- `mtmd_encode` is deprecated upstream in favor of `mtmd_encode_chunk`.
+  This package reaches multimodal via `mtmd_helper_eval_chunks` and never
+  called it, so no change was needed.
+
+### Fixed
+
+- **`LlamaLibrary.dispose` now clears the log callback.**
+  `LlamaLog.silence` installs a `Pointer.fromFunction` bound to the
+  isolate that registered it, but the slot it occupies lives in
+  process-global llama.cpp/ggml state and outlives that isolate. The
+  stale pointer stayed installed, so the next isolate to emit a log line
+  invoked a callback owned by a dead isolate and the VM aborted with
+  "Cannot invoke native callback from a different isolate". Surfaced by
+  Dart 3.12's stricter cross-isolate check.
+
+  Known remaining issue: parallel `dart test` still hits the concurrent
+  variant of this race, where one isolate holds a live callback while
+  another loads a model. Run the model-backed suite with `-j 1` until
+  `silence()` stops using a Dart callback altogether.
+
+### Tooling
+
+- `ffigen` 20.1.1 → 21.0.0, `lints` 5.0.0 → 6.1.0 (dev dependencies).
+  Note ffigen 21 requires Dart SDK ≥ 3.10 to run the generator; the
+  package's own `sdk: ^3.5.0` constraint for consumers is unchanged.
+- Fixed the ffigen `-resource-dir` compiler-opt, which pointed at a clang
+  17 toolchain directory that no longer exists.
+
 ## 0.9.0-dev.9 — Gemma-4, MTP removed, dynamic Apple framework
 
 Native rebuild required — `src/llama.cpp` moved `6b4e4bd58` → `d6d0ce82`
