@@ -5,6 +5,7 @@ import 'package:ffi/ffi.dart';
 
 import '../types/exceptions.dart';
 import 'bindings.dart';
+import 'log.dart';
 
 /// Process-wide owner of the loaded llama.cpp dynamic library.
 ///
@@ -231,8 +232,18 @@ final class LlamaLibrary {
   /// and freeing it from one isolate while another still holds models
   /// crashes the second isolate's `llama_free`. Process exit reclaims the
   /// backend state.
+  ///
+  /// Does clear any installed log callback first. A callback set by
+  /// [LlamaLog.silence] is a `Pointer.fromFunction` bound to the isolate
+  /// that registered it, but the slot it occupies lives in process-global
+  /// llama.cpp/ggml state and outlives this isolate. Leaving it installed
+  /// means the next isolate to emit a log line invokes a callback owned by
+  /// a dead isolate, which aborts the VM with "Cannot invoke native
+  /// callback from a different isolate".
   static void dispose() {
     if (_bindings == null) return;
+    // Must run while _bindings is still non-null — useDefault() needs it.
+    LlamaLog.useDefault();
     _bindings = null;
     _libraryPath = null;
     _libraryDir = null;
