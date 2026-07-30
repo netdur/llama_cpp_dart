@@ -16,11 +16,11 @@ final class LlamaVersion {
   /// Full SHA of the `src/llama.cpp` submodule the native artifacts
   /// in this release were built against.
   static const String llamaCppCommit =
-      'd6d0ce8215a1c324e8de04b52f9dd65c5edc129f';
+      'afeebe103bd99cda8f5dfaefcabadf890db7fda7';
 
   /// Author/committer date of [llamaCppCommit] in ISO-8601 form.
   /// Reproducible across machines (does not depend on local clock).
-  static const String llamaCppCommitDate = '2026-06-09T13:27:38+02:00';
+  static const String llamaCppCommitDate = '2026-07-29T18:02:30+02:00';
 
   /// Runtime call to `llama_print_system_info()`. Returns a string with
   /// llama.cpp build date, compiler flags, and enabled backends — useful

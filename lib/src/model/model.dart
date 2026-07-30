@@ -31,9 +31,7 @@ final class LlamaModel implements Finalizable {
       ..n_gpu_layers = params.gpuLayers
       ..split_modeAsInt = _splitModeInt(params.splitMode)
       ..main_gpu = params.mainGpu
-      ..use_mmap = params.useMmap
-      ..use_direct_io = params.useDirectIo
-      ..use_mlock = params.useMlock
+      ..load_modeAsInt = _loadModeInt(params)
       ..vocab_only = params.vocabOnly
       ..check_tensors = params.checkTensors
       ..use_extra_bufts = params.useExtraBufts
@@ -168,6 +166,22 @@ final class LlamaModel implements Finalizable {
     }
     dst[n] = 0;
   }
+
+  /// Collapse the [ModelParams] loading booleans into llama.cpp's
+  /// `llama_load_mode` enum, which replaced the separate `use_mmap` /
+  /// `use_direct_io` / `use_mlock` fields upstream.
+  ///
+  /// [ModelParams.useDirectIo] keeps its documented precedence over
+  /// [ModelParams.useMmap]. Note the enum cannot express direct I/O
+  /// combined with mlock, so direct I/O wins outright in that case.
+  static int _loadModeInt(ModelParams p) => switch (p) {
+        _ when p.useDirectIo => llama_load_mode.LLAMA_LOAD_MODE_DIRECT_IO.value,
+        _ when p.useMmap && p.useMlock =>
+          llama_load_mode.LLAMA_LOAD_MODE_MMAP_MLOCK.value,
+        _ when p.useMmap => llama_load_mode.LLAMA_LOAD_MODE_MMAP.value,
+        _ when p.useMlock => llama_load_mode.LLAMA_LOAD_MODE_MLOCK.value,
+        _ => llama_load_mode.LLAMA_LOAD_MODE_NONE.value,
+      };
 
   static int _splitModeInt(SplitMode v) => switch (v) {
         SplitMode.none => llama_split_mode.LLAMA_SPLIT_MODE_NONE.value,
