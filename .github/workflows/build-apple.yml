@@ -4,6 +4,17 @@ on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    paths:
+      - '.github/workflows/build-apple.yml'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'darwin/**'
+      - 'pubspec.yaml'
+      - 'src/**'
+      - 'tool/build_apple_xcframework.sh'
+      - 'tool/build_native.sh'
+      - 'tool/package_apple_xcframework.sh'
   workflow_dispatch:
 
 permissions:
@@ -50,11 +61,10 @@ jobs:
         run: tool/build_apple_xcframework.sh --clean
 
       - name: stage xcframework bundle
-        run: |
-          cd build/apple
-          zip -r ../../llama-xcframework.zip llama.xcframework
-          cd ../..
-          shasum -a 256 llama-xcframework.zip > llama-xcframework.zip.sha256
+        run: tool/package_apple_xcframework.sh
+
+      - name: validate Swift package manifest
+        run: swift package dump-package --package-path darwin/llama_cpp_dart > /dev/null
 
       - name: upload xcframework
         uses: actions/upload-artifact@v4
