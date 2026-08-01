@@ -255,7 +255,7 @@ final class LlamaLibrary {
   /// Useful when writing test helpers; not used by [load].
   static String defaultFileName() {
     if (Platform.isMacOS) return 'libllama.dylib';
-    if (Platform.isIOS) return 'llama.framework/llama';
+    if (Platform.isIOS) return 'Llama.framework/Llama';
     if (Platform.isAndroid || Platform.isLinux) return 'libllama.so';
     if (Platform.isWindows) return 'llama.dll';
     throw UnsupportedError('Unsupported platform: ${Platform.operatingSystem}');

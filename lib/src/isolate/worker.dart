@@ -358,6 +358,8 @@ Future<void> _runGenerateChat(
         maxTokens: cmd.maxTokens,
         state: state,
         reply: reply,
+        shiftPolicy: cmd.shiftPolicy,
+        shift: cmd.shift,
       );
     }
   } catch (e, st) {
@@ -860,11 +862,19 @@ void _shutdown(
     } catch (_) {/* ignore */}
   }
   state.sessions.clear();
-  // We deliberately do NOT dispose the model or context here. With multiple
-  // engines in a process, freeing one worker's model/context can crash the
-  // other worker's outstanding operations because the backend is shared and
-  // some teardown paths touch process-global state. The OS reclaims memory
-  // on process exit; that is good enough for M3.
+  
+  if (state.multimodal != null) {
+    try {
+      state.multimodal!.dispose();
+    } catch (_) {}
+  }
+  try {
+    state.context.dispose();
+  } catch (_) {}
+  try {
+    state.model.dispose();
+  } catch (_) {}
+
   LlamaLibrary.dispose();
   reply.send(EngineShutdownComplete(requestId));
   commandRx.close();

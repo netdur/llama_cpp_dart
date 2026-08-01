@@ -182,6 +182,24 @@ final class ContextParams {
     this.nRsSeq = 0,
   });
 
+  /// Factory preset optimized for memory-constrained mobile devices (iOS / Android).
+  /// Uses a 1024 token context window and 128 batch size to ensure predictable RAM overhead.
+  factory ContextParams.mobile({
+    int nCtx = 1024,
+    int nBatch = 128,
+    int nUbatch = 128,
+    KvCacheType typeK = KvCacheType.f16,
+    KvCacheType typeV = KvCacheType.f16,
+  }) {
+    return ContextParams(
+      nCtx: nCtx,
+      nBatch: nBatch,
+      nUbatch: nUbatch,
+      typeK: typeK,
+      typeV: typeV,
+    );
+  }
+
   ContextParams copyWith({
     int? nCtx,
     int? nBatch,

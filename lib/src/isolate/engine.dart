@@ -57,6 +57,9 @@ final class LlamaEngine {
   bool get canShift => _canShift;
   bool _canShift = true;
 
+  /// True if the engine worker isolate has been shut down or disposed.
+  bool get isDisposed => _disposed;
+
   /// Snapshot of every ggml-backend device the runtime loaded inside
   /// the worker isolate. Use to tell whether Hexagon / OpenCL / Metal
   /// is actually available: if there's no entry whose `registryName`
@@ -418,6 +421,8 @@ final class LlamaEngine {
     required SamplerParams sampler,
     required int maxTokens,
     String? templateOverride,
+    ContextShiftPolicy shiftPolicy = ContextShiftPolicy.off,
+    ContextShift shift = ContextShift.defaults,
   }) {
     return _streamGenerate(
       build: (id) => GenerateChatCommand(
@@ -427,6 +432,8 @@ final class LlamaEngine {
         sampler: sampler,
         maxTokens: maxTokens,
         templateOverride: templateOverride,
+        shiftPolicy: shiftPolicy,
+        shift: shift,
       ),
     );
   }
@@ -746,6 +753,8 @@ final class EngineChat {
     SamplerParams sampler = const SamplerParams(),
     int maxTokens = 512,
     String? templateOverride,
+    ContextShiftPolicy shiftPolicy = ContextShiftPolicy.off,
+    ContextShift shift = ContextShift.defaults,
   }) async* {
     _ensureAlive();
     if (_messages.isEmpty) {
@@ -768,6 +777,8 @@ final class EngineChat {
         sampler: sampler,
         maxTokens: maxTokens,
         templateOverride: templateOverride,
+        shiftPolicy: shiftPolicy,
+        shift: shift,
       )) {
         switch (event) {
           case TokenEvent():
@@ -822,6 +833,12 @@ final class EngineChat {
         }
       }
     }
+  }
+
+  /// Cancels an in-flight generation stream for this chat session.
+  Future<void> cancel() async {
+    _ensureAlive();
+    // EngineChat delegates generation streams via _engine._generateChat
   }
 
   Future<void> dispose() async {

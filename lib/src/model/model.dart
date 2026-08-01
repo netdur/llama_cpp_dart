@@ -207,6 +207,19 @@ final class LlamaModel implements Finalizable {
   /// Total size of the model on disk, in bytes.
   int get sizeBytes => LlamaLibrary.bindings.llama_model_size(pointer);
 
+  /// Estimates the approximate peak VRAM requirements (in bytes) to load this model
+  /// with [nCtx] context window.
+  int estimateVramBytes({int nCtx = 1024}) {
+    final modelSize = sizeBytes;
+    // KV cache per token approx: 2 * nLayer * nHeadKv * (nEmbd / nHead) * 2 bytes (f16)
+    final kvPerToken = nHeadKv > 0 && nHead > 0
+        ? (2 * nLayer * nHeadKv * (nEmbd / nHead) * 2).toInt()
+        : 1024 * 256;
+    final kvCacheSize = nCtx * kvPerToken;
+    // Add 15% safety margin for CUDA/Metal scratch buffers
+    return ((modelSize + kvCacheSize) * 1.15).toInt();
+  }
+
   bool get hasEncoder => LlamaLibrary.bindings.llama_model_has_encoder(pointer);
   bool get hasDecoder => LlamaLibrary.bindings.llama_model_has_decoder(pointer);
   bool get isRecurrent =>

@@ -125,6 +125,8 @@ final class GenerateChatCommand extends EngineCommand {
   final SamplerParams sampler;
   final int maxTokens;
   final String? templateOverride;
+  final ContextShiftPolicy shiftPolicy;
+  final ContextShift shift;
   const GenerateChatCommand(
     super.requestId, {
     required this.sessionId,
@@ -132,6 +134,8 @@ final class GenerateChatCommand extends EngineCommand {
     required this.sampler,
     required this.maxTokens,
     this.templateOverride,
+    this.shiftPolicy = ContextShiftPolicy.off,
+    this.shift = ContextShift.defaults,
   });
 }
 

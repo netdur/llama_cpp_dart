@@ -15,6 +15,7 @@
 # Silicon Mac (arm64 host).
 
 set -euo pipefail
+export DEVELOPER_DIR="$(xcode-select -p)"
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LLAMA_SRC="$PROJECT_ROOT/src/llama.cpp"
@@ -112,21 +113,22 @@ build_slice() {
   local sys_name="$2"
   local sysroot="$3"
   local min_version="$4"
+  local archs="${5:-arm64}"
 
   local build_dir="$OUT_ROOT/build-$slice"
-  local fw_dir="$build_dir/framework/llama.framework"
+  local fw_dir="$build_dir/framework/Llama.framework"
 
   echo
   echo "==== building slice: $slice"
-  echo "      system=$sys_name sysroot=$sysroot deployment=$min_version"
+  echo "      system=$sys_name sysroot=$sysroot deployment=$min_version archs=$archs"
 
   rm -rf "$build_dir"
   mkdir -p "$fw_dir/Headers" "$fw_dir/Modules"
 
-  cmake -G Xcode -B "$build_dir" -S "$LLAMA_SRC" \
+  cmake -G Ninja -B "$build_dir" -S "$LLAMA_SRC" \
     -DCMAKE_SYSTEM_NAME="$sys_name" \
     -DCMAKE_OSX_SYSROOT="$sysroot" \
-    -DCMAKE_OSX_ARCHITECTURES=arm64 \
+    -DCMAKE_OSX_ARCHITECTURES="$archs" \
     -DCMAKE_OSX_DEPLOYMENT_TARGET="$min_version" \
     "${COMMON_ARGS[@]}"
 
@@ -139,7 +141,7 @@ build_slice() {
   # depending on the slice — match all three with one path glob.
   local archives=()
   while IFS= read -r -d '' a; do archives+=("$a"); done < <(
-    find "$build_dir" -name '*.a' \( -path '*/Release/*' -o -path '*/Release-*' \) -print0 2>/dev/null
+    find "$build_dir" -name '*.a' -print0 2>/dev/null
   )
   if [[ ${#archives[@]} -eq 0 ]]; then
     echo "error: no .a archives found under $build_dir" >&2
@@ -159,13 +161,20 @@ build_slice() {
     macosx)          min_flag="-mmacosx-version-min=$min_version" ;;
     *) echo "error: unknown sysroot $sysroot" >&2; exit 1 ;;
   esac
+
+  local arch_flags=()
+  IFS=';' read -ra ARCH_ARRAY <<< "$archs"
+  for a in "${ARCH_ARRAY[@]}"; do
+    arch_flags+=("-arch" "$a")
+  done
+
   echo "  linking ${#archives[@]} archives into dynamic framework binary"
   xcrun --sdk "$sysroot" clang++ -dynamiclib \
-    -arch arm64 -isysroot "$sdk_path" "$min_flag" \
-    -install_name @rpath/llama.framework/llama \
+    "${arch_flags[@]}" -isysroot "$sdk_path" "$min_flag" \
+    -install_name @rpath/Llama.framework/Llama \
     -Wl,-all_load "${archives[@]}" \
     -framework Foundation -framework Metal -framework MetalKit -framework Accelerate \
-    -o "$fw_dir/llama"
+    -o "$fw_dir/Llama"
   # (framework bundle is ad-hoc signed at the end of build_slice, after the
   # Info.plist exists, so the signing identifier is the CFBundleIdentifier)
 
@@ -177,7 +186,7 @@ build_slice() {
 
   # Module map for Swift interop (harmless for Dart users).
   cat >"$fw_dir/Modules/module.modulemap" <<EOF
-framework module llama {
+framework module Llama {
   umbrella header "llama.h"
   export *
   module * { export * }
@@ -193,10 +202,10 @@ EOF
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleExecutable</key><string>llama</string>
+  <key>CFBundleExecutable</key><string>Llama</string>
   <key>CFBundleIdentifier</key><string>org.ggml.llama</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>llama</string>
+  <key>CFBundleName</key><string>Llama</string>
   <key>CFBundlePackageType</key><string>FMWK</string>
   <key>CFBundleShortVersionString</key><string>0.9.0</string>
   <key>CFBundleVersion</key><string>1</string>
@@ -212,12 +221,12 @@ EOF
   if [[ "$sys_name" == "Darwin" ]]; then
     local v="$fw_dir/Versions/A"
     mkdir -p "$v/Resources"
-    mv "$fw_dir/llama"      "$v/llama"
+    mv "$fw_dir/Llama"      "$v/Llama"
     mv "$fw_dir/Headers"    "$v/Headers"
     mv "$fw_dir/Modules"    "$v/Modules"
     mv "$fw_dir/Info.plist" "$v/Resources/Info.plist"
     ln -sfn A                         "$fw_dir/Versions/Current"
-    ln -sfn Versions/Current/llama     "$fw_dir/llama"
+    ln -sfn Versions/Current/Llama     "$fw_dir/Llama"
     ln -sfn Versions/Current/Headers   "$fw_dir/Headers"
     ln -sfn Versions/Current/Modules   "$fw_dir/Modules"
     ln -sfn Versions/Current/Resources "$fw_dir/Resources"
@@ -235,16 +244,16 @@ EOF
 }
 
 # ----- build each slice -----
-build_slice "ios-arm64"           "iOS"    "iphoneos"        "$IOS_MIN"
-build_slice "ios-arm64-simulator" "iOS"    "iphonesimulator" "$IOS_MIN"
-build_slice "macos-arm64"         "Darwin" "macosx"          "$MACOS_MIN"
+build_slice "ios-arm64"           "iOS"    "iphoneos"        "$IOS_MIN" "arm64"
+build_slice "ios-arm64-simulator" "iOS"    "iphonesimulator" "$IOS_MIN" "arm64;x86_64"
+build_slice "macos-universal"     "Darwin" "macosx"          "$MACOS_MIN" "arm64;x86_64"
 
 # ----- assemble xcframework -----
 rm -rf "$XCF_OUT"
 xcodebuild -create-xcframework \
-  -framework "$OUT_ROOT/build-ios-arm64/framework/llama.framework" \
-  -framework "$OUT_ROOT/build-ios-arm64-simulator/framework/llama.framework" \
-  -framework "$OUT_ROOT/build-macos-arm64/framework/llama.framework" \
+  -framework "$OUT_ROOT/build-ios-arm64/framework/Llama.framework" \
+  -framework "$OUT_ROOT/build-ios-arm64-simulator/framework/Llama.framework" \
+  -framework "$OUT_ROOT/build-macos-universal/framework/Llama.framework" \
   -output "$XCF_OUT"
 
 echo

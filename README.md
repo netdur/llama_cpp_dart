@@ -39,7 +39,7 @@ Then download the platform binary for your project:
 | Platform | Artifact | Where to put it |
 |---|---|---|
 | macOS (dev/test) | `libllama.dylib` + sibling `libggml*.dylib`, `libmtmd.dylib` | anywhere on disk; pass path to `LlamaEngine.spawn` |
-| iOS / macOS app | `llama.xcframework` (3 slices: `ios-arm64`, `ios-arm64-simulator`, `macos-arm64`) | drag into Xcode → "Embed & Sign" → call `LlamaEngine.spawnFromProcess` |
+| iOS / macOS app | `Llama.xcframework` (3 self-contained slices: `ios-arm64`, `ios-arm64_x86_64-simulator` [universal fat binary], `macos-arm64`) | Auto-linked via Flutter CocoaPods or drag into Xcode → "Embed & Sign" → call `LlamaEngine.spawnFromProcess` |
 | Android | `llama-cpp-dart.aar` (CPU + mtmd, arm64-v8a) **or** `llama-cpp-dart-hexagon.aar` (CPU + OpenCL + Hexagon NPU + mtmd, arm64-v8a, Snapdragon) | `android/app/libs/` and `implementation files('libs/llama-cpp-dart.aar')` in Gradle |
 
 Build artifacts yourself with:
