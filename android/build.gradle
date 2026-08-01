@@ -21,6 +21,7 @@ rootProject.allprojects {
 apply plugin: 'com.android.library'
 
 android {
+    namespace 'dev.netdur.llama_cpp_dart'
     compileSdkVersion 34
 
     defaultConfig {
