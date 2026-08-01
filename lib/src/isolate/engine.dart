@@ -4,6 +4,7 @@ import 'dart:isolate';
 import '../chat/chat_message.dart';
 import '../context/context_params.dart';
 import '../ffi/backends.dart';
+import '../ffi/library_loader.dart';
 import '../generation/context_shift.dart';
 import '../generation/embedding.dart';
 import '../generation/event.dart';
@@ -56,6 +57,12 @@ final class LlamaEngine {
   /// configurations (e.g. some Qwen3, Gemma 3 with SWA).
   bool get canShift => _canShift;
   bool _canShift = true;
+
+  /// Whether shutdown has started for this engine.
+  ///
+  /// Once true, no new sessions or requests can be created. Calling [dispose]
+  /// again is safe and has no effect.
+  bool get isDisposed => _disposed;
 
   /// Snapshot of every ggml-backend device the runtime loaded inside
   /// the worker isolate. Use to tell whether Hexagon / OpenCL / Metal
@@ -119,19 +126,24 @@ final class LlamaEngine {
 
   LlamaEngine._(this._isolate, this._commandPort, this._responsePort);
 
-  /// Spawn a worker isolate that loads llama.cpp from a dylib path.
+  /// Spawn a worker isolate that loads llama.cpp from a dynamic library.
+  ///
+  /// [libraryPath] defaults to the platform library name. On Android, the
+  /// package's native-assets hook bundles `libllama.so`, so app code normally
+  /// omits it. Standalone Dart and macOS development should pass an absolute
+  /// path.
   ///
   /// For iOS / macOS apps where `llama.xcframework` was embedded via
   /// Xcode, use [spawnFromProcess] instead — no path is needed.
   static Future<LlamaEngine> spawn({
-    required String libraryPath,
+    String? libraryPath,
     required ModelParams modelParams,
     required ContextParams contextParams,
     MultimodalParams? multimodalParams,
     String? backendDirectory,
   }) {
     return _spawnInternal(
-      libraryPath: libraryPath,
+      libraryPath: libraryPath ?? LlamaLibrary.defaultFileName(),
       useProcessSymbols: false,
       backendDirectory: backendDirectory,
       modelParams: modelParams,
@@ -193,8 +205,11 @@ final class LlamaEngine {
     }
     final readyResponse = response as EngineReadyResponse;
 
-    final built =
-        LlamaEngine._(isolate, readyResponse.commandPort, responsePort);
+    final built = LlamaEngine._(
+      isolate,
+      readyResponse.commandPort,
+      responsePort,
+    );
     built._modelChatTemplate = readyResponse.modelChatTemplate;
     built._multimodalLoaded = readyResponse.multimodalLoaded;
     built._supportsVision = readyResponse.supportsVision;
@@ -246,11 +261,9 @@ final class LlamaEngine {
   Future<EngineSession> createSession({int seqId = 0}) async {
     _ensureAlive();
     final sessionId = _nextSessionId++;
-    await _request<EngineAckResponse>((id) => CreateSessionCommand(
-          id,
-          sessionId: sessionId,
-          seqId: seqId,
-        ));
+    await _request<EngineAckResponse>(
+      (id) => CreateSessionCommand(id, sessionId: sessionId, seqId: seqId),
+    );
     _sessionIds.add(sessionId);
     return EngineSession._(this, sessionId, seqId);
   }
@@ -346,10 +359,16 @@ final class LlamaEngine {
     if (_disposed) return;
     _disposed = true;
 
-    for (final c in _streams.values) {
+    for (final entry in _streams.entries) {
+      _commandPort.send(
+        CancelCommand(_nextRequestId++, targetRequestId: entry.key),
+      );
+      final c = entry.value;
       if (!c.isClosed) {
         c.addError(const LlamaLibraryException('LlamaEngine disposed'));
-        await c.close();
+        // A paused listener can keep close() pending indefinitely. Native
+        // cancellation and worker teardown must not depend on consumer state.
+        unawaited(c.close());
       }
     }
     _streams.clear();
@@ -358,16 +377,27 @@ final class LlamaEngine {
     final completer = Completer<EngineResponse>();
     _pending[id] = completer;
     _commandPort.send(ShutdownCommand(id));
+    Object? shutdownError;
     try {
-      await completer.future.timeout(const Duration(seconds: 2), onTimeout: () {
-        return EngineShutdownComplete(id);
-      });
-    } catch (_) {/* tear down regardless */}
-    _pending.clear();
-
-    await _responseSub.cancel();
-    _responsePort.close();
-    _isolate.kill(priority: Isolate.beforeNextEvent);
+      final response = await completer.future.timeout(
+        const Duration(seconds: 30),
+      );
+      if (response is EngineErrorResponse) {
+        shutdownError = LlamaLibraryException(response.message);
+      }
+    } on TimeoutException {
+      shutdownError = const LlamaLibraryException(
+        'engine worker did not complete native teardown within 30 seconds',
+      );
+    } catch (e) {
+      shutdownError = e;
+    } finally {
+      _pending.clear();
+      await _responseSub.cancel();
+      _responsePort.close();
+      _isolate.kill(priority: Isolate.beforeNextEvent);
+    }
+    if (shutdownError != null) throw shutdownError;
   }
 
   Future<T> _request<T extends EngineResponse>(
@@ -418,6 +448,8 @@ final class LlamaEngine {
     required SamplerParams sampler,
     required int maxTokens,
     String? templateOverride,
+    ContextShiftPolicy shiftPolicy = ContextShiftPolicy.off,
+    ContextShift shift = ContextShift.defaults,
   }) {
     return _streamGenerate(
       build: (id) => GenerateChatCommand(
@@ -427,6 +459,8 @@ final class LlamaEngine {
         sampler: sampler,
         maxTokens: maxTokens,
         templateOverride: templateOverride,
+        shiftPolicy: shiftPolicy,
+        shift: shift,
       ),
     );
   }
@@ -443,9 +477,7 @@ final class LlamaEngine {
       onCancel: () {
         if (sentCancel || _disposed) return;
         sentCancel = true;
-        _commandPort.send(
-          CancelCommand(_nextRequestId++, targetRequestId: id),
-        );
+        _commandPort.send(CancelCommand(_nextRequestId++, targetRequestId: id));
         _streams.remove(id);
       },
     );
@@ -507,11 +539,7 @@ final class LlamaEngine {
     required String path,
   }) async {
     return _request<SessionStateLoadedResponse>(
-      (id) => LoadSessionStateCommand(
-        id,
-        sessionId: sessionId,
-        path: path,
-      ),
+      (id) => LoadSessionStateCommand(id, sessionId: sessionId, path: path),
     );
   }
 
@@ -742,14 +770,29 @@ final class EngineChat {
   ///
   /// [templateOverride] supplies a Jinja template string to use instead of
   /// the model's embedded one. Required when the model has no template.
+  ///
+  /// [shiftPolicy] controls text-only generation when the context fills.
+  /// Automatic shifting requires [LlamaEngine.canShift] and is incompatible
+  /// with chat histories containing media.
+  ///
+  /// Cancel the returned stream's subscription to stop an in-flight
+  /// generation. Any partial assistant response is retained in [messages].
   Stream<GenerationEvent> generate({
     SamplerParams sampler = const SamplerParams(),
     int maxTokens = 512,
     String? templateOverride,
+    ContextShiftPolicy shiftPolicy = ContextShiftPolicy.off,
+    ContextShift shift = ContextShift.defaults,
   }) async* {
     _ensureAlive();
     if (_messages.isEmpty) {
       throw StateError('EngineChat has no messages; addUser/addSystem first.');
+    }
+    if (shiftPolicy == ContextShiftPolicy.auto &&
+        _messages.any((message) => message.media.isNotEmpty)) {
+      throw UnsupportedError(
+        'ContextShiftPolicy.auto is incompatible with multimodal chat',
+      );
     }
 
     final replyBuf = StringBuffer();
@@ -768,6 +811,8 @@ final class EngineChat {
         sampler: sampler,
         maxTokens: maxTokens,
         templateOverride: templateOverride,
+        shiftPolicy: shiftPolicy,
+        shift: shift,
       )) {
         switch (event) {
           case TokenEvent():

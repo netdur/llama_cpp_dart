@@ -34,8 +34,8 @@ Future<void> runEngineWorker(EngineBootstrap bootstrap) async {
   final reply = bootstrap.replyPort;
   final commandRx = ReceivePort();
 
-  final LlamaModel model;
-  final LlamaContext context;
+  LlamaModel? model;
+  LlamaContext? context;
 
   try {
     if (bootstrap.useProcessSymbols) {
@@ -53,7 +53,14 @@ Future<void> runEngineWorker(EngineBootstrap bootstrap) async {
     model = LlamaModel.load(bootstrap.modelParams);
     context = LlamaContext.create(model, bootstrap.contextParams);
   } catch (e, st) {
-    reply.send(EngineErrorResponse(0, '$e\n$st'));
+    final cleanupErrors = _disposeNativeResources(
+      context: context,
+      model: model,
+    );
+    reply.send(EngineErrorResponse(
+      0,
+      '$e\n$st${_formatCleanupErrors(cleanupErrors)}',
+    ));
     commandRx.close();
     return;
   }
@@ -66,28 +73,66 @@ Future<void> runEngineWorker(EngineBootstrap bootstrap) async {
         params: bootstrap.multimodalParams!,
       );
     } catch (e, st) {
-      reply.send(EngineErrorResponse(0, 'multimodal init failed: $e\n$st'));
+      final cleanupErrors = _disposeNativeResources(
+        context: context,
+        model: model,
+      );
+      reply.send(EngineErrorResponse(
+        0,
+        'multimodal init failed: $e\n$st'
+        '${_formatCleanupErrors(cleanupErrors)}',
+      ));
       commandRx.close();
       return;
     }
   }
 
-  final modelTemplate = ChatTemplate.fromModel(model);
+  final loadedModel = model;
+  final loadedContext = context;
+
+  final String? modelTemplate;
+  final bool supportsVision;
+  final bool supportsAudio;
+  final int audioSampleRate;
+  final bool canShift;
+  final List<BackendDevice> devices;
+  try {
+    modelTemplate = ChatTemplate.fromModel(loadedModel);
+    supportsVision = mtmd?.supportsVision ?? false;
+    supportsAudio = mtmd?.supportsAudio ?? false;
+    audioSampleRate = mtmd?.audioSampleRate ?? -1;
+    canShift = loadedContext.canShift;
+    devices = LlamaBackends.list();
+  } catch (e, st) {
+    final cleanupErrors = _disposeNativeResources(
+      multimodal: mtmd,
+      context: loadedContext,
+      model: loadedModel,
+    );
+    reply.send(EngineErrorResponse(
+      0,
+      'worker initialization failed: $e\n$st'
+      '${_formatCleanupErrors(cleanupErrors)}',
+    ));
+    commandRx.close();
+    return;
+  }
+
   reply.send(EngineReadyResponse(
     0,
     commandRx.sendPort,
     modelChatTemplate: modelTemplate,
     multimodalLoaded: mtmd != null,
-    supportsVision: mtmd?.supportsVision ?? false,
-    supportsAudio: mtmd?.supportsAudio ?? false,
-    audioSampleRate: mtmd?.audioSampleRate ?? -1,
-    canShift: context.canShift,
-    devices: LlamaBackends.list(),
+    supportsVision: supportsVision,
+    supportsAudio: supportsAudio,
+    audioSampleRate: audioSampleRate,
+    canShift: canShift,
+    devices: devices,
   ));
 
   final state = _WorkerState(
-    model: model,
-    context: context,
+    model: loadedModel,
+    context: loadedContext,
     modelTemplate: modelTemplate,
     multimodal: mtmd,
   );
@@ -101,12 +146,29 @@ Future<void> runEngineWorker(EngineBootstrap bootstrap) async {
       return;
     }
     if (msg is ShutdownCommand) {
-      _shutdown(state, msg.requestId, reply, commandRx, completer);
+      _beginShutdown(
+        state,
+        msg.requestId,
+        reply,
+        commandRx,
+        completer,
+      );
+      return;
+    }
+    if (state.shuttingDown) {
+      reply.send(EngineErrorResponse(
+        msg.requestId,
+        'engine worker is shutting down',
+      ));
       return;
     }
     // Other commands run as fire-and-forget microtasks. The worker still
     // serializes generates via the inFlight slot.
-    _dispatch(msg, state, reply);
+    unawaited(
+      _dispatch(msg, state, reply).whenComplete(() {
+        _tryCompleteShutdown(state, reply, commandRx, completer);
+      }),
+    );
   });
 
   await completer.future;
@@ -127,6 +189,9 @@ class _WorkerState {
   final Map<int, LlamaSession> sessions = <int, LlamaSession>{};
   final Set<int> cancelledRequests = <int>{};
   int? inFlightGenerateId;
+  bool shuttingDown = false;
+  bool shutdownCompleted = false;
+  int? shutdownRequestId;
 }
 
 Future<void> _dispatch(
@@ -228,6 +293,11 @@ Future<void> _runGenerate(
 
   try {
     if (cmd.media.isNotEmpty) {
+      if (cmd.shiftPolicy == ContextShiftPolicy.auto) {
+        throw UnsupportedError(
+          'ContextShiftPolicy.auto is incompatible with multimodal generation',
+        );
+      }
       final mtmd = state.multimodal;
       if (mtmd == null) {
         reply.send(EngineErrorResponse(
@@ -326,6 +396,11 @@ Future<void> _runGenerateChat(
     final hasMedia = cmd.messages.any((m) => m.media.isNotEmpty);
 
     if (hasMedia) {
+      if (cmd.shiftPolicy == ContextShiftPolicy.auto) {
+        throw UnsupportedError(
+          'ContextShiftPolicy.auto is incompatible with multimodal chat',
+        );
+      }
       final mtmd = state.multimodal;
       if (mtmd == null) {
         reply.send(EngineErrorResponse(
@@ -358,6 +433,8 @@ Future<void> _runGenerateChat(
         maxTokens: cmd.maxTokens,
         state: state,
         reply: reply,
+        shiftPolicy: cmd.shiftPolicy,
+        shift: cmd.shift,
       );
     }
   } catch (e, st) {
@@ -847,26 +924,100 @@ Future<void> _streamSessionGenerate({
   }
 }
 
-void _shutdown(
+void _beginShutdown(
   _WorkerState state,
   int requestId,
   SendPort reply,
   ReceivePort commandRx,
   Completer<void> completer,
 ) {
+  if (state.shuttingDown) return;
+  state.shuttingDown = true;
+  state.shutdownRequestId = requestId;
+
+  final inFlight = state.inFlightGenerateId;
+  if (inFlight != null) {
+    state.cancelledRequests.add(inFlight);
+  }
+  _tryCompleteShutdown(state, reply, commandRx, completer);
+}
+
+void _tryCompleteShutdown(
+  _WorkerState state,
+  SendPort reply,
+  ReceivePort commandRx,
+  Completer<void> completer,
+) {
+  if (!state.shuttingDown ||
+      state.shutdownCompleted ||
+      state.inFlightGenerateId != null) {
+    return;
+  }
+  state.shutdownCompleted = true;
+
+  final errors = <String>[];
   for (final session in state.sessions.values) {
     try {
       session.clear();
-    } catch (_) {/* ignore */}
+    } catch (e) {
+      errors.add('session clear: $e');
+    }
   }
   state.sessions.clear();
-  // We deliberately do NOT dispose the model or context here. With multiple
-  // engines in a process, freeing one worker's model/context can crash the
-  // other worker's outstanding operations because the backend is shared and
-  // some teardown paths touch process-global state. The OS reclaims memory
-  // on process exit; that is good enough for M3.
-  LlamaLibrary.dispose();
-  reply.send(EngineShutdownComplete(requestId));
+
+  // These are per-engine allocations and can be released independently of
+  // other workers. Keep process-global backend state alive: LlamaLibrary's
+  // isolate-local dispose deliberately does not call llama_backend_free.
+  errors.addAll(_disposeNativeResources(
+    multimodal: state.multimodal,
+    context: state.context,
+    model: state.model,
+  ));
+
+  final requestId = state.shutdownRequestId!;
+  if (errors.isEmpty) {
+    reply.send(EngineShutdownComplete(requestId));
+  } else {
+    reply.send(EngineErrorResponse(
+      requestId,
+      'native teardown completed with errors:\n${errors.join('\n')}',
+    ));
+  }
   commandRx.close();
-  completer.complete();
+  if (!completer.isCompleted) completer.complete();
+}
+
+List<String> _disposeNativeResources({
+  MultimodalContext? multimodal,
+  LlamaContext? context,
+  LlamaModel? model,
+}) {
+  final errors = <String>[];
+
+  void attempt(String label, void Function() dispose) {
+    try {
+      dispose();
+    } catch (e) {
+      errors.add('$label: $e');
+    }
+  }
+
+  if (multimodal != null) {
+    attempt('multimodal dispose', multimodal.dispose);
+  }
+  if (context != null) {
+    attempt('context dispose', context.dispose);
+  }
+  if (model != null) {
+    attempt('model dispose', model.dispose);
+  }
+  if (LlamaLibrary.isLoaded) {
+    attempt('library dispose', LlamaLibrary.dispose);
+  }
+  return errors;
+}
+
+String _formatCleanupErrors(List<String> errors) {
+  if (errors.isEmpty) return '';
+  return '\nnative cleanup errors:\n${errors.join('\n')}';
 }

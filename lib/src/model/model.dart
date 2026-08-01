@@ -195,6 +195,9 @@ final class LlamaModel implements Finalizable {
     return _ptr;
   }
 
+  /// Whether [dispose] has released this model's native handle.
+  bool get isDisposed => _disposed;
+
   int get nParams => LlamaLibrary.bindings.llama_model_n_params(pointer);
   int get nEmbd => LlamaLibrary.bindings.llama_model_n_embd(pointer);
   int get nLayer => LlamaLibrary.bindings.llama_model_n_layer(pointer);
@@ -206,6 +209,28 @@ final class LlamaModel implements Finalizable {
 
   /// Total size of the model on disk, in bytes.
   int get sizeBytes => LlamaLibrary.bindings.llama_model_size(pointer);
+
+  /// Conservatively estimates accelerator memory for a fully offloaded model
+  /// and an f16 KV cache of [nCtx] tokens.
+  ///
+  /// This is a planning estimate, not a backend measurement. It includes the
+  /// model size, the calculated K/V cache, and a 15% allowance for runtime
+  /// buffers. Partial layer offload can use substantially less accelerator
+  /// memory.
+  int estimateVramBytes({int nCtx = 1024}) {
+    if (nCtx < 0) {
+      throw RangeError.range(nCtx, 0, null, 'nCtx');
+    }
+
+    final heads = nHead;
+    final kvHeads = nHeadKv;
+    final kvBytesPerToken = heads > 0 && kvHeads > 0
+        // K + V, nLayer layers, f16 (2 bytes per element).
+        ? (2 * nLayer * kvHeads * (nEmbd / heads) * 2).ceil()
+        : 256 * 1024;
+    final estimatedBytes = sizeBytes + nCtx * kvBytesPerToken;
+    return (estimatedBytes * 1.15).ceil();
+  }
 
   bool get hasEncoder => LlamaLibrary.bindings.llama_model_has_encoder(pointer);
   bool get hasDecoder => LlamaLibrary.bindings.llama_model_has_decoder(pointer);

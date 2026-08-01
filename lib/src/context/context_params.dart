@@ -182,6 +182,27 @@ final class ContextParams {
     this.nRsSeq = 0,
   });
 
+  /// Memory-conscious defaults for phones and tablets.
+  ///
+  /// Keeps the context and physical batches deliberately small while leaving
+  /// the remaining runtime behavior identical to [ContextParams]. Override
+  /// the cache types to trade memory for quality when appropriate.
+  factory ContextParams.mobile({
+    int nCtx = 1024,
+    int nBatch = 128,
+    int nUbatch = 128,
+    KvCacheType typeK = KvCacheType.f16,
+    KvCacheType typeV = KvCacheType.f16,
+  }) {
+    return ContextParams(
+      nCtx: nCtx,
+      nBatch: nBatch,
+      nUbatch: nUbatch,
+      typeK: typeK,
+      typeV: typeV,
+    );
+  }
+
   ContextParams copyWith({
     int? nCtx,
     int? nBatch,

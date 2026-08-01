@@ -53,14 +53,21 @@ void main() {
       batch.dispose();
       context.dispose();
       model.dispose();
+      expect(model.isDisposed, isTrue);
     });
 
     test('model exposes basic metadata', () {
+      expect(model.isDisposed, isFalse);
       expect(model.nParams, greaterThan(0));
       expect(model.nEmbd, greaterThan(0));
       expect(model.nLayer, greaterThan(0));
       expect(model.trainCtx, greaterThan(0));
       expect(model.vocab.nTokens, greaterThan(0));
+      expect(model.estimateVramBytes(), greaterThan(model.sizeBytes));
+      expect(
+        () => model.estimateVramBytes(nCtx: -1),
+        throwsA(isA<RangeError>()),
+      );
     });
 
     test('encode + decode round-trips a simple prompt', () {

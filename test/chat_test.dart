@@ -62,6 +62,8 @@ void main() {
       await for (final event in chat.generate(
         sampler: SamplerParams.greedyDefault,
         maxTokens: 16,
+        shiftPolicy: ContextShiftPolicy.off,
+        shift: const ContextShift(nKeep: 32),
       )) {
         switch (event) {
           case TokenEvent():

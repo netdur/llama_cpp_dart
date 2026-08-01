@@ -5,6 +5,7 @@
 ///     dart test test/engine_test.dart
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
@@ -36,9 +37,14 @@ void main() {
 
   tearDownAll(() async {
     await engine.dispose();
+    expect(engine.isDisposed, isTrue);
   });
 
   group('LlamaEngine', () {
+    test('reports its lifecycle state', () {
+      expect(engine.isDisposed, isFalse);
+    });
+
     test('greedy generate yields tokens and DoneEvent(StopMaxTokens)',
         () async {
       final session = await engine.createSession();
@@ -171,6 +177,57 @@ void main() {
 
       await s1.dispose();
       await s2.dispose();
+    });
+
+    test('disposing one active engine leaves another engine usable', () async {
+      final disposable = await LlamaEngine.spawn(
+        libraryPath: libPath,
+        modelParams: ModelParams(path: modelPath, gpuLayers: 99),
+        contextParams:
+            const ContextParams(nCtx: 512, nBatch: 256, nUbatch: 256),
+      );
+      addTearDown(disposable.dispose);
+      final disposableSession = await disposable.createSession();
+      final firstToken = Completer<void>();
+      final streamClosed = Completer<void>();
+
+      final stream = disposableSession.generate(
+        prompt: 'Tell me a long story',
+        addSpecial: true,
+        sampler: SamplerParams.greedyDefault,
+        maxTokens: 256,
+      );
+      final subscription = stream.listen(
+        (event) {
+          if (event is TokenEvent && !firstToken.isCompleted) {
+            firstToken.complete();
+          }
+        },
+        onError: (_) {},
+        onDone: streamClosed.complete,
+      );
+      addTearDown(subscription.cancel);
+
+      await firstToken.future.timeout(const Duration(seconds: 10));
+      expect(disposable.isDisposed, isFalse);
+      await disposable.dispose();
+      expect(disposable.isDisposed, isTrue);
+      await streamClosed.future.timeout(const Duration(seconds: 10));
+
+      // The original engine uses the same process-global backend. It must
+      // remain valid after the other worker releases its own model/context.
+      final survivorSession = await engine.createSession();
+      addTearDown(survivorSession.dispose);
+      final tokens = <TokenEvent>[];
+      await for (final event in survivorSession.generate(
+        prompt: 'Hello',
+        addSpecial: true,
+        sampler: SamplerParams.greedyDefault,
+        maxTokens: 2,
+      )) {
+        if (event is TokenEvent) tokens.add(event);
+      }
+      expect(tokens, hasLength(2));
     });
   });
 }
