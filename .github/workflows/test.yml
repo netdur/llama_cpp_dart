@@ -42,4 +42,7 @@ jobs:
       # need a built libllama.dylib + a GGUF model and live in the
       # apple-build job below.
       - name: pure-dart tests
-        run: dart test test/utf8_accumulator_test.dart
+        run: |
+          dart test test/utf8_accumulator_test.dart
+          dart test test/mobile_chat_api_test.dart
+          dart test test/android_native_assets_test.dart

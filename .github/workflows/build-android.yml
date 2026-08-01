@@ -39,6 +39,29 @@ jobs:
             build/android/llama-cpp-dart.aar \
             "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
 
+      - name: stage Flutter native asset
+        run: |
+          tool/stage_android_native_assets.sh \
+            build/android/llama-cpp-dart.aar \
+            "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: verify Flutter Android integration
+        run: tool/test_flutter_android_integration.sh
+
+      - name: verify pub package contents
+        run: |
+          dart pub get
+          publish_output="$(dart pub publish --dry-run --ignore-warnings)"
+          echo "$publish_output"
+          if ! grep -q 'llama-cpp-dart.aar' <<<"$publish_output"; then
+            echo "::error::staged Android AAR is missing from the pub package"
+            exit 1
+          fi
+
       - name: stage and checksum
         run: |
           cp build/android/llama-cpp-dart.aar .
