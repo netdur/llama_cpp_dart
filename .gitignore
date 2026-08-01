@@ -8,6 +8,12 @@ darwin/build.sh
 .dart_tool/
 .packages
 build/
+.build/
+.swiftpm/
+# Staged only while testing or publishing a release. `.pubignore` deliberately
+# does not exclude it, so the verified AAR is included in the pub package.
+/native/android/*.aar
+/native/android/*.sha256
 # If you're building an application, you may want to check-in your pubspec.lock
 pubspec.lock
 

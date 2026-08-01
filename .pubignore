@@ -1,13 +1,13 @@
 # Files NOT to ship to pub.dev. Pub falls back to .gitignore by default;
 # this file overrides that for files git tracks but pub shouldn't ship.
 
-# llama.cpp submodule — users provide their own native libraries.
+# llama.cpp source submodule. Release packages carry only the staged Android
+# AAR under /native/android/ and the Apple SwiftPM binary target metadata.
 # Anchored with leading `/` so it doesn't also match `lib/src/`.
 /src/
 
-# Native build artifacts and build scripts. The package itself is
-# pure Dart; consumers pull native artifacts from GitHub Releases
-# and call `LlamaLibrary.load(path:)` against them.
+# Native build artifacts and maintainer scripts. Do not exclude /native/: its
+# verified Android AAR is intentionally staged into release packages.
 /build/
 /tool/
 

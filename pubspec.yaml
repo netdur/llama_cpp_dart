@@ -5,10 +5,14 @@ homepage: https://github.com/netdur/llama_cpp_dart
 repository: https://github.com/netdur/llama_cpp_dart
 
 environment:
-  sdk: ^3.5.0
+  sdk: ^3.10.0
+  flutter: ">=3.44.0"
 
 dependencies:
+  archive: ^4.0.9
+  code_assets: ^1.2.1
   ffi: ^2.1.5
+  hooks: ^2.0.2
   image: ^4.7.2
 
 dev_dependencies:
@@ -32,3 +36,13 @@ ffigen:
     - '-Isrc/llama.cpp/tools/mtmd'
   preamble: |
     // ignore_for_file: type=lint, type=warning, unused_field, unused_element, camel_case_types, non_constant_identifier_names
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        ffiPlugin: true
+        sharedDarwinSource: true
+      macos:
+        ffiPlugin: true
+        sharedDarwinSource: true
