@@ -37,8 +37,8 @@ let package = Package(
         ),
         .binaryTarget(
             name: "llama",
-            url: "https://github.com/netdur/llama_cpp_dart/releases/download/v0.9.0-dev.11/llama-xcframework.zip",
-            checksum: "bf48e4c10d69e265d4ec2290845ba7ebf225540a3d61fbf5fc864e0cfc1d0c8d"
+            url: "https://github.com/netdur/llama_cpp_dart/releases/download/v0.9.0-dev.12/llama-xcframework.zip",
+            checksum: "e50f977d7ffbbd49557b50d04575c44ea2e279b7d50b1a7c574ead41840b7c1d"
         ),
     ]
 )
