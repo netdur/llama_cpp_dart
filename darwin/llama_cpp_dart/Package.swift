@@ -3,8 +3,12 @@
 import PackageDescription
 
 // Keep this URL and checksum pinned to the same immutable release asset.
-// The dev.10 URL is suitable for this spike; point the production manifest at
-// the next release created by the symlink-preserving `ditto` packaging step.
+//
+// This is necessarily updated *after* the tag it references: CI builds and
+// uploads llama-xcframework.zip from the tag, and only then is its checksum
+// known. Do not re-tag to pick this commit up — that would rebuild and replace
+// the asset, changing the checksum and invalidating this pin again. The value
+// that reaches consumers is the one in the published pub.dev package.
 let package = Package(
     name: "llama_cpp_dart",
     platforms: [
@@ -33,8 +37,8 @@ let package = Package(
         ),
         .binaryTarget(
             name: "llama",
-            url: "https://github.com/netdur/llama_cpp_dart/releases/download/v0.9.0-dev.10/llama-xcframework.zip",
-            checksum: "58ced0d358281a6d12664ffa27fc70b7299c5cd72397b2607f911544084d12d8"
+            url: "https://github.com/netdur/llama_cpp_dart/releases/download/v0.9.0-dev.11/llama-xcframework.zip",
+            checksum: "bf48e4c10d69e265d4ec2290845ba7ebf225540a3d61fbf5fc864e0cfc1d0c8d"
         ),
     ]
 )
