@@ -27,7 +27,9 @@ I also build and ship the native binaries from this repo's CI — Apple xcframew
 
 ## Install
 
-The Dart package contains no native binaries — they're shipped per platform from GitHub Releases.
+Starting with the next release, Flutter automatically bundles the verified
+Android CPU libraries through a native-assets build hook. Apple artifacts stay
+on the SwiftPM/XCFramework release path.
 
 ```yaml
 dependencies:
@@ -40,7 +42,8 @@ Then download the platform binary for your project:
 |---|---|---|
 | macOS (dev/test) | `libllama.dylib` + sibling `libggml*.dylib`, `libmtmd.dylib` | anywhere on disk; pass path to `LlamaEngine.spawn` |
 | iOS / macOS app | `llama.xcframework` (3 slices: `ios-arm64`, `ios-arm64-simulator`, `macos-arm64`) | drag into Xcode → "Embed & Sign" → call `LlamaEngine.spawnFromProcess` |
-| Android | `llama-cpp-dart.aar` (CPU + mtmd, arm64-v8a) **or** `llama-cpp-dart-hexagon.aar` (CPU + OpenCL + Hexagon NPU + mtmd, arm64-v8a, Snapdragon) | `android/app/libs/` and `implementation files('libs/llama-cpp-dart.aar')` in Gradle |
+| Android | `llama-cpp-dart.aar` (CPU + mtmd, arm64-v8a) | bundled automatically by Flutter; no app Gradle edits |
+| Android / Snapdragon | `llama-cpp-dart-hexagon.aar` (CPU + OpenCL + Hexagon NPU + mtmd, arm64-v8a) | select it with the `android_aar` hook setting below |
 
 Build artifacts yourself with:
 
@@ -50,6 +53,27 @@ tool/build_apple_xcframework.sh
 tool/build_android_aar.sh                 # CPU AAR
 tool/build_android_hexagon_aar.sh         # Hexagon NPU + OpenCL AAR (Snapdragon)
 ```
+
+For a path dependency/source checkout, stage a locally built AAR before the
+Flutter build:
+
+```bash
+tool/stage_android_native_assets.sh \
+  build/android/llama-cpp-dart.aar \
+  "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf"
+```
+
+To use a custom or Hexagon AAR, configure the consuming app's `pubspec.yaml`:
+
+```yaml
+hooks:
+  user_defines:
+    llama_cpp_dart:
+      android_aar: native/llama-cpp-dart-hexagon.aar
+```
+
+Set `bundle_android: false` in the same block only when the app deliberately
+manages all Android native libraries itself.
 
 ## Example app
 
@@ -61,7 +85,8 @@ A working Flutter chat app built on this binding lives at [netdur/imaged-sdk-exa
 
 ```dart
 final engine = await LlamaEngine.spawn(
-  libraryPath: '/path/to/libllama.dylib',
+  // Android uses the automatically bundled libllama.so. Pass libraryPath for
+  // standalone Dart or macOS development.
   modelParams: ModelParams(path: '/path/to/model.gguf', gpuLayers: 99),
   contextParams: const ContextParams(nCtx: 4096),
 );
@@ -153,9 +178,26 @@ session.generate(
   shiftPolicy: ContextShiftPolicy.auto,
   shift: const ContextShift(nKeep: -1),  // preserve the original prompt
 );
+
+chat.generate(
+  shiftPolicy: ContextShiftPolicy.auto,
+  shift: const ContextShift(nKeep: -1),
+);
 ```
 
 When the next decode would push past `nCtx`, the engine drops the oldest non-keep tokens and slides the rest left, exactly like llama-server's `--context-shift`. Check `engine.canShift` first — recurrent and iSWA caches (Qwen3 SWA, Gemma 3 4B) report false and the policy throws.
+
+Automatic shifting is text-only. Multimodal sessions must keep it off because
+media embeddings cannot safely be reconstructed after shifting.
+
+For a smaller starting footprint on phones and tablets, use the mobile preset:
+
+```dart
+final params = ContextParams.mobile(
+  typeK: KvCacheType.q8_0,
+  typeV: KvCacheType.q8_0,
+);
+```
 
 ### KV-cache quantization (memory)
 
@@ -215,7 +257,7 @@ SpeculativeDecoder / SpeculativeResult
 |---|---|
 | `dart test`, CLI, macOS dev | `LlamaEngine.spawn(libraryPath: '/path/to/libllama.dylib', ...)` |
 | iOS / macOS app with xcframework | `LlamaEngine.spawnFromProcess(...)` (Embed & Sign the dynamic framework; dyld loads it at launch, symbols are in the process) |
-| Android with AAR / jniLibs | `LlamaEngine.spawn(libraryPath: 'libllama.so', ...)` (basename — Android resolves) |
+| Android native-assets bundle | `LlamaEngine.spawn(...)` (`libllama.so` is the default and Flutter bundles it) |
 
 `mtmd` resolution mirrors the same logic — opened by basename if `libllama` was a basename, by sibling path otherwise.
 

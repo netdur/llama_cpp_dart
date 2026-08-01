@@ -1,7 +1,7 @@
 /// Print metadata about a loaded GGUF model.
 ///
 ///   LLAMA_CPP_DART_LIB=$(pwd)/build/macos/install/lib/libllama.dylib \
-///   LLAMA_CPP_DART_MODEL=/Users/adel/Workspace/gguf/gemma-4-E2B-it-Q8_0.gguf \
+///   LLAMA_CPP_DART_MODEL=/path/to/model.gguf \
 ///     dart run example/probes/inspect_model.dart
 library;
 
@@ -10,10 +10,14 @@ import 'dart:io';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 
 void main() {
-  final libPath =
-      '/Users/adel/Workspace/llama_cpp_dart/build/macos/install/lib/libllama.dylib'; // Platform.environment['LLAMA_CPP_DART_LIB'];
-  final modelPath =
-      '/Users/adel/Workspace/gguf/gemma-4-E2B-it-Q8_0.gguf'; // Platform.environment['LLAMA_CPP_DART_MODEL'];
+  final libPath = Platform.environment['LLAMA_CPP_DART_LIB'];
+  final modelPath = Platform.environment['LLAMA_CPP_DART_MODEL'];
+  if (libPath == null || modelPath == null) {
+    stderr.writeln(
+      'set LLAMA_CPP_DART_LIB and LLAMA_CPP_DART_MODEL before running',
+    );
+    exit(2);
+  }
 
   LlamaLibrary.load(path: libPath);
   final model = LlamaModel.load(ModelParams(path: modelPath, gpuLayers: 99));
