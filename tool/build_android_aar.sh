@@ -145,11 +145,15 @@ cat >"$STAGE_DIR/AndroidManifest.xml" <<EOF
 EOF
 
 # AAR requires a (possibly empty) classes.jar. Empty jar = empty zip.
+# The placeholder is created and named relative to $STAGE_DIR: `zip` stores the
+# path it is given (minus any leading `/`), so an absolute path would bake the
+# host directory into the entry name — and then `zip -d` on the bare basename
+# would not match it, leaving that path in the shipped AAR.
 cd "$STAGE_DIR"
-echo -n "" > /tmp/llama_cpp_dart_empty
-zip -q classes.jar /tmp/llama_cpp_dart_empty
-rm /tmp/llama_cpp_dart_empty
-zip -d classes.jar llama_cpp_dart_empty 2>/dev/null || true
+: > .classes_jar_placeholder
+zip -q classes.jar .classes_jar_placeholder
+rm .classes_jar_placeholder
+zip -q -d classes.jar .classes_jar_placeholder
 
 # R.txt is also expected; empty is fine.
 : > R.txt
