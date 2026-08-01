@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.9.0-dev.11 — Flutter plugin packaging, mobile API, deterministic teardown
+
+Same llama.cpp pin as dev.10 (`afeebe10`, tag `b10182`) — no native
+rebuild required for behavior, but the artifacts are re-cut so the
+SwiftPM manifest and the bundled Android AAR match this tag.
+
+### Added
+
+- **Android libraries are now bundled automatically.** The package ships
+  a native-assets build hook (`hook/build.dart`) that extracts the
+  verified release AAR's `jni/<abi>/*.so` and registers them as bundled
+  code assets. Flutter apps no longer add anything to Gradle. Opt out
+  with `bundle_android: false`, or point at a different artifact (for
+  example the Snapdragon Hexagon AAR) with `android_aar:`, under
+  `hooks.user_defines.llama_cpp_dart` in the app's pubspec.
+- **Swift Package Manager support** via `darwin/llama_cpp_dart`, whose
+  binary target is pinned to this release's `llama-xcframework.zip`.
+  This is how Flutter resolves the plugin now that SwiftPM is enabled by
+  default on stable. CocoaPods is intentionally not supported.
+- `ContextParams.mobile()` — small `nCtx` / `nBatch` / `nUbatch`
+  defaults for phones and tablets, with the KV cache types overridable.
+- `LlamaModel.estimateVramBytes({int nCtx})` — planning estimate for
+  weights plus an f16 KV cache plus a 15% runtime-buffer allowance.
+- `isDisposed` on `LlamaModel` and `LlamaEngine`.
+- `shiftPolicy` / `shift` on `EngineChat.generate()`, so long-reasoning
+  chats can slide the context. Throws for multimodal histories, where
+  media embeddings cannot be reconstructed after a shift.
+
+### Changed
+
+- **`LlamaEngine.spawn(libraryPath:)` is now optional**, defaulting to
+  the platform library name. On Android that resolves the bundled
+  `libllama.so`. Existing calls that pass a path are unaffected.
+- **Worker shutdown releases native memory deterministically.** It now
+  drains any in-flight generation, then disposes the mtmd context,
+  llama context, and model explicitly instead of leaving them to process
+  exit — the previous behavior leaked accelerator memory for apps that
+  create and destroy engines over a session. Teardown failures are
+  reported rather than swallowed, and every early-return path during
+  worker init cleans up the partially constructed native state.
+- `LlamaEngine.dispose()` waits up to 30 seconds (was 2) for native
+  teardown and now surfaces a teardown failure instead of discarding it.
+- SDK floor raised to Dart 3.10 / Flutter 3.44 for the native-assets
+  hook API. Source reformatted with the newer Dart formatter.
+
+### Fixed
+
+- The generated Android AAR no longer embeds an absolute build-host path
+  in `classes.jar`. The placeholder entry was created from `/tmp/...`,
+  so the cleanup `zip -d` never matched it and the entry shipped in
+  every AAR; on a Windows host it would have been the builder's home
+  directory. Reported in #107.
+
+### Tooling
+
+- `tool/package_apple_xcframework.sh` replaces the inline `zip` step and
+  uses `ditto` to preserve versioned-framework symlinks, then verifies
+  the extracted archive's `Info.plist`, `Versions/Current` symlink, and
+  code signature before it can be published.
+- `tool/check_android_aar_alignment.sh` gates every Android build on
+  16 KB ELF `LOAD` alignment (see #107); CI additionally builds a
+  throwaway Flutter app and asserts all five `.so` files reach the APK,
+  and greps `pub publish --dry-run` so the AAR cannot drop out of the
+  published package.
+- The test workflow resolves with the Flutter toolchain, since the
+  package now declares a Flutter SDK constraint.
+
 ## 0.9.0-dev.10 — llama.cpp b10182, load-mode API, isolate log-callback fix
 
 Native rebuild required — `src/llama.cpp` moved `d6d0ce82` → `afeebe10`
