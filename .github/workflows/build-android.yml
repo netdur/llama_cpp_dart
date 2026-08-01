@@ -25,11 +25,19 @@ jobs:
         id: setup-ndk
         uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r27c
+          # NDK r28+ emits 16 KB-aligned ELF LOAD segments by default, as
+          # required by Google Play for apps targeting Android 15+.
+          ndk-version: r28c
           add-to-path: false
 
       - name: build AAR
         run: tool/build_android_aar.sh --ndk "${{ steps.setup-ndk.outputs.ndk-path }}" --abi arm64-v8a --clean
+
+      - name: verify 16 KB ELF alignment
+        run: |
+          tool/check_android_aar_alignment.sh \
+            build/android/llama-cpp-dart.aar \
+            "${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
 
       - name: stage and checksum
         run: |
