@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.9.0-dev.11 — Flutter plugin packaging, mobile API, deterministic teardown
+## 0.9.0-dev.12 — Flutter plugin packaging, mobile API, deterministic teardown
+
+Supersedes 0.9.0-dev.11, which was tagged and built but rejected by
+pub.dev at upload: only `build.dart` and `link.dart` are currently
+allowed under `hook/`. The AAR-extraction helper moved to
+`lib/src/hook/android_native_assets.dart` and `hook/build.dart` imports
+it by package URI. dev.11 was never published; its GitHub release
+assets are identical in content to this one.
 
 Same llama.cpp pin as dev.10 (`afeebe10`, tag `b10182`) — no native
 rebuild required for behavior, but the artifacts are re-cut so the

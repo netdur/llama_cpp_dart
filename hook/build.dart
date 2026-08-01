@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
 
-import 'android_native_assets.dart';
+// pub.dev only accepts `build.dart` / `link.dart` under `hook/`, so the
+// extraction helper lives in lib/ and is imported by package URI.
+import 'package:llama_cpp_dart/src/hook/android_native_assets.dart';
 
 const _bundledAarPath = 'native/android/llama-cpp-dart.aar';
 

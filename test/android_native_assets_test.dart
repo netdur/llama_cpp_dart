@@ -2,9 +2,8 @@ import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:code_assets/code_assets.dart';
+import 'package:llama_cpp_dart/src/hook/android_native_assets.dart';
 import 'package:test/test.dart';
-
-import '../hook/android_native_assets.dart';
 
 void main() {
   test('maps Dart architectures to Android AAR ABIs', () {
