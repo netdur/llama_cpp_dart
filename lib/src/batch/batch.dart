@@ -55,20 +55,12 @@ final class LlamaBatch implements Finalizable {
   /// [seqIds] must contain at most [nSeqMax] entries.
   /// [wantLogits] requests that logits be produced for this position; usually
   /// only the final token of a prompt or each generation step needs it.
-  void add(
-    int token,
-    int pos,
-    List<int> seqIds, {
-    bool wantLogits = false,
-  }) {
+  void add(int token, int pos, List<int> seqIds, {bool wantLogits = false}) {
     _ensureAlive();
 
     final n = _batch.n_tokens;
     if (n >= capacity) {
-      throw LlamaDecodeException(
-        -1,
-        'LlamaBatch full ($capacity tokens)',
-      );
+      throw LlamaDecodeException(-1, 'LlamaBatch full ($capacity tokens)');
     }
     if (seqIds.isEmpty) {
       throw ArgumentError.value(seqIds, 'seqIds', 'must be non-empty');

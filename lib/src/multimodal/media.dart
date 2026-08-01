@@ -28,11 +28,7 @@ final class LlamaMedia {
   /// Optional id used for diagnostics + KV-cache hashing inside mtmd.
   final String? id;
 
-  const LlamaMedia({
-    required this.bytes,
-    required this.kind,
-    this.id,
-  });
+  const LlamaMedia({required this.bytes, required this.kind, this.id});
 
   /// Load image bytes from [path]. Format detected from file contents, not
   /// the extension.
@@ -74,15 +70,14 @@ final class LlamaMedia {
   static List<LlamaMedia> videoFrames(
     List<Uint8List> frames, {
     String? idPrefix,
-  }) =>
-      [
-        for (var i = 0; i < frames.length; i++)
-          LlamaMedia(
-            bytes: frames[i],
-            kind: MediaKind.image,
-            id: idPrefix == null ? null : '$idPrefix-$i',
-          ),
-      ];
+  }) => [
+    for (var i = 0; i < frames.length; i++)
+      LlamaMedia(
+        bytes: frames[i],
+        kind: MediaKind.image,
+        id: idPrefix == null ? null : '$idPrefix-$i',
+      ),
+  ];
 
   @override
   String toString() =>

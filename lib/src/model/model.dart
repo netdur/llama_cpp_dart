@@ -175,20 +175,20 @@ final class LlamaModel implements Finalizable {
   /// [ModelParams.useMmap]. Note the enum cannot express direct I/O
   /// combined with mlock, so direct I/O wins outright in that case.
   static int _loadModeInt(ModelParams p) => switch (p) {
-        _ when p.useDirectIo => llama_load_mode.LLAMA_LOAD_MODE_DIRECT_IO.value,
-        _ when p.useMmap && p.useMlock =>
-          llama_load_mode.LLAMA_LOAD_MODE_MMAP_MLOCK.value,
-        _ when p.useMmap => llama_load_mode.LLAMA_LOAD_MODE_MMAP.value,
-        _ when p.useMlock => llama_load_mode.LLAMA_LOAD_MODE_MLOCK.value,
-        _ => llama_load_mode.LLAMA_LOAD_MODE_NONE.value,
-      };
+    _ when p.useDirectIo => llama_load_mode.LLAMA_LOAD_MODE_DIRECT_IO.value,
+    _ when p.useMmap && p.useMlock =>
+      llama_load_mode.LLAMA_LOAD_MODE_MMAP_MLOCK.value,
+    _ when p.useMmap => llama_load_mode.LLAMA_LOAD_MODE_MMAP.value,
+    _ when p.useMlock => llama_load_mode.LLAMA_LOAD_MODE_MLOCK.value,
+    _ => llama_load_mode.LLAMA_LOAD_MODE_NONE.value,
+  };
 
   static int _splitModeInt(SplitMode v) => switch (v) {
-        SplitMode.none => llama_split_mode.LLAMA_SPLIT_MODE_NONE.value,
-        SplitMode.layer => llama_split_mode.LLAMA_SPLIT_MODE_LAYER.value,
-        SplitMode.row => llama_split_mode.LLAMA_SPLIT_MODE_ROW.value,
-        SplitMode.tensor => llama_split_mode.LLAMA_SPLIT_MODE_TENSOR.value,
-      };
+    SplitMode.none => llama_split_mode.LLAMA_SPLIT_MODE_NONE.value,
+    SplitMode.layer => llama_split_mode.LLAMA_SPLIT_MODE_LAYER.value,
+    SplitMode.row => llama_split_mode.LLAMA_SPLIT_MODE_ROW.value,
+    SplitMode.tensor => llama_split_mode.LLAMA_SPLIT_MODE_TENSOR.value,
+  };
 
   Pointer<llama_model> get pointer {
     _ensureAlive();
@@ -293,24 +293,24 @@ final class LlamaModel implements Finalizable {
   /// Read the metadata key at [index] (`0 <= index < metaCount`). Returns
   /// `null` if the index is out of range.
   String? metaKeyAt(int index) => _readModelString(maxLen: 256, (buf, size) {
-        return LlamaLibrary.bindings.llama_model_meta_key_by_index(
-          pointer,
-          index,
-          buf,
-          size,
-        );
-      });
+    return LlamaLibrary.bindings.llama_model_meta_key_by_index(
+      pointer,
+      index,
+      buf,
+      size,
+    );
+  });
 
   /// Read the metadata value at [index] (`0 <= index < metaCount`).
   /// Returns `null` if the index is out of range.
   String? metaValueAt(int index) => _readModelString(maxLen: 1024, (buf, size) {
-        return LlamaLibrary.bindings.llama_model_meta_val_str_by_index(
-          pointer,
-          index,
-          buf,
-          size,
-        );
-      });
+    return LlamaLibrary.bindings.llama_model_meta_val_str_by_index(
+      pointer,
+      index,
+      buf,
+      size,
+    );
+  });
 
   /// Read the metadata value for [key]. Returns `null` when the key is
   /// missing. Keys follow GGUF convention, e.g. `general.architecture`.

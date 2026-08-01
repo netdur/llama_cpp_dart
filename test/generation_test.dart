@@ -19,8 +19,11 @@ void main() {
     return;
   }
   if (modelPath == null || modelPath.isEmpty) {
-    test('LLAMA_CPP_DART_MODEL not set', () {},
-        skip: 'set LLAMA_CPP_DART_MODEL');
+    test(
+      'LLAMA_CPP_DART_MODEL not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MODEL',
+    );
     return;
   }
 
@@ -44,45 +47,47 @@ void main() {
   });
 
   group('Generator', () {
-    test('emits tokens until maxTokens then DoneEvent(StopMaxTokens)',
-        () async {
-      final tokenizer = Tokenizer(model.vocab);
-      final generator = Generator(context, tokenizer);
+    test(
+      'emits tokens until maxTokens then DoneEvent(StopMaxTokens)',
+      () async {
+        final tokenizer = Tokenizer(model.vocab);
+        final generator = Generator(context, tokenizer);
 
-      final request = Request(
-        promptTokens: tokenizer.encode('Hello'),
-        sampler: SamplerParams.greedyDefault,
-        maxTokens: 8,
-      );
+        final request = Request(
+          promptTokens: tokenizer.encode('Hello'),
+          sampler: SamplerParams.greedyDefault,
+          maxTokens: 8,
+        );
 
-      final tokenEvents = <TokenEvent>[];
-      DoneEvent? done;
+        final tokenEvents = <TokenEvent>[];
+        DoneEvent? done;
 
-      await for (final event in generator.run(request)) {
-        switch (event) {
-          case TokenEvent():
-            tokenEvents.add(event);
-          case ShiftEvent():
-            break;
-          case DoneEvent():
-            done = event;
+        await for (final event in generator.run(request)) {
+          switch (event) {
+            case TokenEvent():
+              tokenEvents.add(event);
+            case ShiftEvent():
+              break;
+            case DoneEvent():
+              done = event;
+          }
         }
-      }
 
-      expect(done, isNotNull);
-      expect(done!.reason, isA<StopMaxTokens>());
-      expect(tokenEvents, hasLength(8));
-      expect(done.generatedCount, 8);
+        expect(done, isNotNull);
+        expect(done!.reason, isA<StopMaxTokens>());
+        expect(tokenEvents, hasLength(8));
+        expect(done.generatedCount, 8);
 
-      generator.dispose();
-      // Reset the sequence so the next test starts from a clean KV.
-      LlamaLibrary.bindings.llama_memory_seq_rm(
-        LlamaLibrary.bindings.llama_get_memory(context.pointer),
-        0,
-        -1,
-        -1,
-      );
-    });
+        generator.dispose();
+        // Reset the sequence so the next test starts from a clean KV.
+        LlamaLibrary.bindings.llama_memory_seq_rm(
+          LlamaLibrary.bindings.llama_get_memory(context.pointer),
+          0,
+          -1,
+          -1,
+        );
+      },
+    );
 
     test('greedy sampling is deterministic across runs', () async {
       final tokenizer = Tokenizer(model.vocab);

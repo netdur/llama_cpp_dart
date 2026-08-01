@@ -58,23 +58,23 @@ final class LlamaLora implements Finalizable {
 
   /// Read the metadata key at [index].
   String? metaKeyAt(int index) => _readString(maxLen: 256, (buf, size) {
-        return LlamaLibrary.bindings.llama_adapter_meta_key_by_index(
-          pointer,
-          index,
-          buf,
-          size,
-        );
-      });
+    return LlamaLibrary.bindings.llama_adapter_meta_key_by_index(
+      pointer,
+      index,
+      buf,
+      size,
+    );
+  });
 
   /// Read the metadata value at [index].
   String? metaValueAt(int index) => _readString(maxLen: 1024, (buf, size) {
-        return LlamaLibrary.bindings.llama_adapter_meta_val_str_by_index(
-          pointer,
-          index,
-          buf,
-          size,
-        );
-      });
+    return LlamaLibrary.bindings.llama_adapter_meta_val_str_by_index(
+      pointer,
+      index,
+      buf,
+      size,
+    );
+  });
 
   /// Read the value for metadata [key]. Returns `null` when missing.
   String? metaValue(String key) {

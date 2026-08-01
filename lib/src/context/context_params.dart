@@ -32,30 +32,13 @@ enum KvCacheType {
 }
 
 /// RoPE scaling strategy. `auto` (the runtime default) lets the model decide.
-enum RopeScalingType {
-  auto,
-  none,
-  linear,
-  yarn,
-  longrope,
-}
+enum RopeScalingType { auto, none, linear, yarn, longrope }
 
 /// Embedding pooling strategy. `auto` lets the runtime / model decide.
-enum PoolingType {
-  auto,
-  none,
-  mean,
-  cls,
-  last,
-  rank,
-}
+enum PoolingType { auto, none, mean, cls, last, rank }
 
 /// Attention type for embedding workloads. `auto` keeps the runtime default.
-enum AttentionType {
-  auto,
-  causal,
-  nonCausal,
-}
+enum AttentionType { auto, causal, nonCausal }
 
 /// Declarative configuration for [LlamaContext.create].
 ///
@@ -266,82 +249,82 @@ final class ContextParams {
   }
 
   Map<String, Object?> toJson() => {
-        'nCtx': nCtx,
-        'nBatch': nBatch,
-        'nUbatch': nUbatch,
-        'nSeqMax': nSeqMax,
-        'nThreads': nThreads,
-        'nThreadsBatch': nThreadsBatch,
-        'flashAttn': flashAttn.name,
-        'ropeScalingType': ropeScalingType.name,
-        'poolingType': poolingType.name,
-        'attentionType': attentionType.name,
-        'ropeFreqBase': ropeFreqBase,
-        'ropeFreqScale': ropeFreqScale,
-        'yarnExtFactor': yarnExtFactor,
-        'yarnAttnFactor': yarnAttnFactor,
-        'yarnBetaFast': yarnBetaFast,
-        'yarnBetaSlow': yarnBetaSlow,
-        'yarnOrigCtx': yarnOrigCtx,
-        'defragThreshold': defragThreshold,
-        'offloadKqv': offloadKqv,
-        'embeddings': embeddings,
-        'noPerf': noPerf,
-        'opOffload': opOffload,
-        'swaFull': swaFull,
-        'kvUnified': kvUnified,
-        'typeK': typeK.name,
-        'typeV': typeV.name,
-        'seed': seed,
-        'nRsSeq': nRsSeq,
-      };
+    'nCtx': nCtx,
+    'nBatch': nBatch,
+    'nUbatch': nUbatch,
+    'nSeqMax': nSeqMax,
+    'nThreads': nThreads,
+    'nThreadsBatch': nThreadsBatch,
+    'flashAttn': flashAttn.name,
+    'ropeScalingType': ropeScalingType.name,
+    'poolingType': poolingType.name,
+    'attentionType': attentionType.name,
+    'ropeFreqBase': ropeFreqBase,
+    'ropeFreqScale': ropeFreqScale,
+    'yarnExtFactor': yarnExtFactor,
+    'yarnAttnFactor': yarnAttnFactor,
+    'yarnBetaFast': yarnBetaFast,
+    'yarnBetaSlow': yarnBetaSlow,
+    'yarnOrigCtx': yarnOrigCtx,
+    'defragThreshold': defragThreshold,
+    'offloadKqv': offloadKqv,
+    'embeddings': embeddings,
+    'noPerf': noPerf,
+    'opOffload': opOffload,
+    'swaFull': swaFull,
+    'kvUnified': kvUnified,
+    'typeK': typeK.name,
+    'typeV': typeV.name,
+    'seed': seed,
+    'nRsSeq': nRsSeq,
+  };
 
   factory ContextParams.fromJson(Map<String, Object?> json) => ContextParams(
-        nCtx: (json['nCtx'] as int?) ?? 4096,
-        nBatch: (json['nBatch'] as int?) ?? 2048,
-        nUbatch: (json['nUbatch'] as int?) ?? 512,
-        nSeqMax: (json['nSeqMax'] as int?) ?? 1,
-        nThreads: (json['nThreads'] as int?) ?? 0,
-        nThreadsBatch: (json['nThreadsBatch'] as int?) ?? 0,
-        flashAttn: FlashAttention.values.firstWhere(
-          (e) => e.name == json['flashAttn'],
-          orElse: () => FlashAttention.auto,
-        ),
-        ropeScalingType: RopeScalingType.values.firstWhere(
-          (e) => e.name == json['ropeScalingType'],
-          orElse: () => RopeScalingType.auto,
-        ),
-        poolingType: PoolingType.values.firstWhere(
-          (e) => e.name == json['poolingType'],
-          orElse: () => PoolingType.auto,
-        ),
-        attentionType: AttentionType.values.firstWhere(
-          (e) => e.name == json['attentionType'],
-          orElse: () => AttentionType.auto,
-        ),
-        ropeFreqBase: (json['ropeFreqBase'] as num?)?.toDouble() ?? 0.0,
-        ropeFreqScale: (json['ropeFreqScale'] as num?)?.toDouble() ?? 0.0,
-        yarnExtFactor: (json['yarnExtFactor'] as num?)?.toDouble() ?? -1.0,
-        yarnAttnFactor: (json['yarnAttnFactor'] as num?)?.toDouble() ?? 1.0,
-        yarnBetaFast: (json['yarnBetaFast'] as num?)?.toDouble() ?? 32.0,
-        yarnBetaSlow: (json['yarnBetaSlow'] as num?)?.toDouble() ?? 1.0,
-        yarnOrigCtx: (json['yarnOrigCtx'] as int?) ?? 0,
-        defragThreshold: (json['defragThreshold'] as num?)?.toDouble() ?? -1.0,
-        offloadKqv: (json['offloadKqv'] as bool?) ?? true,
-        embeddings: (json['embeddings'] as bool?) ?? false,
-        noPerf: (json['noPerf'] as bool?) ?? true,
-        opOffload: (json['opOffload'] as bool?) ?? true,
-        swaFull: (json['swaFull'] as bool?) ?? true,
-        kvUnified: (json['kvUnified'] as bool?) ?? false,
-        typeK: KvCacheType.values.firstWhere(
-          (e) => e.name == json['typeK'],
-          orElse: () => KvCacheType.f16,
-        ),
-        typeV: KvCacheType.values.firstWhere(
-          (e) => e.name == json['typeV'],
-          orElse: () => KvCacheType.f16,
-        ),
-        seed: (json['seed'] as int?) ?? -1,
-        nRsSeq: (json['nRsSeq'] as int?) ?? 0,
-      );
+    nCtx: (json['nCtx'] as int?) ?? 4096,
+    nBatch: (json['nBatch'] as int?) ?? 2048,
+    nUbatch: (json['nUbatch'] as int?) ?? 512,
+    nSeqMax: (json['nSeqMax'] as int?) ?? 1,
+    nThreads: (json['nThreads'] as int?) ?? 0,
+    nThreadsBatch: (json['nThreadsBatch'] as int?) ?? 0,
+    flashAttn: FlashAttention.values.firstWhere(
+      (e) => e.name == json['flashAttn'],
+      orElse: () => FlashAttention.auto,
+    ),
+    ropeScalingType: RopeScalingType.values.firstWhere(
+      (e) => e.name == json['ropeScalingType'],
+      orElse: () => RopeScalingType.auto,
+    ),
+    poolingType: PoolingType.values.firstWhere(
+      (e) => e.name == json['poolingType'],
+      orElse: () => PoolingType.auto,
+    ),
+    attentionType: AttentionType.values.firstWhere(
+      (e) => e.name == json['attentionType'],
+      orElse: () => AttentionType.auto,
+    ),
+    ropeFreqBase: (json['ropeFreqBase'] as num?)?.toDouble() ?? 0.0,
+    ropeFreqScale: (json['ropeFreqScale'] as num?)?.toDouble() ?? 0.0,
+    yarnExtFactor: (json['yarnExtFactor'] as num?)?.toDouble() ?? -1.0,
+    yarnAttnFactor: (json['yarnAttnFactor'] as num?)?.toDouble() ?? 1.0,
+    yarnBetaFast: (json['yarnBetaFast'] as num?)?.toDouble() ?? 32.0,
+    yarnBetaSlow: (json['yarnBetaSlow'] as num?)?.toDouble() ?? 1.0,
+    yarnOrigCtx: (json['yarnOrigCtx'] as int?) ?? 0,
+    defragThreshold: (json['defragThreshold'] as num?)?.toDouble() ?? -1.0,
+    offloadKqv: (json['offloadKqv'] as bool?) ?? true,
+    embeddings: (json['embeddings'] as bool?) ?? false,
+    noPerf: (json['noPerf'] as bool?) ?? true,
+    opOffload: (json['opOffload'] as bool?) ?? true,
+    swaFull: (json['swaFull'] as bool?) ?? true,
+    kvUnified: (json['kvUnified'] as bool?) ?? false,
+    typeK: KvCacheType.values.firstWhere(
+      (e) => e.name == json['typeK'],
+      orElse: () => KvCacheType.f16,
+    ),
+    typeV: KvCacheType.values.firstWhere(
+      (e) => e.name == json['typeV'],
+      orElse: () => KvCacheType.f16,
+    ),
+    seed: (json['seed'] as int?) ?? -1,
+    nRsSeq: (json['nRsSeq'] as int?) ?? 0,
+  );
 }

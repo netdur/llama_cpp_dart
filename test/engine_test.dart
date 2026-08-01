@@ -20,8 +20,11 @@ void main() {
     return;
   }
   if (modelPath == null || modelPath.isEmpty) {
-    test('LLAMA_CPP_DART_MODEL not set', () {},
-        skip: 'set LLAMA_CPP_DART_MODEL');
+    test(
+      'LLAMA_CPP_DART_MODEL not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MODEL',
+    );
     return;
   }
 
@@ -45,34 +48,36 @@ void main() {
       expect(engine.isDisposed, isFalse);
     });
 
-    test('greedy generate yields tokens and DoneEvent(StopMaxTokens)',
-        () async {
-      final session = await engine.createSession();
-      addTearDown(session.dispose);
+    test(
+      'greedy generate yields tokens and DoneEvent(StopMaxTokens)',
+      () async {
+        final session = await engine.createSession();
+        addTearDown(session.dispose);
 
-      final tokens = <TokenEvent>[];
-      DoneEvent? done;
+        final tokens = <TokenEvent>[];
+        DoneEvent? done;
 
-      await for (final ev in session.generate(
-        prompt: 'Hello',
-        addSpecial: true,
-        sampler: SamplerParams.greedyDefault,
-        maxTokens: 6,
-      )) {
-        switch (ev) {
-          case TokenEvent():
-            tokens.add(ev);
-          case ShiftEvent():
-            break;
-          case DoneEvent():
-            done = ev;
+        await for (final ev in session.generate(
+          prompt: 'Hello',
+          addSpecial: true,
+          sampler: SamplerParams.greedyDefault,
+          maxTokens: 6,
+        )) {
+          switch (ev) {
+            case TokenEvent():
+              tokens.add(ev);
+            case ShiftEvent():
+              break;
+            case DoneEvent():
+              done = ev;
+          }
         }
-      }
 
-      expect(done, isNotNull);
-      expect(done!.reason, isA<StopMaxTokens>());
-      expect(tokens, hasLength(6));
-    });
+        expect(done, isNotNull);
+        expect(done!.reason, isA<StopMaxTokens>());
+        expect(tokens, hasLength(6));
+      },
+    );
 
     test('cancellation stops the worker mid-generation', () async {
       final session = await engine.createSession();
@@ -125,9 +130,11 @@ void main() {
       );
       addTearDown(embedEngine.dispose);
 
-      final results = await embedEngine.embedBatch(
-        ['the cat sat', 'the cat sat', 'tax law statute'],
-      );
+      final results = await embedEngine.embedBatch([
+        'the cat sat',
+        'the cat sat',
+        'tax law statute',
+      ]);
 
       expect(results, hasLength(3));
       for (final r in results) {
@@ -172,8 +179,11 @@ void main() {
 
       final r1 = await oneRun(s1);
       final r2 = await oneRun(s2);
-      expect(r1, equals(r2),
-          reason: 'greedy on identical prompts should match across sessions');
+      expect(
+        r1,
+        equals(r2),
+        reason: 'greedy on identical prompts should match across sessions',
+      );
 
       await s1.dispose();
       await s2.dispose();
@@ -183,8 +193,11 @@ void main() {
       final disposable = await LlamaEngine.spawn(
         libraryPath: libPath,
         modelParams: ModelParams(path: modelPath, gpuLayers: 99),
-        contextParams:
-            const ContextParams(nCtx: 512, nBatch: 256, nUbatch: 256),
+        contextParams: const ContextParams(
+          nCtx: 512,
+          nBatch: 256,
+          nUbatch: 256,
+        ),
       );
       addTearDown(disposable.dispose);
       final disposableSession = await disposable.createSession();

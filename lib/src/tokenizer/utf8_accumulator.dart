@@ -55,12 +55,12 @@ final class Utf8Accumulator {
       final width = b < 0x80
           ? 1
           : (b & 0xE0) == 0xC0
-              ? 2
-              : (b & 0xF0) == 0xE0
-                  ? 3
-                  : (b & 0xF8) == 0xF0
-                      ? 4
-                      : 1;
+          ? 2
+          : (b & 0xF0) == 0xE0
+          ? 3
+          : (b & 0xF8) == 0xF0
+          ? 4
+          : 1;
       if (i + width > n) break;
       i += width;
     }

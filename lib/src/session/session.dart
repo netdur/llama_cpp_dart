@@ -28,7 +28,7 @@ final class LlamaSession {
   int _kvHead = 0;
 
   LlamaSession(this.context, {this.seqId = 0})
-      : tokenizer = Tokenizer(context.model.vocab);
+    : tokenizer = Tokenizer(context.model.vocab);
 
   /// Full token history (prompt + generated).
   List<int> get tokens => UnmodifiableListView(_tokens);
@@ -155,8 +155,9 @@ final class LlamaSession {
     final clampedKeep = nKeep < 0 ? 0 : (nKeep > nPast ? nPast : nKeep);
     // Always reserve at least 4 slots for forward progress, like server does.
     final keepCap = context.nCtx - 4;
-    final effectiveKeep =
-        clampedKeep > keepCap ? (keepCap < 0 ? 0 : keepCap) : clampedKeep;
+    final effectiveKeep = clampedKeep > keepCap
+        ? (keepCap < 0 ? 0 : keepCap)
+        : clampedKeep;
     final nLeft = nPast - effectiveKeep;
     if (nLeft <= 0) return 0;
 
@@ -186,10 +187,7 @@ final class LlamaSession {
     );
 
     // Slide our token mirror to match.
-    _tokens.removeRange(
-      effectiveKeep,
-      effectiveKeep + actualDiscard,
-    );
+    _tokens.removeRange(effectiveKeep, effectiveKeep + actualDiscard);
     _kvHead = nPast - actualDiscard;
     return actualDiscard;
   }

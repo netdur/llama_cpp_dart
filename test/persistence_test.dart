@@ -18,32 +18,31 @@ void main() {
       int tokensCount = 4,
       int tokensChecksum = 0,
       int modelSizeBytes = 1234,
-    }) =>
-        StateMetadata(
-          codecVersion: stateCodecVersion,
-          savedAt: '2026-04-28T00:00:00Z',
-          wrapperVersion: 'test',
-          modelPath: '/path/to/model.gguf',
-          modelSizeBytes: modelSizeBytes,
-          modelNParams: 256,
-          modelNEmbd: 64,
-          modelNLayer: 4,
-          modelTrainCtx: 4096,
-          nCtx: 1024,
-          nBatch: 256,
-          nUbatch: 256,
-          nSeqMax: 1,
-          embeddings: false,
-          mmprojPath: null,
-          mmprojSizeBytes: null,
-          mmprojSupportsVision: null,
-          mmprojSupportsAudio: null,
-          seqId: 0,
-          kvHead: 12,
-          tokensCount: tokensCount,
-          tokensChecksum: tokensChecksum,
-          extra: const {'note': 'hello'},
-        );
+    }) => StateMetadata(
+      codecVersion: stateCodecVersion,
+      savedAt: '2026-04-28T00:00:00Z',
+      wrapperVersion: 'test',
+      modelPath: '/path/to/model.gguf',
+      modelSizeBytes: modelSizeBytes,
+      modelNParams: 256,
+      modelNEmbd: 64,
+      modelNLayer: 4,
+      modelTrainCtx: 4096,
+      nCtx: 1024,
+      nBatch: 256,
+      nUbatch: 256,
+      nSeqMax: 1,
+      embeddings: false,
+      mmprojPath: null,
+      mmprojSizeBytes: null,
+      mmprojSupportsVision: null,
+      mmprojSupportsAudio: null,
+      seqId: 0,
+      kvHead: 12,
+      tokensCount: tokensCount,
+      tokensChecksum: tokensChecksum,
+      extra: const {'note': 'hello'},
+    );
 
     test('round-trips metadata + tokens + raw bytes', () {
       final tokens = [101, 202, 303, 404];
@@ -55,8 +54,11 @@ void main() {
         tokensCount: tokens.length,
         tokensChecksum: fnv1a64(tokenBytes),
       );
-      final encoded =
-          encodeState(metadata: metadata, tokens: tokens, rawState: raw);
+      final encoded = encodeState(
+        metadata: metadata,
+        tokens: tokens,
+        rawState: raw,
+      );
       expect(encoded, isNotEmpty);
 
       final decoded = decodeState(encoded);
@@ -70,11 +72,13 @@ void main() {
       final junk = Uint8List.fromList(List.filled(32, 0));
       expect(
         () => decodeState(junk),
-        throwsA(isA<LlamaStateException>().having(
-          (e) => e.reason,
-          'reason',
-          LlamaStateError.badMagic,
-        )),
+        throwsA(
+          isA<LlamaStateException>().having(
+            (e) => e.reason,
+            'reason',
+            LlamaStateError.badMagic,
+          ),
+        ),
       );
     });
 
@@ -91,10 +95,7 @@ void main() {
         rawState: Uint8List(8),
       );
       final cut = Uint8List.fromList(encoded.sublist(0, encoded.length ~/ 2));
-      expect(
-        () => decodeState(cut),
-        throwsA(isA<LlamaStateException>()),
-      );
+      expect(() => decodeState(cut), throwsA(isA<LlamaStateException>()));
     });
 
     test('verifyCompatible flags model size mismatch', () {
@@ -102,11 +103,13 @@ void main() {
       final actual = mkMeta(modelSizeBytes: 2000);
       expect(
         () => verifyCompatible(saved, actual),
-        throwsA(isA<LlamaStateException>().having(
-          (e) => e.reason,
-          'reason',
-          LlamaStateError.modelMismatch,
-        )),
+        throwsA(
+          isA<LlamaStateException>().having(
+            (e) => e.reason,
+            'reason',
+            LlamaStateError.modelMismatch,
+          ),
+        ),
       );
     });
   });
@@ -120,8 +123,11 @@ void main() {
     return;
   }
   if (modelPath == null || modelPath.isEmpty) {
-    test('LLAMA_CPP_DART_MODEL not set', () {},
-        skip: 'set LLAMA_CPP_DART_MODEL');
+    test(
+      'LLAMA_CPP_DART_MODEL not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MODEL',
+    );
     return;
   }
 
@@ -186,7 +192,9 @@ void main() {
       await for (final _ in chat.generate(
         sampler: SamplerParams.greedyDefault,
         maxTokens: 6,
-      )) {/* drain */}
+      )) {
+        /* drain */
+      }
       expect(chat.messageCount, 3);
 
       final path = '${tmp.path}/chat_round_trip.lcdc';
@@ -205,7 +213,9 @@ void main() {
       await for (final _ in resumed.generate(
         sampler: SamplerParams.greedyDefault,
         maxTokens: 4,
-      )) {/* drain */}
+      )) {
+        /* drain */
+      }
       expect(resumed.messageCount, 5);
     });
 
@@ -240,11 +250,9 @@ void main() {
         tokensCount: 0,
         tokensChecksum: fnv1a64(tokenBytes),
       );
-      File(path).writeAsBytesSync(encodeState(
-        metadata: metadata,
-        tokens: tokens,
-        rawState: Uint8List(0),
-      ));
+      File(path).writeAsBytesSync(
+        encodeState(metadata: metadata, tokens: tokens, rawState: Uint8List(0)),
+      );
 
       var failed = false;
       try {

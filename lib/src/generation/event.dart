@@ -90,6 +90,7 @@ final class DoneEvent extends GenerationEvent {
   });
 
   @override
-  String toString() => 'DoneEvent(reason=$reason, generated=$generatedCount, '
+  String toString() =>
+      'DoneEvent(reason=$reason, generated=$generatedCount, '
       'committedPos=$committedPosition, trailing="$trailingText")';
 }

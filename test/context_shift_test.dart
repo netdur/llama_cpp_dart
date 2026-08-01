@@ -23,16 +23,20 @@ void main() {
     return;
   }
   if (modelPath == null || modelPath.isEmpty) {
-    test('LLAMA_CPP_DART_MODEL not set', () {},
-        skip: 'set LLAMA_CPP_DART_MODEL');
+    test(
+      'LLAMA_CPP_DART_MODEL not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MODEL',
+    );
     return;
   }
 
   group('LlamaContext.canShift', () {
     test('reflects llama_memory_can_shift on the loaded context', () {
       low.LlamaLibrary.load(path: libPath);
-      final model =
-          low.LlamaModel.load(ModelParams(path: modelPath, gpuLayers: 0));
+      final model = low.LlamaModel.load(
+        ModelParams(path: modelPath, gpuLayers: 0),
+      );
       addTearDown(model.dispose);
       final ctx = low.LlamaContext.create(
         model,

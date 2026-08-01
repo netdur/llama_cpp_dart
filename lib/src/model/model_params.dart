@@ -36,12 +36,7 @@ enum RopeType {
 }
 
 /// Type of a [KvOverride] entry.
-enum KvOverrideType {
-  intValue,
-  floatValue,
-  boolValue,
-  string,
-}
+enum KvOverrideType { intValue, floatValue, boolValue, string }
 
 /// Override for a single GGUF metadata key. Used to patch model metadata at
 /// load time without re-quantizing the file.
@@ -63,38 +58,29 @@ final class KvOverride {
     this.stringValue,
   });
 
-  factory KvOverride.int(String key, int value) => KvOverride._(
-        key: key,
-        type: KvOverrideType.intValue,
-        intValue: value,
-      );
+  factory KvOverride.int(String key, int value) =>
+      KvOverride._(key: key, type: KvOverrideType.intValue, intValue: value);
 
   factory KvOverride.float(String key, double value) => KvOverride._(
-        key: key,
-        type: KvOverrideType.floatValue,
-        floatValue: value,
-      );
+    key: key,
+    type: KvOverrideType.floatValue,
+    floatValue: value,
+  );
 
-  factory KvOverride.bool(String key, bool value) => KvOverride._(
-        key: key,
-        type: KvOverrideType.boolValue,
-        boolValue: value,
-      );
+  factory KvOverride.bool(String key, bool value) =>
+      KvOverride._(key: key, type: KvOverrideType.boolValue, boolValue: value);
 
-  factory KvOverride.string(String key, String value) => KvOverride._(
-        key: key,
-        type: KvOverrideType.string,
-        stringValue: value,
-      );
+  factory KvOverride.string(String key, String value) =>
+      KvOverride._(key: key, type: KvOverrideType.string, stringValue: value);
 
   Map<String, Object?> toJson() => {
-        'key': key,
-        'type': type.name,
-        if (intValue != null) 'int': intValue,
-        if (floatValue != null) 'float': floatValue,
-        if (boolValue != null) 'bool': boolValue,
-        if (stringValue != null) 'string': stringValue,
-      };
+    'key': key,
+    'type': type.name,
+    if (intValue != null) 'int': intValue,
+    if (floatValue != null) 'float': floatValue,
+    if (boolValue != null) 'bool': boolValue,
+    if (stringValue != null) 'string': stringValue,
+  };
 
   factory KvOverride.fromJson(Map<String, Object?> json) {
     final key = json['key']! as String;
@@ -104,11 +90,15 @@ final class KvOverride {
     );
     return switch (type) {
       KvOverrideType.intValue => KvOverride.int(key, json['int']! as int),
-      KvOverrideType.floatValue =>
-        KvOverride.float(key, (json['float']! as num).toDouble()),
+      KvOverrideType.floatValue => KvOverride.float(
+        key,
+        (json['float']! as num).toDouble(),
+      ),
       KvOverrideType.boolValue => KvOverride.bool(key, json['bool']! as bool),
-      KvOverrideType.string =>
-        KvOverride.string(key, json['string']! as String),
+      KvOverrideType.string => KvOverride.string(
+        key,
+        json['string']! as String,
+      ),
     };
   }
 }
@@ -225,47 +215,46 @@ final class ModelParams {
   }
 
   Map<String, Object?> toJson() => {
-        'path': path,
-        'gpuLayers': gpuLayers,
-        'splitMode': splitMode.name,
-        'mainGpu': mainGpu,
-        'tensorSplit': tensorSplit,
-        'devices': devices,
-        'kvOverrides': kvOverrides.map((e) => e.toJson()).toList(),
-        'useMmap': useMmap,
-        'useDirectIo': useDirectIo,
-        'useMlock': useMlock,
-        'vocabOnly': vocabOnly,
-        'checkTensors': checkTensors,
-        'useExtraBufts': useExtraBufts,
-        'noHost': noHost,
-        'noAlloc': noAlloc,
-      };
+    'path': path,
+    'gpuLayers': gpuLayers,
+    'splitMode': splitMode.name,
+    'mainGpu': mainGpu,
+    'tensorSplit': tensorSplit,
+    'devices': devices,
+    'kvOverrides': kvOverrides.map((e) => e.toJson()).toList(),
+    'useMmap': useMmap,
+    'useDirectIo': useDirectIo,
+    'useMlock': useMlock,
+    'vocabOnly': vocabOnly,
+    'checkTensors': checkTensors,
+    'useExtraBufts': useExtraBufts,
+    'noHost': noHost,
+    'noAlloc': noAlloc,
+  };
 
   factory ModelParams.fromJson(Map<String, Object?> json) => ModelParams(
-        path: json['path']! as String,
-        gpuLayers: (json['gpuLayers'] as int?) ?? 0,
-        splitMode: SplitMode.values.firstWhere(
-          (e) => e.name == json['splitMode'],
-          orElse: () => SplitMode.layer,
-        ),
-        mainGpu: (json['mainGpu'] as int?) ?? 0,
-        tensorSplit: ((json['tensorSplit'] as List?) ?? const [])
-            .map((e) => (e as num).toDouble())
-            .toList(growable: false),
-        devices:
-            ((json['devices'] as List?)?.cast<String>()) ?? const <String>[],
-        kvOverrides: ((json['kvOverrides'] as List?) ?? const [])
-            .cast<Map<String, Object?>>()
-            .map(KvOverride.fromJson)
-            .toList(growable: false),
-        useMmap: (json['useMmap'] as bool?) ?? true,
-        useDirectIo: (json['useDirectIo'] as bool?) ?? false,
-        useMlock: (json['useMlock'] as bool?) ?? false,
-        vocabOnly: (json['vocabOnly'] as bool?) ?? false,
-        checkTensors: (json['checkTensors'] as bool?) ?? false,
-        useExtraBufts: (json['useExtraBufts'] as bool?) ?? true,
-        noHost: (json['noHost'] as bool?) ?? false,
-        noAlloc: (json['noAlloc'] as bool?) ?? false,
-      );
+    path: json['path']! as String,
+    gpuLayers: (json['gpuLayers'] as int?) ?? 0,
+    splitMode: SplitMode.values.firstWhere(
+      (e) => e.name == json['splitMode'],
+      orElse: () => SplitMode.layer,
+    ),
+    mainGpu: (json['mainGpu'] as int?) ?? 0,
+    tensorSplit: ((json['tensorSplit'] as List?) ?? const [])
+        .map((e) => (e as num).toDouble())
+        .toList(growable: false),
+    devices: ((json['devices'] as List?)?.cast<String>()) ?? const <String>[],
+    kvOverrides: ((json['kvOverrides'] as List?) ?? const [])
+        .cast<Map<String, Object?>>()
+        .map(KvOverride.fromJson)
+        .toList(growable: false),
+    useMmap: (json['useMmap'] as bool?) ?? true,
+    useDirectIo: (json['useDirectIo'] as bool?) ?? false,
+    useMlock: (json['useMlock'] as bool?) ?? false,
+    vocabOnly: (json['vocabOnly'] as bool?) ?? false,
+    checkTensors: (json['checkTensors'] as bool?) ?? false,
+    useExtraBufts: (json['useExtraBufts'] as bool?) ?? true,
+    noHost: (json['noHost'] as bool?) ?? false,
+    noAlloc: (json['noAlloc'] as bool?) ?? false,
+  );
 }

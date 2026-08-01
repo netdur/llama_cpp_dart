@@ -133,14 +133,16 @@ final class BatchEmbedder {
         }
         final vec = Float32List.fromList(ptr.asTypedList(nEmbd));
         if (normalize) _l2NormInPlace(vec);
-        out.add(EmbeddingResult(
-          nEmbd: nEmbd,
-          nTokens: perText[seq].length,
-          pooled: true,
-          poolingType: poolingInt,
-          normalized: normalize,
-          vector: vec,
-        ));
+        out.add(
+          EmbeddingResult(
+            nEmbd: nEmbd,
+            nTokens: perText[seq].length,
+            pooled: true,
+            poolingType: poolingInt,
+            normalized: normalize,
+            vector: vec,
+          ),
+        );
       }
       return out;
     } finally {
@@ -153,13 +155,13 @@ final class BatchEmbedder {
 /// used by [EmbeddingResult.poolingType] (`-1 auto, 0 none, 1 mean, 2 cls,
 /// 3 last, 4 rank`).
 int _poolingTypeToInt(PoolingType p) => switch (p) {
-      PoolingType.auto => -1,
-      PoolingType.none => 0,
-      PoolingType.mean => 1,
-      PoolingType.cls => 2,
-      PoolingType.last => 3,
-      PoolingType.rank => 4,
-    };
+  PoolingType.auto => -1,
+  PoolingType.none => 0,
+  PoolingType.mean => 1,
+  PoolingType.cls => 2,
+  PoolingType.last => 3,
+  PoolingType.rank => 4,
+};
 
 void _l2NormInPlace(Float32List v) {
   var sum = 0.0;

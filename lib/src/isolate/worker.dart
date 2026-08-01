@@ -57,10 +57,9 @@ Future<void> runEngineWorker(EngineBootstrap bootstrap) async {
       context: context,
       model: model,
     );
-    reply.send(EngineErrorResponse(
-      0,
-      '$e\n$st${_formatCleanupErrors(cleanupErrors)}',
-    ));
+    reply.send(
+      EngineErrorResponse(0, '$e\n$st${_formatCleanupErrors(cleanupErrors)}'),
+    );
     commandRx.close();
     return;
   }
@@ -77,11 +76,13 @@ Future<void> runEngineWorker(EngineBootstrap bootstrap) async {
         context: context,
         model: model,
       );
-      reply.send(EngineErrorResponse(
-        0,
-        'multimodal init failed: $e\n$st'
-        '${_formatCleanupErrors(cleanupErrors)}',
-      ));
+      reply.send(
+        EngineErrorResponse(
+          0,
+          'multimodal init failed: $e\n$st'
+          '${_formatCleanupErrors(cleanupErrors)}',
+        ),
+      );
       commandRx.close();
       return;
     }
@@ -109,26 +110,30 @@ Future<void> runEngineWorker(EngineBootstrap bootstrap) async {
       context: loadedContext,
       model: loadedModel,
     );
-    reply.send(EngineErrorResponse(
-      0,
-      'worker initialization failed: $e\n$st'
-      '${_formatCleanupErrors(cleanupErrors)}',
-    ));
+    reply.send(
+      EngineErrorResponse(
+        0,
+        'worker initialization failed: $e\n$st'
+        '${_formatCleanupErrors(cleanupErrors)}',
+      ),
+    );
     commandRx.close();
     return;
   }
 
-  reply.send(EngineReadyResponse(
-    0,
-    commandRx.sendPort,
-    modelChatTemplate: modelTemplate,
-    multimodalLoaded: mtmd != null,
-    supportsVision: supportsVision,
-    supportsAudio: supportsAudio,
-    audioSampleRate: audioSampleRate,
-    canShift: canShift,
-    devices: devices,
-  ));
+  reply.send(
+    EngineReadyResponse(
+      0,
+      commandRx.sendPort,
+      modelChatTemplate: modelTemplate,
+      multimodalLoaded: mtmd != null,
+      supportsVision: supportsVision,
+      supportsAudio: supportsAudio,
+      audioSampleRate: audioSampleRate,
+      canShift: canShift,
+      devices: devices,
+    ),
+  );
 
   final state = _WorkerState(
     model: loadedModel,
@@ -146,20 +151,13 @@ Future<void> runEngineWorker(EngineBootstrap bootstrap) async {
       return;
     }
     if (msg is ShutdownCommand) {
-      _beginShutdown(
-        state,
-        msg.requestId,
-        reply,
-        commandRx,
-        completer,
-      );
+      _beginShutdown(state, msg.requestId, reply, commandRx, completer);
       return;
     }
     if (state.shuttingDown) {
-      reply.send(EngineErrorResponse(
-        msg.requestId,
-        'engine worker is shutting down',
-      ));
+      reply.send(
+        EngineErrorResponse(msg.requestId, 'engine worker is shutting down'),
+      );
       return;
     }
     // Other commands run as fire-and-forget microtasks. The worker still
@@ -203,14 +201,18 @@ Future<void> _dispatch(
     switch (cmd) {
       case CreateSessionCommand():
         if (state.sessions.containsKey(cmd.sessionId)) {
-          reply.send(EngineErrorResponse(
-            cmd.requestId,
-            'session ${cmd.sessionId} already exists',
-          ));
+          reply.send(
+            EngineErrorResponse(
+              cmd.requestId,
+              'session ${cmd.sessionId} already exists',
+            ),
+          );
           return;
         }
-        state.sessions[cmd.sessionId] =
-            LlamaSession(state.context, seqId: cmd.seqId);
+        state.sessions[cmd.sessionId] = LlamaSession(
+          state.context,
+          seqId: cmd.seqId,
+        );
         reply.send(EngineAckResponse(cmd.requestId));
 
       case DisposeSessionCommand():
@@ -221,10 +223,9 @@ Future<void> _dispatch(
       case AppendTextCommand():
         final session = state.sessions[cmd.sessionId];
         if (session == null) {
-          reply.send(EngineErrorResponse(
-            cmd.requestId,
-            'no session ${cmd.sessionId}',
-          ));
+          reply.send(
+            EngineErrorResponse(cmd.requestId, 'no session ${cmd.sessionId}'),
+          );
           return;
         }
         session.appendText(
@@ -237,10 +238,9 @@ Future<void> _dispatch(
       case ClearSessionCommand():
         final session = state.sessions[cmd.sessionId];
         if (session == null) {
-          reply.send(EngineErrorResponse(
-            cmd.requestId,
-            'no session ${cmd.sessionId}',
-          ));
+          reply.send(
+            EngineErrorResponse(cmd.requestId, 'no session ${cmd.sessionId}'),
+          );
           return;
         }
         session.clear();
@@ -283,10 +283,9 @@ Future<void> _runGenerate(
 
   final session = state.sessions[cmd.sessionId];
   if (session == null) {
-    reply.send(EngineErrorResponse(
-      cmd.requestId,
-      'no session ${cmd.sessionId}',
-    ));
+    reply.send(
+      EngineErrorResponse(cmd.requestId, 'no session ${cmd.sessionId}'),
+    );
     state.inFlightGenerateId = null;
     return;
   }
@@ -300,19 +299,23 @@ Future<void> _runGenerate(
       }
       final mtmd = state.multimodal;
       if (mtmd == null) {
-        reply.send(EngineErrorResponse(
-          cmd.requestId,
-          'request includes media but engine has no multimodal context; '
-          'pass MultimodalParams to LlamaEngine.spawn',
-        ));
+        reply.send(
+          EngineErrorResponse(
+            cmd.requestId,
+            'request includes media but engine has no multimodal context; '
+            'pass MultimodalParams to LlamaEngine.spawn',
+          ),
+        );
         state.inFlightGenerateId = null;
         return;
       }
       if (cmd.prompt == null || cmd.prompt!.isEmpty) {
-        reply.send(EngineErrorResponse(
-          cmd.requestId,
-          'media generate requires a non-empty prompt with media markers',
-        ));
+        reply.send(
+          EngineErrorResponse(
+            cmd.requestId,
+            'media generate requires a non-empty prompt with media markers',
+          ),
+        );
         state.inFlightGenerateId = null;
         return;
       }
@@ -374,20 +377,21 @@ Future<void> _runGenerateChat(
 
   final session = state.sessions[cmd.sessionId];
   if (session == null) {
-    reply.send(EngineErrorResponse(
-      cmd.requestId,
-      'no session ${cmd.sessionId}',
-    ));
+    reply.send(
+      EngineErrorResponse(cmd.requestId, 'no session ${cmd.sessionId}'),
+    );
     state.inFlightGenerateId = null;
     return;
   }
 
   final template = cmd.templateOverride ?? state.modelTemplate;
   if (template == null) {
-    reply.send(EngineErrorResponse(
-      cmd.requestId,
-      'no chat template available; pass templateOverride or load a model with one',
-    ));
+    reply.send(
+      EngineErrorResponse(
+        cmd.requestId,
+        'no chat template available; pass templateOverride or load a model with one',
+      ),
+    );
     state.inFlightGenerateId = null;
     return;
   }
@@ -403,11 +407,13 @@ Future<void> _runGenerateChat(
       }
       final mtmd = state.multimodal;
       if (mtmd == null) {
-        reply.send(EngineErrorResponse(
-          cmd.requestId,
-          'message contains media but engine has no multimodal context; '
-          'pass MultimodalParams to LlamaEngine.spawn',
-        ));
+        reply.send(
+          EngineErrorResponse(
+            cmd.requestId,
+            'message contains media but engine has no multimodal context; '
+            'pass MultimodalParams to LlamaEngine.spawn',
+          ),
+        );
         state.inFlightGenerateId = null;
         return;
       }
@@ -459,9 +465,7 @@ Future<void> _runGenerateChatMedia({
     messages: cmd.messages,
     addAssistant: true,
   );
-  final flatMedia = [
-    for (final m in cmd.messages) ...m.media,
-  ];
+  final flatMedia = [for (final m in cmd.messages) ...m.media];
 
   // Reset KV for this seq before the multimodal evaluator runs.
   final lib = LlamaLibrary.bindings;
@@ -502,10 +506,9 @@ void _runSaveSessionState(
 ) {
   final session = state.sessions[cmd.sessionId];
   if (session == null) {
-    reply.send(EngineErrorResponse(
-      cmd.requestId,
-      'no session ${cmd.sessionId}',
-    ));
+    reply.send(
+      EngineErrorResponse(cmd.requestId, 'no session ${cmd.sessionId}'),
+    );
     return;
   }
   try {
@@ -539,10 +542,9 @@ void _runLoadSessionState(
 ) {
   final session = state.sessions[cmd.sessionId];
   if (session == null) {
-    reply.send(EngineErrorResponse(
-      cmd.requestId,
-      'no session ${cmd.sessionId}',
-    ));
+    reply.send(
+      EngineErrorResponse(cmd.requestId, 'no session ${cmd.sessionId}'),
+    );
     return;
   }
   try {
@@ -563,12 +565,14 @@ void _runLoadSessionState(
       decoded.metadata.kvHead,
     );
 
-    reply.send(SessionStateLoadedResponse(
-      cmd.requestId,
-      extra: decoded.metadata.extra,
-      tokensCount: decoded.metadata.tokensCount,
-      kvHead: decoded.metadata.kvHead,
-    ));
+    reply.send(
+      SessionStateLoadedResponse(
+        cmd.requestId,
+        extra: decoded.metadata.extra,
+        tokensCount: decoded.metadata.tokensCount,
+        kvHead: decoded.metadata.kvHead,
+      ),
+    );
   } catch (e, st) {
     reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
   }
@@ -598,8 +602,9 @@ StateMetadata _currentMetadata({
     nSeqMax: state.context.nSeqMax,
     embeddings: state.context.params.embeddings,
     mmprojPath: mtmd?.params.mmprojPath,
-    mmprojSizeBytes:
-        mtmd == null ? null : File(mtmd.params.mmprojPath).statSync().size,
+    mmprojSizeBytes: mtmd == null
+        ? null
+        : File(mtmd.params.mmprojPath).statSync().size,
     mmprojSupportsVision: mtmd?.supportsVision,
     mmprojSupportsAudio: mtmd?.supportsAudio,
     seqId: (session as dynamic).seqId as int,
@@ -650,38 +655,46 @@ Future<void> _streamSampleAfterPrefill({
 
       if (isEog) {
         accumulator.clear();
-        reply.send(EngineGenerationEvent(
-          requestId,
-          TokenEvent(id: token, bytes: bytes, text: '', position: pos),
-        ));
-        reply.send(EngineGenerationEvent(
-          requestId,
-          DoneEvent(
-            reason: const StopEog(),
-            generatedCount: generated + 1,
-            committedPosition: pos,
+        reply.send(
+          EngineGenerationEvent(
+            requestId,
+            TokenEvent(id: token, bytes: bytes, text: '', position: pos),
           ),
-        ));
+        );
+        reply.send(
+          EngineGenerationEvent(
+            requestId,
+            DoneEvent(
+              reason: const StopEog(),
+              generatedCount: generated + 1,
+              committedPosition: pos,
+            ),
+          ),
+        );
         break;
       }
 
       final text = accumulator.accept(bytes);
-      reply.send(EngineGenerationEvent(
-        requestId,
-        TokenEvent(id: token, bytes: bytes, text: text, position: pos),
-      ));
+      reply.send(
+        EngineGenerationEvent(
+          requestId,
+          TokenEvent(id: token, bytes: bytes, text: text, position: pos),
+        ),
+      );
       generated++;
 
       if (generated >= maxTokens) {
-        reply.send(EngineGenerationEvent(
-          requestId,
-          DoneEvent(
-            reason: const StopMaxTokens(),
-            generatedCount: generated,
-            committedPosition: pos,
-            trailingText: accumulator.flush(),
+        reply.send(
+          EngineGenerationEvent(
+            requestId,
+            DoneEvent(
+              reason: const StopMaxTokens(),
+              generatedCount: generated,
+              committedPosition: pos,
+              trailingText: accumulator.flush(),
+            ),
           ),
-        ));
+        );
         break;
       }
 
@@ -689,10 +702,12 @@ Future<void> _streamSampleAfterPrefill({
       batch.add(token, pos, [seqId], wantLogits: true);
       final rc = lib.llama_decode(ctx.pointer, batch.raw);
       if (rc != 0) {
-        reply.send(EngineErrorResponse(
-          requestId,
-          'llama_decode failed during multimodal sampling: rc=$rc',
-        ));
+        reply.send(
+          EngineErrorResponse(
+            requestId,
+            'llama_decode failed during multimodal sampling: rc=$rc',
+          ),
+        );
         return;
       }
       pos++;
@@ -709,11 +724,7 @@ Future<void> _streamSampleAfterPrefill({
   }
 }
 
-void _runEmbedBatch(
-  EmbedBatchCommand cmd,
-  _WorkerState state,
-  SendPort reply,
-) {
+void _runEmbedBatch(EmbedBatchCommand cmd, _WorkerState state, SendPort reply) {
   if (!_claimGenerate(cmd.requestId, state, reply)) return;
   try {
     final results = BatchEmbedder(state.context).embed(
@@ -722,14 +733,16 @@ void _runEmbedBatch(
       parseSpecial: cmd.parseSpecial,
       normalize: cmd.normalize,
     );
-    reply.send(EmbedBatchResponse(
-      cmd.requestId,
-      nEmbd: results.isEmpty ? state.model.nEmbd : results.first.nEmbd,
-      poolingType: results.isEmpty ? -1 : results.first.poolingType,
-      normalized: cmd.normalize,
-      tokenCounts: [for (final r in results) r.nTokens],
-      vectors: [for (final r in results) r.vector],
-    ));
+    reply.send(
+      EmbedBatchResponse(
+        cmd.requestId,
+        nEmbd: results.isEmpty ? state.model.nEmbd : results.first.nEmbd,
+        poolingType: results.isEmpty ? -1 : results.first.poolingType,
+        normalized: cmd.normalize,
+        tokenCounts: [for (final r in results) r.nTokens],
+        vectors: [for (final r in results) r.vector],
+      ),
+    );
   } catch (e, st) {
     reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
   } finally {
@@ -745,11 +758,13 @@ Future<void> _runEmbed(
   if (!_claimGenerate(cmd.requestId, state, reply)) return;
   try {
     if (!state.context.params.embeddings) {
-      reply.send(EngineErrorResponse(
-        cmd.requestId,
-        'embedding requested but ContextParams.embeddings is false; '
-        'rebuild the engine with ContextParams(embeddings: true)',
-      ));
+      reply.send(
+        EngineErrorResponse(
+          cmd.requestId,
+          'embedding requested but ContextParams.embeddings is false; '
+          'rebuild the engine with ContextParams(embeddings: true)',
+        ),
+      );
       return;
     }
 
@@ -765,19 +780,23 @@ Future<void> _runEmbed(
     );
 
     if (tokens.isEmpty) {
-      reply.send(EngineErrorResponse(
-        cmd.requestId,
-        'embedding input tokenized to 0 tokens',
-      ));
+      reply.send(
+        EngineErrorResponse(
+          cmd.requestId,
+          'embedding input tokenized to 0 tokens',
+        ),
+      );
       return;
     }
 
     if (tokens.length > ctx.nBatch) {
-      reply.send(EngineErrorResponse(
-        cmd.requestId,
-        'embedding input has ${tokens.length} tokens which exceeds nBatch '
-        '(${ctx.nBatch}); raise ContextParams.nBatch / nUbatch',
-      ));
+      reply.send(
+        EngineErrorResponse(
+          cmd.requestId,
+          'embedding input has ${tokens.length} tokens which exceeds nBatch '
+          '(${ctx.nBatch}); raise ContextParams.nBatch / nUbatch',
+        ),
+      );
       return;
     }
 
@@ -802,11 +821,13 @@ Future<void> _runEmbed(
           ? lib.llama_encode(ctx.pointer, batch.raw)
           : lib.llama_decode(ctx.pointer, batch.raw);
       if (rc != 0) {
-        reply.send(EngineErrorResponse(
-          cmd.requestId,
-          '${usesEncoder ? 'llama_encode' : 'llama_decode'} '
-          'failed during embed: rc=$rc',
-        ));
+        reply.send(
+          EngineErrorResponse(
+            cmd.requestId,
+            '${usesEncoder ? 'llama_encode' : 'llama_decode'} '
+            'failed during embed: rc=$rc',
+          ),
+        );
         return;
       }
 
@@ -819,11 +840,13 @@ Future<void> _runEmbed(
       if (pooled) {
         final ptr = lib.llama_get_embeddings_seq(ctx.pointer, cmd.seqId);
         if (ptr == nullptr) {
-          reply.send(EngineErrorResponse(
-            cmd.requestId,
-            'llama_get_embeddings_seq returned null for seq ${cmd.seqId}; '
-            'check that the model supports this pooling type',
-          ));
+          reply.send(
+            EngineErrorResponse(
+              cmd.requestId,
+              'llama_get_embeddings_seq returned null for seq ${cmd.seqId}; '
+              'check that the model supports this pooling type',
+            ),
+          );
           return;
         }
         vec = Float32List.fromList(ptr.asTypedList(nEmbd));
@@ -833,24 +856,22 @@ Future<void> _runEmbed(
         for (var i = 0; i < tokens.length; i++) {
           final ptr = lib.llama_get_embeddings_ith(ctx.pointer, i);
           if (ptr == nullptr) continue;
-          vec.setRange(
-            i * nEmbd,
-            (i + 1) * nEmbd,
-            ptr.asTypedList(nEmbd),
-          );
+          vec.setRange(i * nEmbd, (i + 1) * nEmbd, ptr.asTypedList(nEmbd));
           if (cmd.normalize) _l2NormInPlace(vec, i * nEmbd, nEmbd);
         }
       }
 
-      reply.send(EmbedResponse(
-        cmd.requestId,
-        nEmbd: nEmbd,
-        nTokens: tokens.length,
-        pooled: pooled,
-        poolingType: poolingInt,
-        normalized: cmd.normalize,
-        vector: vec,
-      ));
+      reply.send(
+        EmbedResponse(
+          cmd.requestId,
+          nEmbd: nEmbd,
+          nTokens: tokens.length,
+          pooled: pooled,
+          poolingType: poolingInt,
+          normalized: cmd.normalize,
+          vector: vec,
+        ),
+      );
     } finally {
       batch.dispose();
     }
@@ -877,10 +898,12 @@ void _l2NormInPlace(Float32List v, int offset, int len) {
 
 bool _claimGenerate(int requestId, _WorkerState state, SendPort reply) {
   if (state.inFlightGenerateId != null) {
-    reply.send(EngineErrorResponse(
-      requestId,
-      'another generate is already in flight (request ${state.inFlightGenerateId})',
-    ));
+    reply.send(
+      EngineErrorResponse(
+        requestId,
+        'another generate is already in flight (request ${state.inFlightGenerateId})',
+      ),
+    );
     return false;
   }
   state.inFlightGenerateId = requestId;
@@ -968,20 +991,24 @@ void _tryCompleteShutdown(
   // These are per-engine allocations and can be released independently of
   // other workers. Keep process-global backend state alive: LlamaLibrary's
   // isolate-local dispose deliberately does not call llama_backend_free.
-  errors.addAll(_disposeNativeResources(
-    multimodal: state.multimodal,
-    context: state.context,
-    model: state.model,
-  ));
+  errors.addAll(
+    _disposeNativeResources(
+      multimodal: state.multimodal,
+      context: state.context,
+      model: state.model,
+    ),
+  );
 
   final requestId = state.shutdownRequestId!;
   if (errors.isEmpty) {
     reply.send(EngineShutdownComplete(requestId));
   } else {
-    reply.send(EngineErrorResponse(
-      requestId,
-      'native teardown completed with errors:\n${errors.join('\n')}',
-    ));
+    reply.send(
+      EngineErrorResponse(
+        requestId,
+        'native teardown completed with errors:\n${errors.join('\n')}',
+      ),
+    );
   }
   commandRx.close();
   if (!completer.isCompleted) completer.complete();

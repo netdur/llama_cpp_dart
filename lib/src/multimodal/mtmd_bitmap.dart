@@ -110,9 +110,7 @@ final class MtmdBitmap implements Finalizable {
       );
       final ptr = wrapper.bitmap;
       if (ptr == nullptr) {
-        throw const MultimodalException(
-          'failed to decode image from buffer',
-        );
+        throw const MultimodalException('failed to decode image from buffer');
       }
       return MtmdBitmap._(ptr);
     } finally {

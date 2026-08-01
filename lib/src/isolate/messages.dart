@@ -52,8 +52,11 @@ sealed class EngineCommand {
 final class CreateSessionCommand extends EngineCommand {
   final int sessionId;
   final int seqId;
-  const CreateSessionCommand(super.requestId,
-      {required this.sessionId, required this.seqId});
+  const CreateSessionCommand(
+    super.requestId, {
+    required this.sessionId,
+    required this.seqId,
+  });
 }
 
 final class DisposeSessionCommand extends EngineCommand {

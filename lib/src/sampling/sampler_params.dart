@@ -39,21 +39,21 @@ final class MirostatConfig {
   bool get enabled => version != MirostatVersion.off;
 
   Map<String, Object?> toJson() => {
-        'version': version.name,
-        'tau': tau,
-        'eta': eta,
-        'm': m,
-      };
+    'version': version.name,
+    'tau': tau,
+    'eta': eta,
+    'm': m,
+  };
 
   factory MirostatConfig.fromJson(Map<String, Object?> json) => MirostatConfig(
-        version: MirostatVersion.values.firstWhere(
-          (e) => e.name == json['version'],
-          orElse: () => MirostatVersion.off,
-        ),
-        tau: (json['tau'] as num?)?.toDouble() ?? 5.0,
-        eta: (json['eta'] as num?)?.toDouble() ?? 0.1,
-        m: (json['m'] as int?) ?? 100,
-      );
+    version: MirostatVersion.values.firstWhere(
+      (e) => e.name == json['version'],
+      orElse: () => MirostatVersion.off,
+    ),
+    tau: (json['tau'] as num?)?.toDouble() ?? 5.0,
+    eta: (json['eta'] as num?)?.toDouble() ?? 0.1,
+    m: (json['m'] as int?) ?? 100,
+  );
 }
 
 /// Dynamic temperature (entropy-aware) configuration. Activated when
@@ -66,19 +66,13 @@ final class DynamicTempConfig {
   /// Curve exponent; higher values flatten the response.
   final double exponent;
 
-  const DynamicTempConfig({
-    this.range = 0.0,
-    this.exponent = 1.0,
-  });
+  const DynamicTempConfig({this.range = 0.0, this.exponent = 1.0});
 
   static const DynamicTempConfig disabled = DynamicTempConfig();
 
   bool get enabled => range > 0;
 
-  Map<String, Object?> toJson() => {
-        'range': range,
-        'exponent': exponent,
-      };
+  Map<String, Object?> toJson() => {'range': range, 'exponent': exponent};
 
   factory DynamicTempConfig.fromJson(Map<String, Object?> json) =>
       DynamicTempConfig(
@@ -114,18 +108,18 @@ final class XtcConfig {
   bool get enabled => probability > 0;
 
   Map<String, Object?> toJson() => {
-        'probability': probability,
-        'threshold': threshold,
-        'minKeep': minKeep,
-        'seed': seed,
-      };
+    'probability': probability,
+    'threshold': threshold,
+    'minKeep': minKeep,
+    'seed': seed,
+  };
 
   factory XtcConfig.fromJson(Map<String, Object?> json) => XtcConfig(
-        probability: (json['probability'] as num?)?.toDouble() ?? 0.0,
-        threshold: (json['threshold'] as num?)?.toDouble() ?? 0.1,
-        minKeep: (json['minKeep'] as int?) ?? 1,
-        seed: (json['seed'] as int?) ?? defaultSeed,
-      );
+    probability: (json['probability'] as num?)?.toDouble() ?? 0.0,
+    threshold: (json['threshold'] as num?)?.toDouble() ?? 0.1,
+    minKeep: (json['minKeep'] as int?) ?? 1,
+    seed: (json['seed'] as int?) ?? defaultSeed,
+  );
 }
 
 /// DRY (Don't Repeat Yourself) sampler configuration. Disabled when
@@ -159,21 +153,21 @@ final class DryConfig {
   bool get enabled => multiplier > 0;
 
   Map<String, Object?> toJson() => {
-        'multiplier': multiplier,
-        'base': base,
-        'allowedLength': allowedLength,
-        'penaltyLastN': penaltyLastN,
-        'seqBreakers': seqBreakers,
-      };
+    'multiplier': multiplier,
+    'base': base,
+    'allowedLength': allowedLength,
+    'penaltyLastN': penaltyLastN,
+    'seqBreakers': seqBreakers,
+  };
 
   factory DryConfig.fromJson(Map<String, Object?> json) => DryConfig(
-        multiplier: (json['multiplier'] as num?)?.toDouble() ?? 0.0,
-        base: (json['base'] as num?)?.toDouble() ?? 1.75,
-        allowedLength: (json['allowedLength'] as int?) ?? 2,
-        penaltyLastN: (json['penaltyLastN'] as int?) ?? -1,
-        seqBreakers: ((json['seqBreakers'] as List?)?.cast<String>()) ??
-            const <String>[],
-      );
+    multiplier: (json['multiplier'] as num?)?.toDouble() ?? 0.0,
+    base: (json['base'] as num?)?.toDouble() ?? 1.75,
+    allowedLength: (json['allowedLength'] as int?) ?? 2,
+    penaltyLastN: (json['penaltyLastN'] as int?) ?? -1,
+    seqBreakers:
+        ((json['seqBreakers'] as List?)?.cast<String>()) ?? const <String>[],
+  );
 }
 
 /// Adaptive-P sampler configuration. Disabled when [target] < 0.
@@ -200,10 +194,10 @@ final class AdaptivePConfig {
   bool get enabled => target >= 0;
 
   Map<String, Object?> toJson() => {
-        'target': target,
-        'decay': decay,
-        'seed': seed,
-      };
+    'target': target,
+    'decay': decay,
+    'seed': seed,
+  };
 
   factory AdaptivePConfig.fromJson(Map<String, Object?> json) =>
       AdaptivePConfig(
@@ -243,20 +237,19 @@ final class GrammarConfig {
   bool get lazy => triggerPatterns.isNotEmpty || triggerTokens.isNotEmpty;
 
   Map<String, Object?> toJson() => {
-        'grammar': grammar,
-        'root': root,
-        'triggerPatterns': triggerPatterns,
-        'triggerTokens': triggerTokens,
-      };
+    'grammar': grammar,
+    'root': root,
+    'triggerPatterns': triggerPatterns,
+    'triggerTokens': triggerTokens,
+  };
 
   factory GrammarConfig.fromJson(Map<String, Object?> json) => GrammarConfig(
-        grammar: json['grammar'] as String?,
-        root: (json['root'] as String?) ?? 'root',
-        triggerPatterns:
-            ((json['triggerPatterns'] as List?)?.cast<String>()) ?? const [],
-        triggerTokens:
-            ((json['triggerTokens'] as List?)?.cast<int>()) ?? const [],
-      );
+    grammar: json['grammar'] as String?,
+    root: (json['root'] as String?) ?? 'root',
+    triggerPatterns:
+        ((json['triggerPatterns'] as List?)?.cast<String>()) ?? const [],
+    triggerTokens: ((json['triggerTokens'] as List?)?.cast<int>()) ?? const [],
+  );
 }
 
 /// One token-level logit bias entry.
@@ -267,10 +260,8 @@ final class LogitBiasEntry {
 
   Map<String, Object?> toJson() => {'token': token, 'bias': bias};
 
-  factory LogitBiasEntry.fromJson(Map<String, Object?> json) => LogitBiasEntry(
-        json['token']! as int,
-        (json['bias'] as num).toDouble(),
-      );
+  factory LogitBiasEntry.fromJson(Map<String, Object?> json) =>
+      LogitBiasEntry(json['token']! as int, (json['bias'] as num).toDouble());
 }
 
 /// Declarative configuration for sampling.
@@ -417,69 +408,73 @@ final class SamplerParams {
   }
 
   Map<String, Object?> toJson() => {
-        'seed': seed,
-        'temperature': temperature,
-        'topK': topK,
-        'topP': topP,
-        'minP': minP,
-        'typicalP': typicalP,
-        'topNSigma': topNSigma,
-        'minKeep': minKeep,
-        'repeatPenalty': repeatPenalty,
-        'penaltyLastN': penaltyLastN,
-        'frequencyPenalty': frequencyPenalty,
-        'presencePenalty': presencePenalty,
-        'greedy': greedy,
-        'infill': infill,
-        'mirostat': mirostat.toJson(),
-        'dynamicTemp': dynamicTemp.toJson(),
-        'xtc': xtc.toJson(),
-        'dry': dry.toJson(),
-        'adaptiveP': adaptiveP.toJson(),
-        'grammar': grammar.toJson(),
-        'logitBias': logitBias.map((e) => e.toJson()).toList(),
-      };
+    'seed': seed,
+    'temperature': temperature,
+    'topK': topK,
+    'topP': topP,
+    'minP': minP,
+    'typicalP': typicalP,
+    'topNSigma': topNSigma,
+    'minKeep': minKeep,
+    'repeatPenalty': repeatPenalty,
+    'penaltyLastN': penaltyLastN,
+    'frequencyPenalty': frequencyPenalty,
+    'presencePenalty': presencePenalty,
+    'greedy': greedy,
+    'infill': infill,
+    'mirostat': mirostat.toJson(),
+    'dynamicTemp': dynamicTemp.toJson(),
+    'xtc': xtc.toJson(),
+    'dry': dry.toJson(),
+    'adaptiveP': adaptiveP.toJson(),
+    'grammar': grammar.toJson(),
+    'logitBias': logitBias.map((e) => e.toJson()).toList(),
+  };
 
   factory SamplerParams.fromJson(Map<String, Object?> json) => SamplerParams(
-        seed: (json['seed'] as int?) ?? defaultSeed,
-        temperature: (json['temperature'] as num?)?.toDouble() ?? 0.8,
-        topK: (json['topK'] as int?) ?? 40,
-        topP: (json['topP'] as num?)?.toDouble() ?? 0.95,
-        minP: (json['minP'] as num?)?.toDouble() ?? 0.05,
-        typicalP: (json['typicalP'] as num?)?.toDouble() ?? 1.0,
-        topNSigma: (json['topNSigma'] as num?)?.toDouble() ?? 0.0,
-        minKeep: (json['minKeep'] as int?) ?? 1,
-        repeatPenalty: (json['repeatPenalty'] as num?)?.toDouble() ?? 1.0,
-        penaltyLastN: (json['penaltyLastN'] as int?) ?? 64,
-        frequencyPenalty: (json['frequencyPenalty'] as num?)?.toDouble() ?? 0.0,
-        presencePenalty: (json['presencePenalty'] as num?)?.toDouble() ?? 0.0,
-        greedy: (json['greedy'] as bool?) ?? false,
-        infill: (json['infill'] as bool?) ?? false,
-        mirostat: json['mirostat'] is Map
-            ? MirostatConfig.fromJson(
-                (json['mirostat'] as Map).cast<String, Object?>())
-            : MirostatConfig.disabled,
-        dynamicTemp: json['dynamicTemp'] is Map
-            ? DynamicTempConfig.fromJson(
-                (json['dynamicTemp'] as Map).cast<String, Object?>())
-            : DynamicTempConfig.disabled,
-        xtc: json['xtc'] is Map
-            ? XtcConfig.fromJson((json['xtc'] as Map).cast<String, Object?>())
-            : XtcConfig.disabled,
-        dry: json['dry'] is Map
-            ? DryConfig.fromJson((json['dry'] as Map).cast<String, Object?>())
-            : DryConfig.disabled,
-        adaptiveP: json['adaptiveP'] is Map
-            ? AdaptivePConfig.fromJson(
-                (json['adaptiveP'] as Map).cast<String, Object?>())
-            : AdaptivePConfig.disabled,
-        grammar: json['grammar'] is Map
-            ? GrammarConfig.fromJson(
-                (json['grammar'] as Map).cast<String, Object?>())
-            : GrammarConfig.disabled,
-        logitBias: ((json['logitBias'] as List?) ?? const [])
-            .cast<Map<String, Object?>>()
-            .map(LogitBiasEntry.fromJson)
-            .toList(growable: false),
-      );
+    seed: (json['seed'] as int?) ?? defaultSeed,
+    temperature: (json['temperature'] as num?)?.toDouble() ?? 0.8,
+    topK: (json['topK'] as int?) ?? 40,
+    topP: (json['topP'] as num?)?.toDouble() ?? 0.95,
+    minP: (json['minP'] as num?)?.toDouble() ?? 0.05,
+    typicalP: (json['typicalP'] as num?)?.toDouble() ?? 1.0,
+    topNSigma: (json['topNSigma'] as num?)?.toDouble() ?? 0.0,
+    minKeep: (json['minKeep'] as int?) ?? 1,
+    repeatPenalty: (json['repeatPenalty'] as num?)?.toDouble() ?? 1.0,
+    penaltyLastN: (json['penaltyLastN'] as int?) ?? 64,
+    frequencyPenalty: (json['frequencyPenalty'] as num?)?.toDouble() ?? 0.0,
+    presencePenalty: (json['presencePenalty'] as num?)?.toDouble() ?? 0.0,
+    greedy: (json['greedy'] as bool?) ?? false,
+    infill: (json['infill'] as bool?) ?? false,
+    mirostat: json['mirostat'] is Map
+        ? MirostatConfig.fromJson(
+            (json['mirostat'] as Map).cast<String, Object?>(),
+          )
+        : MirostatConfig.disabled,
+    dynamicTemp: json['dynamicTemp'] is Map
+        ? DynamicTempConfig.fromJson(
+            (json['dynamicTemp'] as Map).cast<String, Object?>(),
+          )
+        : DynamicTempConfig.disabled,
+    xtc: json['xtc'] is Map
+        ? XtcConfig.fromJson((json['xtc'] as Map).cast<String, Object?>())
+        : XtcConfig.disabled,
+    dry: json['dry'] is Map
+        ? DryConfig.fromJson((json['dry'] as Map).cast<String, Object?>())
+        : DryConfig.disabled,
+    adaptiveP: json['adaptiveP'] is Map
+        ? AdaptivePConfig.fromJson(
+            (json['adaptiveP'] as Map).cast<String, Object?>(),
+          )
+        : AdaptivePConfig.disabled,
+    grammar: json['grammar'] is Map
+        ? GrammarConfig.fromJson(
+            (json['grammar'] as Map).cast<String, Object?>(),
+          )
+        : GrammarConfig.disabled,
+    logitBias: ((json['logitBias'] as List?) ?? const [])
+        .cast<Map<String, Object?>>()
+        .map(LogitBiasEntry.fromJson)
+        .toList(growable: false),
+  );
 }

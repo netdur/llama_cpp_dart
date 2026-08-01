@@ -50,11 +50,7 @@ final class MultimodalContext implements Finalizable {
     try {
       cp.media_marker = markerPtr.cast();
 
-      final ptr = b.mtmd_init_from_file(
-        pathPtr.cast(),
-        model.pointer,
-        cp,
-      );
+      final ptr = b.mtmd_init_from_file(pathPtr.cast(), model.pointer, cp);
       if (ptr == nullptr) {
         throw MultimodalException(
           'mtmd_init_from_file returned null for ${params.mmprojPath}',
@@ -189,9 +185,7 @@ final class MultimodalContext implements Finalizable {
         newNPast,
       );
       if (evalRc != 0) {
-        throw MultimodalException(
-          'mtmd_helper_eval_chunks failed: rc=$evalRc',
-        );
+        throw MultimodalException('mtmd_helper_eval_chunks failed: rc=$evalRc');
       }
       return newNPast.value;
     } finally {

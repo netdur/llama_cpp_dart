@@ -73,9 +73,7 @@ final class LlamaLibrary {
   /// need a non-default strategy; calling later has no effect. Defaults to
   /// disabled and only matters on multi-socket Linux servers.
   static void initNuma(NumaStrategy strategy) {
-    bindings.llama_numa_init(
-      ggml_numa_strategy.fromValue(strategy.value),
-    );
+    bindings.llama_numa_init(ggml_numa_strategy.fromValue(strategy.value));
   }
 
   /// Load the native library and initialize llama / ggml backends.
@@ -301,9 +299,11 @@ final class LlamaLibrary {
   static void _setAdspLibraryPath(String dir) {
     try {
       final libc = DynamicLibrary.open('libc.so');
-      final setenv = libc.lookupFunction<
-          Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Int32),
-          int Function(Pointer<Utf8>, Pointer<Utf8>, int)>('setenv');
+      final setenv = libc
+          .lookupFunction<
+            Int32 Function(Pointer<Utf8>, Pointer<Utf8>, Int32),
+            int Function(Pointer<Utf8>, Pointer<Utf8>, int)
+          >('setenv');
       final keyPtr = 'ADSP_LIBRARY_PATH'.toNativeUtf8();
       final valPtr = dir.toNativeUtf8();
       try {

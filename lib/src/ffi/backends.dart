@@ -74,19 +74,19 @@ final class BackendDevice {
   bool get isAccelerator => type != BackendDeviceType.cpu;
 
   Map<String, Object?> toJson() => {
-        'name': name,
-        'description': description,
-        'type': type.name,
-        'memory_free': memoryFree,
-        'memory_total': memoryTotal,
-        'registry_name': registryName,
-      };
+    'name': name,
+    'description': description,
+    'type': type.name,
+    'memory_free': memoryFree,
+    'memory_total': memoryTotal,
+    'registry_name': registryName,
+  };
 
   @override
   String toString() {
     final mem = memoryTotal > 0
         ? ' [${(memoryFree / 1024 / 1024).toStringAsFixed(0)} / '
-            '${(memoryTotal / 1024 / 1024).toStringAsFixed(0)} MiB free]'
+              '${(memoryTotal / 1024 / 1024).toStringAsFixed(0)} MiB free]'
         : '';
     return '$name (${type.name}, $registryName): $description$mem';
   }
@@ -121,17 +121,20 @@ final class LlamaBackends {
         b.ggml_backend_dev_memory(dev, freePtr, totalPtr);
 
         final reg = b.ggml_backend_dev_backend_reg(dev);
-        final regNamePtr =
-            reg == nullptr ? nullptr : b.ggml_backend_reg_name(reg);
+        final regNamePtr = reg == nullptr
+            ? nullptr
+            : b.ggml_backend_reg_name(reg);
 
-        devices.add(BackendDevice(
-          name: _readCString(namePtr),
-          description: _readCString(descPtr),
-          type: _typeFromRaw(typeRaw),
-          memoryFree: freePtr.value,
-          memoryTotal: totalPtr.value,
-          registryName: _readCString(regNamePtr),
-        ));
+        devices.add(
+          BackendDevice(
+            name: _readCString(namePtr),
+            description: _readCString(descPtr),
+            type: _typeFromRaw(typeRaw),
+            memoryFree: freePtr.value,
+            memoryTotal: totalPtr.value,
+            registryName: _readCString(regNamePtr),
+          ),
+        );
       }
     } finally {
       calloc.free(freePtr);

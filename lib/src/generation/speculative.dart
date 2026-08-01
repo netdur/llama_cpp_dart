@@ -39,7 +39,8 @@ final class SpeculativeResult {
       draftedCount == 0 ? 0 : acceptedCount / draftedCount;
 
   @override
-  String toString() => 'SpeculativeResult(${tokens.length} tokens, '
+  String toString() =>
+      'SpeculativeResult(${tokens.length} tokens, '
       'accept $acceptedCount/$draftedCount '
       '= ${(acceptanceRate * 100).toStringAsFixed(1)}%, '
       'eog=$stoppedOnEog)';
@@ -133,8 +134,9 @@ final class SpeculativeDecoder {
     if (promptTokens.isEmpty) {
       throw const LlamaContextException('prompt tokenized to 0 tokens');
     }
-    final maxPrefill =
-        target.nBatch < draft.nBatch ? target.nBatch : draft.nBatch;
+    final maxPrefill = target.nBatch < draft.nBatch
+        ? target.nBatch
+        : draft.nBatch;
     if (promptTokens.length > maxPrefill) {
       throw LlamaContextException(
         'prompt has ${promptTokens.length} tokens which exceeds the smaller '
@@ -225,8 +227,9 @@ final class SpeculativeDecoder {
         verifyBatch.clear();
         verifyBatch.add(idLast, committedPos, [seqId], wantLogits: true);
         for (var i = 0; i < k; i++) {
-          verifyBatch.add(drafts[i], committedPos + 1 + i, [seqId],
-              wantLogits: true);
+          verifyBatch.add(drafts[i], committedPos + 1 + i, [
+            seqId,
+          ], wantLogits: true);
         }
         final vrc = lib.llama_decode(target.pointer, verifyBatch.raw);
         if (vrc != 0) {
@@ -270,7 +273,9 @@ final class SpeculativeDecoder {
           final lastLogits = target.logitsAt(k)!;
           bonus = stochastic
               ? _sampleProbs(
-                  _softmax(lastLogits, temperature), rng!.nextDouble())
+                  _softmax(lastLogits, temperature),
+                  rng!.nextDouble(),
+                )
               : _argmax(lastLogits);
         }
 
@@ -305,8 +310,9 @@ final class SpeculativeDecoder {
         // position) to keep both caches in lockstep before the next round.
         if (acceptedThisRound == k) {
           draftBatch.clear();
-          draftBatch.add(drafts[k - 1], committedPos + k, [seqId],
-              wantLogits: false);
+          draftBatch.add(drafts[k - 1], committedPos + k, [
+            seqId,
+          ], wantLogits: false);
           final rc = lib.llama_decode(draft.pointer, draftBatch.raw);
           if (rc != 0) {
             throw LlamaDecodeException(rc, 'draft catch-up decode failed');
@@ -350,12 +356,9 @@ final class SpeculativeDecoder {
   }) {
     batch.clear();
     for (var i = 0; i < tokens.length; i++) {
-      batch.add(
-        tokens[i],
-        i,
-        [seqId],
-        wantLogits: wantLastLogits && i == tokens.length - 1,
-      );
+      batch.add(tokens[i], i, [
+        seqId,
+      ], wantLogits: wantLastLogits && i == tokens.length - 1);
     }
     final rc = LlamaLibrary.bindings.llama_decode(context.pointer, batch.raw);
     if (rc != 0) {

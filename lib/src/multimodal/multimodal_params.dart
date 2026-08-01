@@ -64,15 +64,15 @@ final class MultimodalParams {
   }
 
   Map<String, Object?> toJson() => {
-        'mmprojPath': mmprojPath,
-        'useGpu': useGpu,
-        'printTimings': printTimings,
-        'nThreads': nThreads,
-        'mediaMarker': mediaMarker,
-        'warmup': warmup,
-        'imageMinTokens': imageMinTokens,
-        'imageMaxTokens': imageMaxTokens,
-      };
+    'mmprojPath': mmprojPath,
+    'useGpu': useGpu,
+    'printTimings': printTimings,
+    'nThreads': nThreads,
+    'mediaMarker': mediaMarker,
+    'warmup': warmup,
+    'imageMinTokens': imageMinTokens,
+    'imageMaxTokens': imageMaxTokens,
+  };
 
   factory MultimodalParams.fromJson(Map<String, Object?> json) =>
       MultimodalParams(

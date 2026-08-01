@@ -48,11 +48,7 @@ void main() {
     });
 
     test('carries auto-shift configuration to the worker', () {
-      const shift = ContextShift(
-        nKeep: 32,
-        nDiscard: 16,
-        keepBos: false,
-      );
+      const shift = ContextShift(nKeep: 32, nDiscard: 16, keepBos: false);
       const command = GenerateChatCommand(
         1,
         sessionId: 2,

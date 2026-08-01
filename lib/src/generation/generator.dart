@@ -25,8 +25,8 @@ final class Generator implements Finalizable {
   bool _disposed = false;
 
   Generator(this.context, this.tokenizer, {LlamaBatch? batch})
-      : _batch = batch ?? LlamaBatch(context.nBatch),
-        _ownsBatch = batch == null;
+    : _batch = batch ?? LlamaBatch(context.nBatch),
+      _ownsBatch = batch == null;
 
   /// Run [request], yielding [TokenEvent]s as tokens are sampled and a final
   /// [DoneEvent] describing why the stream ended. May also yield
@@ -70,12 +70,7 @@ final class Generator implements Finalizable {
           // from streaming text. Consumers can still inspect `bytes` or
           // re-decode `id` via the tokenizer if they need the marker.
           accumulator.clear();
-          yield TokenEvent(
-            id: token,
-            bytes: bytes,
-            text: '',
-            position: pos,
-          );
+          yield TokenEvent(id: token, bytes: bytes, text: '', position: pos);
           yield DoneEvent(
             reason: const StopEog(),
             generatedCount: generated + 1,
@@ -86,12 +81,7 @@ final class Generator implements Finalizable {
 
         final text = accumulator.accept(bytes);
 
-        yield TokenEvent(
-          id: token,
-          bytes: bytes,
-          text: text,
-          position: pos,
-        );
+        yield TokenEvent(id: token, bytes: bytes, text: text, position: pos);
         generated++;
 
         if (generated >= request.maxTokens) {
@@ -163,12 +153,7 @@ final class Generator implements Finalizable {
     }
 
     final mem = lib.llama_get_memory(context.pointer);
-    lib.llama_memory_seq_rm(
-      mem,
-      request.seqId,
-      nKeep,
-      nKeep + nDiscard,
-    );
+    lib.llama_memory_seq_rm(mem, request.seqId, nKeep, nKeep + nDiscard);
     lib.llama_memory_seq_add(
       mem,
       request.seqId,

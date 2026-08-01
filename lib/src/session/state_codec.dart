@@ -118,40 +118,40 @@ final class StateMetadata {
   });
 
   Map<String, Object?> toJson() => {
-        'codec_version': codecVersion,
-        'saved_at': savedAt,
-        'wrapper_version': wrapperVersion,
-        'model': {
-          'path': modelPath,
-          'size_bytes': modelSizeBytes,
-          'n_params': modelNParams,
-          'n_embd': modelNEmbd,
-          'n_layer': modelNLayer,
-          'train_ctx': modelTrainCtx,
-        },
-        'context': {
-          'n_ctx': nCtx,
-          'n_batch': nBatch,
-          'n_ubatch': nUbatch,
-          'n_seq_max': nSeqMax,
-          'embeddings': embeddings,
-        },
-        'multimodal': mmprojPath == null
-            ? null
-            : {
-                'path': mmprojPath,
-                'size_bytes': mmprojSizeBytes,
-                'vision': mmprojSupportsVision,
-                'audio': mmprojSupportsAudio,
-              },
-        'session': {
-          'seq_id': seqId,
-          'kv_head': kvHead,
-          'tokens_count': tokensCount,
-          'tokens_checksum': tokensChecksum,
-        },
-        'extra': extra,
-      };
+    'codec_version': codecVersion,
+    'saved_at': savedAt,
+    'wrapper_version': wrapperVersion,
+    'model': {
+      'path': modelPath,
+      'size_bytes': modelSizeBytes,
+      'n_params': modelNParams,
+      'n_embd': modelNEmbd,
+      'n_layer': modelNLayer,
+      'train_ctx': modelTrainCtx,
+    },
+    'context': {
+      'n_ctx': nCtx,
+      'n_batch': nBatch,
+      'n_ubatch': nUbatch,
+      'n_seq_max': nSeqMax,
+      'embeddings': embeddings,
+    },
+    'multimodal': mmprojPath == null
+        ? null
+        : {
+            'path': mmprojPath,
+            'size_bytes': mmprojSizeBytes,
+            'vision': mmprojSupportsVision,
+            'audio': mmprojSupportsAudio,
+          },
+    'session': {
+      'seq_id': seqId,
+      'kv_head': kvHead,
+      'tokens_count': tokensCount,
+      'tokens_checksum': tokensChecksum,
+    },
+    'extra': extra,
+  };
 
   factory StateMetadata.fromJson(Map<String, Object?> json) {
     final model = json['model']! as Map<String, Object?>;
@@ -309,11 +309,7 @@ DecodedState decodeState(Uint8List file) {
     );
   }
 
-  return DecodedState(
-    metadata: metadata,
-    tokens: tokens,
-    rawState: rawState,
-  );
+  return DecodedState(metadata: metadata, tokens: tokens, rawState: rawState);
 }
 
 /// Compute an FNV-1a 64-bit hash. Stable for sanity-checking; not crypto.

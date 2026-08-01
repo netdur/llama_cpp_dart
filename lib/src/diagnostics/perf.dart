@@ -63,10 +63,7 @@ final class SamplerPerf {
   /// Number of sampling calls made.
   final int nSample;
 
-  const SamplerPerf({
-    required this.sampleMs,
-    required this.nSample,
-  });
+  const SamplerPerf({required this.sampleMs, required this.nSample});
 
   /// Convenience: average milliseconds per sample call.
   double get msPerSample => nSample == 0 ? 0 : sampleMs / nSample;

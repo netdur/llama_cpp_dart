@@ -24,8 +24,11 @@ void main() {
     return;
   }
   if (modelPath == null || modelPath.isEmpty) {
-    test('LLAMA_CPP_DART_MODEL not set', () {},
-        skip: 'set LLAMA_CPP_DART_MODEL');
+    test(
+      'LLAMA_CPP_DART_MODEL not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MODEL',
+    );
     return;
   }
 
@@ -43,16 +46,16 @@ void main() {
   });
 
   LlamaContext newEmbedContext({int nSeqMax = 4}) => LlamaContext.create(
-        model,
-        ContextParams(
-          nCtx: 512,
-          nBatch: 512,
-          nUbatch: 512,
-          nSeqMax: nSeqMax,
-          embeddings: true,
-          poolingType: PoolingType.mean,
-        ),
-      );
+    model,
+    ContextParams(
+      nCtx: 512,
+      nBatch: 512,
+      nUbatch: 512,
+      nSeqMax: nSeqMax,
+      embeddings: true,
+      poolingType: PoolingType.mean,
+    ),
+  );
 
   double l2(List<double> v) =>
       math.sqrt(v.fold<double>(0, (s, x) => s + x * x));
@@ -102,8 +105,9 @@ void main() {
       final ctx = newEmbedContext();
       addTearDown(ctx.dispose);
 
-      final results =
-          BatchEmbedder(ctx).embed(['apples and oranges', 'tax law statute']);
+      final results = BatchEmbedder(
+        ctx,
+      ).embed(['apples and oranges', 'tax law statute']);
       expect(cosine(results[0].vector, results[1].vector), lessThan(0.9999));
     });
 

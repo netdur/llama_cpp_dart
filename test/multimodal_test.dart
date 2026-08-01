@@ -21,13 +21,19 @@ void main() {
     return;
   }
   if (modelPath == null || modelPath.isEmpty) {
-    test('LLAMA_CPP_DART_MODEL not set', () {},
-        skip: 'set LLAMA_CPP_DART_MODEL');
+    test(
+      'LLAMA_CPP_DART_MODEL not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MODEL',
+    );
     return;
   }
   if (mmprojPath == null || mmprojPath.isEmpty) {
-    test('LLAMA_CPP_DART_MMPROJ not set', () {},
-        skip: 'set LLAMA_CPP_DART_MMPROJ');
+    test(
+      'LLAMA_CPP_DART_MMPROJ not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MMPROJ',
+    );
     return;
   }
 
@@ -35,8 +41,11 @@ void main() {
   final fixtureImage =
       '${Directory.current.path}/src/llama.cpp/tools/mtmd/test-1.jpeg';
   if (!File(fixtureImage).existsSync()) {
-    test('mtmd test fixture not present', () {},
-        skip: 'expected $fixtureImage');
+    test(
+      'mtmd test fixture not present',
+      () {},
+      skip: 'expected $fixtureImage',
+    );
     return;
   }
 

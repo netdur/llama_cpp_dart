@@ -37,10 +37,14 @@ final class LlamaLog {
 
   /// Restore the default behavior (logs printed to stderr by llama.cpp).
   static void useDefault() {
-    LlamaLibrary.bindings
-        .llama_log_set(nullptr.cast<NativeFunction<_LogCallbackC>>(), nullptr);
-    LlamaLibrary.bindings
-        .ggml_log_set(nullptr.cast<NativeFunction<_LogCallbackC>>(), nullptr);
+    LlamaLibrary.bindings.llama_log_set(
+      nullptr.cast<NativeFunction<_LogCallbackC>>(),
+      nullptr,
+    );
+    LlamaLibrary.bindings.ggml_log_set(
+      nullptr.cast<NativeFunction<_LogCallbackC>>(),
+      nullptr,
+    );
   }
 
   /// Redirect the process-wide stderr `FILE*` to [path] so llama.cpp / ggml
@@ -62,16 +66,18 @@ final class LlamaLog {
     final stderrFp = _stderrFilePtr(libc);
     if (stderrFp == null || stderrFp == nullptr) {
       throw const LlamaLogException(
-          'could not resolve stderr FILE* for capture');
+        'could not resolve stderr FILE* for capture',
+      );
     }
 
     final pathPtr = path.toNativeUtf8();
     final modePtr = (append ? 'a' : 'w').toNativeUtf8();
     try {
-      final freopen = libc.lookupFunction<
-          Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>),
-          Pointer<Void> Function(
-              Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>)>('freopen');
+      final freopen = libc
+          .lookupFunction<
+            Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>),
+            Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>)
+          >('freopen');
       final result = freopen(pathPtr, modePtr, stderrFp);
       if (result == nullptr) {
         throw LlamaLogException('freopen($path) failed for stderr capture');
@@ -80,13 +86,9 @@ final class LlamaLog {
 
       // _IONBF=2: make stderr unbuffered so log lines are visible immediately.
       libc.lookupFunction<
-          Int32 Function(Pointer<Void>, Pointer<Char>, Int32, IntPtr),
-          int Function(Pointer<Void>, Pointer<Char>, int, int)>('setvbuf')(
-        stderrFp,
-        nullptr,
-        2,
-        0,
-      );
+        Int32 Function(Pointer<Void>, Pointer<Char>, Int32, IntPtr),
+        int Function(Pointer<Void>, Pointer<Char>, int, int)
+      >('setvbuf')(stderrFp, nullptr, 2, 0);
     } finally {
       malloc.free(pathPtr);
       malloc.free(modePtr);
@@ -110,10 +112,11 @@ final class LlamaLog {
     final devNull = '/dev/null'.toNativeUtf8();
     final mode = 'w'.toNativeUtf8();
     try {
-      final freopen = libc.lookupFunction<
-          Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>),
-          Pointer<Void> Function(
-              Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>)>('freopen');
+      final freopen = libc
+          .lookupFunction<
+            Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>),
+            Pointer<Void> Function(Pointer<Utf8>, Pointer<Utf8>, Pointer<Void>)
+          >('freopen');
       freopen(devNull, mode, stderrFp);
     } finally {
       malloc.free(devNull);
@@ -131,15 +134,17 @@ final class LlamaLog {
   static DynamicLibrary get _libc {
     if (Platform.isWindows) {
       throw const LlamaLogException(
-          'stderr capture is not supported on Windows');
+        'stderr capture is not supported on Windows',
+      );
     }
     if (Platform.isAndroid) return DynamicLibrary.open('libc.so');
     return DynamicLibrary.process();
   }
 
   static Pointer<Void>? _stderrFilePtr(DynamicLibrary libc) {
-    final symbol =
-        (Platform.isMacOS || Platform.isIOS) ? '__stderrp' : 'stderr';
+    final symbol = (Platform.isMacOS || Platform.isIOS)
+        ? '__stderrp'
+        : 'stderr';
     try {
       return libc.lookup<Pointer<Void>>(symbol).cast<Pointer<Void>>().value;
     } on ArgumentError {
@@ -155,8 +160,9 @@ class LlamaLogException implements Exception {
   String toString() => 'LlamaLogException: $message';
 }
 
-typedef _LogCallbackC = Void Function(
-  UnsignedInt level,
-  Pointer<Char> text,
-  Pointer<Void> userData,
-);
+typedef _LogCallbackC =
+    Void Function(
+      UnsignedInt level,
+      Pointer<Char> text,
+      Pointer<Void> userData,
+    );

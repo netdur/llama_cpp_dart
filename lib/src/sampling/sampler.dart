@@ -23,8 +23,8 @@ final class Sampler implements Finalizable {
   /// Wrap a sampler pointer we don't own (e.g. a chain stage). [dispose]
   /// on this handle is a no-op so we don't double-free the parent's slot.
   Sampler._borrowed(this._ptr)
-      : params = const SamplerParams(),
-        _borrowed = true;
+    : params = const SamplerParams(),
+      _borrowed = true;
 
   Pointer<llama_sampler> get pointer {
     _ensureAlive();
@@ -34,8 +34,11 @@ final class Sampler implements Finalizable {
   /// Sample a token from the logits at index [idx] of the last decode.
   /// `idx = -1` (default) takes the logits at the last submitted position.
   int sample(LlamaContext context, {int idx = -1}) {
-    return LlamaLibrary.bindings
-        .llama_sampler_sample(pointer, context.pointer, idx);
+    return LlamaLibrary.bindings.llama_sampler_sample(
+      pointer,
+      context.pointer,
+      idx,
+    );
   }
 
   /// Inform the chain about the chosen [token]. Required for stateful samplers
@@ -96,8 +99,10 @@ final class Sampler implements Finalizable {
   /// Detach the [index]-th stage from the chain and return it as an owned
   /// [Sampler]. The caller must dispose the returned handle.
   Sampler chainRemove(int index) {
-    final raw =
-        LlamaLibrary.bindings.llama_sampler_chain_remove(pointer, index);
+    final raw = LlamaLibrary.bindings.llama_sampler_chain_remove(
+      pointer,
+      index,
+    );
     if (raw == nullptr) {
       throw RangeError.range(index, 0, chainCount - 1, 'index');
     }

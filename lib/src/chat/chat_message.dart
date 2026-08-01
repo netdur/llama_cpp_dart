@@ -22,45 +22,42 @@ final class ChatMessage {
   });
 
   const ChatMessage.system(this.content)
-      : role = 'system',
-        media = const <LlamaMedia>[];
+    : role = 'system',
+      media = const <LlamaMedia>[];
 
-  const ChatMessage.user(
-    this.content, {
-    this.media = const <LlamaMedia>[],
-  }) : role = 'user';
+  const ChatMessage.user(this.content, {this.media = const <LlamaMedia>[]})
+    : role = 'user';
 
   const ChatMessage.assistant(this.content)
-      : role = 'assistant',
-        media = const <LlamaMedia>[];
+    : role = 'assistant',
+      media = const <LlamaMedia>[];
 
   const ChatMessage.tool(this.content)
-      : role = 'tool',
-        media = const <LlamaMedia>[];
+    : role = 'tool',
+      media = const <LlamaMedia>[];
 
   ChatMessage copyWith({
     String? role,
     String? content,
     List<LlamaMedia>? media,
-  }) =>
-      ChatMessage(
-        role: role ?? this.role,
-        content: content ?? this.content,
-        media: media ?? this.media,
-      );
+  }) => ChatMessage(
+    role: role ?? this.role,
+    content: content ?? this.content,
+    media: media ?? this.media,
+  );
 
   /// JSON friendly snapshot; the `media` field is reduced to a count, since
   /// raw bytes don't survive a JSON round-trip.
   Map<String, Object?> toJson() => {
-        'role': role,
-        'content': content,
-        if (media.isNotEmpty) 'media_count': media.length,
-      };
+    'role': role,
+    'content': content,
+    if (media.isNotEmpty) 'media_count': media.length,
+  };
 
   factory ChatMessage.fromJson(Map<String, Object?> json) => ChatMessage(
-        role: json['role']! as String,
-        content: json['content']! as String,
-      );
+    role: json['role']! as String,
+    content: json['content']! as String,
+  );
 
   @override
   String toString() {

@@ -23,8 +23,11 @@ void main() {
     return;
   }
   if (modelPath == null || modelPath.isEmpty) {
-    test('LLAMA_CPP_DART_MODEL not set', () {},
-        skip: 'set LLAMA_CPP_DART_MODEL');
+    test(
+      'LLAMA_CPP_DART_MODEL not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MODEL',
+    );
     return;
   }
 
@@ -42,9 +45,9 @@ void main() {
   });
 
   LlamaContext newCtx() => LlamaContext.create(
-        model,
-        const ContextParams(nCtx: 512, nBatch: 512, nUbatch: 512),
-      );
+    model,
+    const ContextParams(nCtx: 512, nBatch: 512, nUbatch: 512),
+  );
 
   List<int> plainGreedy(String prompt, int maxTokens) {
     final ctx = newCtx();
@@ -56,8 +59,9 @@ void main() {
     try {
       batch.clear();
       for (var i = 0; i < promptTokens.length; i++) {
-        batch.add(promptTokens[i], i, const [0],
-            wantLogits: i == promptTokens.length - 1);
+        batch.add(promptTokens[i], i, const [
+          0,
+        ], wantLogits: i == promptTokens.length - 1);
       }
       lib.llama_decode(ctx.pointer, batch.raw);
       var pos = promptTokens.length;
@@ -90,11 +94,10 @@ void main() {
       addTearDown(target.dispose);
       addTearDown(draft.dispose);
 
-      final result = SpeculativeDecoder(target: target, draft: draft).generate(
-        prompt: prompt,
-        maxTokens: maxTokens,
-        draftLength: 4,
-      );
+      final result = SpeculativeDecoder(
+        target: target,
+        draft: draft,
+      ).generate(prompt: prompt, maxTokens: maxTokens, draftLength: 4);
 
       expect(result.tokens, equals(reference));
       // Identical models agree on every draft → ~100% acceptance.
@@ -108,11 +111,10 @@ void main() {
       addTearDown(target.dispose);
       addTearDown(draft.dispose);
 
-      final result = SpeculativeDecoder(target: target, draft: draft).generate(
-        prompt: 'Once upon a time',
-        maxTokens: 7,
-        draftLength: 4,
-      );
+      final result = SpeculativeDecoder(
+        target: target,
+        draft: draft,
+      ).generate(prompt: 'Once upon a time', maxTokens: 7, draftLength: 4);
       expect(result.tokens.length, lessThanOrEqualTo(7));
     });
 
@@ -124,16 +126,17 @@ void main() {
       for (final k in [1, 2, 8]) {
         final target = newCtx();
         final draft = newCtx();
-        final result =
-            SpeculativeDecoder(target: target, draft: draft).generate(
-          prompt: prompt,
-          maxTokens: maxTokens,
-          draftLength: k,
-        );
+        final result = SpeculativeDecoder(
+          target: target,
+          draft: draft,
+        ).generate(prompt: prompt, maxTokens: maxTokens, draftLength: k);
         target.dispose();
         draft.dispose();
-        expect(result.tokens, equals(reference),
-            reason: 'draftLength=$k should not change the output');
+        expect(
+          result.tokens,
+          equals(reference),
+          reason: 'draftLength=$k should not change the output',
+        );
       }
     });
 

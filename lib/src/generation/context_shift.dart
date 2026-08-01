@@ -31,11 +31,7 @@ final class ContextShift {
   /// models that don't add a BOS at tokenize time.
   final bool keepBos;
 
-  const ContextShift({
-    this.nKeep = -1,
-    this.nDiscard,
-    this.keepBos = true,
-  });
+  const ContextShift({this.nKeep = -1, this.nDiscard, this.keepBos = true});
 
   static const ContextShift defaults = ContextShift();
 }

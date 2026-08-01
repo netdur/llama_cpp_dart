@@ -24,8 +24,11 @@ void main() {
     return;
   }
   if (modelPath == null || modelPath.isEmpty) {
-    test('LLAMA_CPP_DART_MODEL not set', () {},
-        skip: 'set LLAMA_CPP_DART_MODEL');
+    test(
+      'LLAMA_CPP_DART_MODEL not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MODEL',
+    );
     return;
   }
 
@@ -85,18 +88,10 @@ void main() {
 
       batch.clear();
       for (var i = 0; i < tokens.length; i++) {
-        batch.add(
-          tokens[i],
-          i,
-          const [0],
-          wantLogits: i == tokens.length - 1,
-        );
+        batch.add(tokens[i], i, const [0], wantLogits: i == tokens.length - 1);
       }
 
-      final rc = LlamaLibrary.bindings.llama_decode(
-        context.pointer,
-        batch.raw,
-      );
+      final rc = LlamaLibrary.bindings.llama_decode(context.pointer, batch.raw);
       expect(rc, 0, reason: 'llama_decode returned non-zero: $rc');
     });
 

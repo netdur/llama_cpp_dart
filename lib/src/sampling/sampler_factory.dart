@@ -48,7 +48,8 @@ final class SamplerFactory {
     if (params.logitBias.isNotEmpty) {
       final nVocab = model == null
           ? throw StateError(
-              'SamplerFactory.build: logit_bias requires a model (n_vocab).')
+              'SamplerFactory.build: logit_bias requires a model (n_vocab).',
+            )
           : b.llama_vocab_n_tokens(model.vocab.pointer);
       final arr = calloc<llama_logit_bias>(params.logitBias.length);
       for (var i = 0; i < params.logitBias.length; i++) {
@@ -63,7 +64,8 @@ final class SamplerFactory {
       calloc.free(arr);
     }
 
-    final hasPenalty = params.repeatPenalty != 1.0 ||
+    final hasPenalty =
+        params.repeatPenalty != 1.0 ||
         params.frequencyPenalty != 0.0 ||
         params.presencePenalty != 0.0;
     if (hasPenalty) {
@@ -82,8 +84,9 @@ final class SamplerFactory {
       final vocab = requireVocab('DRY sampler');
       final m = model!;
       final breakers = params.dry.seqBreakers;
-      final breakerPtrs =
-          calloc<Pointer<Char>>(breakers.isEmpty ? 1 : breakers.length);
+      final breakerPtrs = calloc<Pointer<Char>>(
+        breakers.isEmpty ? 1 : breakers.length,
+      );
       final allocated = <Pointer<Utf8>>[];
       for (var i = 0; i < breakers.length; i++) {
         final s = breakers[i].toNativeUtf8(allocator: calloc);
@@ -118,10 +121,7 @@ final class SamplerFactory {
     }
 
     if (params.topK > 0) {
-      b.llama_sampler_chain_add(
-        chain,
-        b.llama_sampler_init_top_k(params.topK),
-      );
+      b.llama_sampler_chain_add(chain, b.llama_sampler_init_top_k(params.topK));
     }
 
     if (params.typicalP < 1.0) {
@@ -224,10 +224,7 @@ final class SamplerFactory {
         ),
       );
     } else {
-      b.llama_sampler_chain_add(
-        chain,
-        b.llama_sampler_init_dist(params.seed),
-      );
+      b.llama_sampler_chain_add(chain, b.llama_sampler_init_dist(params.seed));
     }
 
     return Sampler(chain, params);
@@ -295,8 +292,9 @@ final class SamplerFactory {
       }
 
       final patterns = cfg.triggerPatterns;
-      final patternPtrs =
-          calloc<Pointer<Char>>(patterns.isEmpty ? 1 : patterns.length);
+      final patternPtrs = calloc<Pointer<Char>>(
+        patterns.isEmpty ? 1 : patterns.length,
+      );
       final allocated = <Pointer<Utf8>>[];
       for (var i = 0; i < patterns.length; i++) {
         final s = patterns[i].toNativeUtf8(allocator: calloc);

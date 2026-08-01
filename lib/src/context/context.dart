@@ -56,9 +56,7 @@ final class LlamaContext implements Finalizable {
 
     final ptr = b.llama_init_from_model(model.pointer, cp);
     if (ptr == nullptr) {
-      throw const LlamaContextException(
-        'llama_init_from_model returned null',
-      );
+      throw const LlamaContextException('llama_init_from_model returned null');
     }
     return LlamaContext._(model, params, ptr);
   }
@@ -133,12 +131,7 @@ final class LlamaContext implements Finalizable {
   /// Copy positions `[p0, p1)` of [srcSeqId] onto [dstSeqId]. Useful for
   /// forking a sequence (e.g. evaluating multiple sampling continuations
   /// against the same prefix). Pass `-1` for either end to mean unbounded.
-  void memorySeqCp(
-    int srcSeqId,
-    int dstSeqId, {
-    int p0 = -1,
-    int p1 = -1,
-  }) {
+  void memorySeqCp(int srcSeqId, int dstSeqId, {int p0 = -1, int p1 = -1}) {
     final lib = LlamaLibrary.bindings;
     lib.llama_memory_seq_cp(
       lib.llama_get_memory(pointer),
@@ -175,13 +168,7 @@ final class LlamaContext implements Finalizable {
   /// RoPE-rotation tricks (long-context extrapolation). [d] must be `> 0`.
   void memorySeqDiv(int seqId, {int p0 = -1, int p1 = -1, required int d}) {
     final lib = LlamaLibrary.bindings;
-    lib.llama_memory_seq_div(
-      lib.llama_get_memory(pointer),
-      seqId,
-      p0,
-      p1,
-      d,
-    );
+    lib.llama_memory_seq_div(lib.llama_get_memory(pointer), seqId, p0, p1, d);
   }
 
   /// Smallest position currently held in the KV cache for [seqId]. Returns
@@ -371,7 +358,13 @@ final class LlamaContext implements Finalizable {
     final lib = LlamaLibrary.bindings;
     if (data.isEmpty) {
       final rc = lib.llama_set_adapter_cvec(
-          pointer, nullptr, 0, nEmbd, ilStart, ilEnd);
+        pointer,
+        nullptr,
+        0,
+        nEmbd,
+        ilStart,
+        ilEnd,
+      );
       if (rc != 0) {
         throw LlamaLibraryException('llama_set_adapter_cvec rc=$rc');
       }
@@ -409,55 +402,54 @@ final class LlamaContext implements Finalizable {
   }
 
   static int _flashAttnInt(FlashAttention v) => switch (v) {
-        FlashAttention.auto =>
-          llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_AUTO.value,
-        FlashAttention.off =>
-          llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_DISABLED.value,
-        FlashAttention.on =>
-          llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_ENABLED.value,
-      };
+    FlashAttention.auto =>
+      llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_AUTO.value,
+    FlashAttention.off =>
+      llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_DISABLED.value,
+    FlashAttention.on =>
+      llama_flash_attn_type.LLAMA_FLASH_ATTN_TYPE_ENABLED.value,
+  };
 
   static int _ropeScalingInt(RopeScalingType v) => switch (v) {
-        RopeScalingType.auto =>
-          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED.value,
-        RopeScalingType.none =>
-          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_NONE.value,
-        RopeScalingType.linear =>
-          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_LINEAR.value,
-        RopeScalingType.yarn =>
-          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_YARN.value,
-        RopeScalingType.longrope =>
-          llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_LONGROPE.value,
-      };
+    RopeScalingType.auto =>
+      llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_UNSPECIFIED.value,
+    RopeScalingType.none =>
+      llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_NONE.value,
+    RopeScalingType.linear =>
+      llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_LINEAR.value,
+    RopeScalingType.yarn =>
+      llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_YARN.value,
+    RopeScalingType.longrope =>
+      llama_rope_scaling_type.LLAMA_ROPE_SCALING_TYPE_LONGROPE.value,
+  };
 
   static int _poolingInt(PoolingType v) => switch (v) {
-        PoolingType.auto =>
-          llama_pooling_type.LLAMA_POOLING_TYPE_UNSPECIFIED.value,
-        PoolingType.none => llama_pooling_type.LLAMA_POOLING_TYPE_NONE.value,
-        PoolingType.mean => llama_pooling_type.LLAMA_POOLING_TYPE_MEAN.value,
-        PoolingType.cls => llama_pooling_type.LLAMA_POOLING_TYPE_CLS.value,
-        PoolingType.last => llama_pooling_type.LLAMA_POOLING_TYPE_LAST.value,
-        PoolingType.rank => llama_pooling_type.LLAMA_POOLING_TYPE_RANK.value,
-      };
+    PoolingType.auto => llama_pooling_type.LLAMA_POOLING_TYPE_UNSPECIFIED.value,
+    PoolingType.none => llama_pooling_type.LLAMA_POOLING_TYPE_NONE.value,
+    PoolingType.mean => llama_pooling_type.LLAMA_POOLING_TYPE_MEAN.value,
+    PoolingType.cls => llama_pooling_type.LLAMA_POOLING_TYPE_CLS.value,
+    PoolingType.last => llama_pooling_type.LLAMA_POOLING_TYPE_LAST.value,
+    PoolingType.rank => llama_pooling_type.LLAMA_POOLING_TYPE_RANK.value,
+  };
 
   static int _attentionInt(AttentionType v) => switch (v) {
-        AttentionType.auto =>
-          llama_attention_type.LLAMA_ATTENTION_TYPE_UNSPECIFIED.value,
-        AttentionType.causal =>
-          llama_attention_type.LLAMA_ATTENTION_TYPE_CAUSAL.value,
-        AttentionType.nonCausal =>
-          llama_attention_type.LLAMA_ATTENTION_TYPE_NON_CAUSAL.value,
-      };
+    AttentionType.auto =>
+      llama_attention_type.LLAMA_ATTENTION_TYPE_UNSPECIFIED.value,
+    AttentionType.causal =>
+      llama_attention_type.LLAMA_ATTENTION_TYPE_CAUSAL.value,
+    AttentionType.nonCausal =>
+      llama_attention_type.LLAMA_ATTENTION_TYPE_NON_CAUSAL.value,
+  };
 
   static int _kvCacheTypeInt(KvCacheType v) => switch (v) {
-        KvCacheType.f32 => ggml_type.GGML_TYPE_F32.value,
-        KvCacheType.f16 => ggml_type.GGML_TYPE_F16.value,
-        KvCacheType.bf16 => ggml_type.GGML_TYPE_BF16.value,
-        KvCacheType.q8_0 => ggml_type.GGML_TYPE_Q8_0.value,
-        KvCacheType.q4_0 => ggml_type.GGML_TYPE_Q4_0.value,
-        KvCacheType.q4_1 => ggml_type.GGML_TYPE_Q4_1.value,
-        KvCacheType.iq4_nl => ggml_type.GGML_TYPE_IQ4_NL.value,
-        KvCacheType.q5_0 => ggml_type.GGML_TYPE_Q5_0.value,
-        KvCacheType.q5_1 => ggml_type.GGML_TYPE_Q5_1.value,
-      };
+    KvCacheType.f32 => ggml_type.GGML_TYPE_F32.value,
+    KvCacheType.f16 => ggml_type.GGML_TYPE_F16.value,
+    KvCacheType.bf16 => ggml_type.GGML_TYPE_BF16.value,
+    KvCacheType.q8_0 => ggml_type.GGML_TYPE_Q8_0.value,
+    KvCacheType.q4_0 => ggml_type.GGML_TYPE_Q4_0.value,
+    KvCacheType.q4_1 => ggml_type.GGML_TYPE_Q4_1.value,
+    KvCacheType.iq4_nl => ggml_type.GGML_TYPE_IQ4_NL.value,
+    KvCacheType.q5_0 => ggml_type.GGML_TYPE_Q5_0.value,
+    KvCacheType.q5_1 => ggml_type.GGML_TYPE_Q5_1.value,
+  };
 }

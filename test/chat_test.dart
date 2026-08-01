@@ -19,8 +19,11 @@ void main() {
     return;
   }
   if (modelPath == null || modelPath.isEmpty) {
-    test('LLAMA_CPP_DART_MODEL not set', () {},
-        skip: 'set LLAMA_CPP_DART_MODEL');
+    test(
+      'LLAMA_CPP_DART_MODEL not set',
+      () {},
+      skip: 'set LLAMA_CPP_DART_MODEL',
+    );
     return;
   }
 
@@ -44,44 +47,49 @@ void main() {
       expect(engine.modelChatTemplate, anyOf(isNull, isA<String>()));
     });
 
-    test('renders a system+user history and produces an assistant reply',
-        () async {
-      if (engine.modelChatTemplate == null) {
-        markTestSkipped('model has no embedded chat template');
-        return;
-      }
-
-      final chat = await engine.createChat();
-      addTearDown(chat.dispose);
-
-      chat.addSystem('You are a brief assistant.');
-      chat.addUser('Say only the word "ok".');
-
-      final tokens = <TokenEvent>[];
-      DoneEvent? done;
-      await for (final event in chat.generate(
-        sampler: SamplerParams.greedyDefault,
-        maxTokens: 16,
-        shiftPolicy: ContextShiftPolicy.off,
-        shift: const ContextShift(nKeep: 32),
-      )) {
-        switch (event) {
-          case TokenEvent():
-            tokens.add(event);
-          case ShiftEvent():
-            break;
-          case DoneEvent():
-            done = event;
+    test(
+      'renders a system+user history and produces an assistant reply',
+      () async {
+        if (engine.modelChatTemplate == null) {
+          markTestSkipped('model has no embedded chat template');
+          return;
         }
-      }
 
-      expect(done, isNotNull);
-      expect(tokens, isNotEmpty);
-      expect(chat.messageCount, 3,
-          reason: 'system + user + assistant after one turn');
-      expect(chat.messages.last.role, 'assistant');
-      expect(chat.messages.last.content, isNotEmpty);
-    });
+        final chat = await engine.createChat();
+        addTearDown(chat.dispose);
+
+        chat.addSystem('You are a brief assistant.');
+        chat.addUser('Say only the word "ok".');
+
+        final tokens = <TokenEvent>[];
+        DoneEvent? done;
+        await for (final event in chat.generate(
+          sampler: SamplerParams.greedyDefault,
+          maxTokens: 16,
+          shiftPolicy: ContextShiftPolicy.off,
+          shift: const ContextShift(nKeep: 32),
+        )) {
+          switch (event) {
+            case TokenEvent():
+              tokens.add(event);
+            case ShiftEvent():
+              break;
+            case DoneEvent():
+              done = event;
+          }
+        }
+
+        expect(done, isNotNull);
+        expect(tokens, isNotEmpty);
+        expect(
+          chat.messageCount,
+          3,
+          reason: 'system + user + assistant after one turn',
+        );
+        expect(chat.messages.last.role, 'assistant');
+        expect(chat.messages.last.content, isNotEmpty);
+      },
+    );
 
     test('multi-turn conversation appends each assistant reply', () async {
       if (engine.modelChatTemplate == null) {
@@ -99,7 +107,9 @@ void main() {
         await for (final _ in chat.generate(
           sampler: SamplerParams.greedyDefault,
           maxTokens: 12,
-        )) {/* drain */}
+        )) {
+          /* drain */
+        }
       }
 
       await runTurn('Reply with the word "one".');
@@ -141,12 +151,16 @@ void main() {
   });
 
   group('ChatTemplate', () {
-    test('builtinNames returns a non-empty list', () {
-      // Engine setup loaded the library; ChatTemplate.builtinNames runs in
-      // the main isolate and uses the same bindings cached there. But the
-      // main isolate hasn't called LlamaLibrary.load directly, so we skip
-      // the check unless that path is exercised. ChatTemplate.apply is
-      // exercised through the worker via the chat tests above.
-    }, skip: 'main isolate has no LlamaLibrary.load; covered via worker');
+    test(
+      'builtinNames returns a non-empty list',
+      () {
+        // Engine setup loaded the library; ChatTemplate.builtinNames runs in
+        // the main isolate and uses the same bindings cached there. But the
+        // main isolate hasn't called LlamaLibrary.load directly, so we skip
+        // the check unless that path is exercised. ChatTemplate.apply is
+        // exercised through the worker via the chat tests above.
+      },
+      skip: 'main isolate has no LlamaLibrary.load; covered via worker',
+    );
   });
 }
