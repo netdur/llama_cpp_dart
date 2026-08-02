@@ -43,6 +43,8 @@ flutter:
       ios:
         ffiPlugin: true
         sharedDarwinSource: true
+        podspecPath: llama_cpp_dart.podspec
       macos:
         ffiPlugin: true
         sharedDarwinSource: true
+        podspecPath: llama_cpp_dart.podspec

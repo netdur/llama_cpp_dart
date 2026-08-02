@@ -211,7 +211,38 @@ final class LlamaLibrary {
       );
     }
 
-    final lib = DynamicLibrary.process();
+    DynamicLibrary? lib;
+    try {
+      final p = DynamicLibrary.process();
+      p.lookup<NativeFunction<Void Function()>>('llama_backend_init');
+      lib = p;
+    } catch (_) {}
+
+    if (lib == null && (Platform.isIOS || Platform.isMacOS)) {
+      final candidates = [
+        'Llama.framework/Llama',
+        '@rpath/Llama.framework/Llama',
+        'Frameworks/Llama.framework/Llama',
+        'llama.framework/llama',
+        '@rpath/llama.framework/llama',
+        'Frameworks/llama.framework/llama',
+        'Llama_cpp_dart.framework/Llama_cpp_dart',
+        'llama_cpp_dart.framework/llama_cpp_dart',
+        '@rpath/llama_cpp_dart.framework/llama_cpp_dart',
+        'Frameworks/llama_cpp_dart.framework/llama_cpp_dart',
+      ];
+      for (final candidate in candidates) {
+        try {
+          final l = DynamicLibrary.open(candidate);
+          l.lookup<NativeFunction<Void Function()>>('llama_backend_init');
+          lib = l;
+          break;
+        } catch (_) {}
+      }
+    }
+
+    lib ??= DynamicLibrary.process();
+
     _llamaLib = lib;
     _mtmdLib = lib; // same process namespace; mtmd is statically linked too
 
