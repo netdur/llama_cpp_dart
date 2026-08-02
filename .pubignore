@@ -11,9 +11,10 @@
 /build/
 /tool/
 
-# Internal hand-off docs. Useful in the repo, noise on pub.dev.
+# Internal maintainer docs. Useful in the repo, noise on pub.dev.
 HANDOFF.md
 HANDOFF_M10.md
+RELEASING.md
 llama_cpp.podspec
 
 # CI workflow definitions (not useful to package consumers).
