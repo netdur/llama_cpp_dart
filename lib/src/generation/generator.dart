@@ -59,8 +59,11 @@ final class Generator implements Finalizable {
       var generated = 0;
 
       while (true) {
+        // llama_sampler_sample() already calls llama_sampler_accept() on the
+        // token it selects, so accepting again here advanced every stateful
+        // sampler twice per token. That is a silent double-count for penalties
+        // and fatal for a grammar, which then sees the same piece twice.
         final token = sampler.sample(context);
-        sampler.accept(token);
 
         final bytes = tokenizer.encodeToken(token);
         final isEog = vocab.isEog(token);
@@ -181,7 +184,15 @@ final class Generator implements Finalizable {
         final isLast = isFinalChunk && j == end - 1;
         _batch.add(prompt[j], pos++, [request.seqId], wantLogits: isLast);
         // Inform stateful samplers (penalties etc) of the prompt context.
-        sampler.accept(prompt[j]);
+        //
+        // ...but NOT into a grammar. llama_sampler_chain_accept fans out to
+        // every stage, and a prompt does not parse as the answer grammar, so
+        // the grammar stack empties and llama_grammar_accept_token throws
+        // before a single token is sampled. A grammar must only ever see
+        // GENERATED tokens.
+        if (!request.sampler.grammar.enabled) {
+          sampler.accept(prompt[j]);
+        }
       }
       final rc = lib.llama_decode(context.pointer, _batch.raw);
       if (rc != 0) {
