@@ -113,6 +113,18 @@ final class SamplerFactory {
       calloc.free(breakerPtrs);
     }
 
+    // The grammar must filter BEFORE the truncation stages. If top_k/top_p/
+    // min_p run first they discard candidates, the grammar then masks every
+    // survivor to -INFINITY, `dist` selects one regardless, and the accept
+    // inside llama_sampler_sample throws out of llama_grammar_accept_token —
+    // an uncaught C++ exception, so ggml_uncaught_exception calls abort().
+    // This matches llama.cpp's own common sampler, which applies the grammar
+    // first and samples from what survives. Truncation still runs, now over
+    // conforming candidates only.
+    if (params.grammar.enabled) {
+      _addGrammar(chain, params.grammar, requireVocab('grammar'));
+    }
+
     if (params.topNSigma > 0) {
       b.llama_sampler_chain_add(
         chain,
@@ -160,9 +172,6 @@ final class SamplerFactory {
     if (params.mirostat.enabled) {
       // Mirostat is terminal — no temp / dist after it.
       _addMirostat(chain, params, model);
-      if (params.grammar.enabled) {
-        _addGrammar(chain, params.grammar, requireVocab('grammar'));
-      }
       if (params.infill) {
         b.llama_sampler_chain_add(
           chain,
@@ -174,9 +183,6 @@ final class SamplerFactory {
 
     if (params.temperature <= 0.0) {
       // Temp <= 0 — pick argmax after the filters.
-      if (params.grammar.enabled) {
-        _addGrammar(chain, params.grammar, requireVocab('grammar'));
-      }
       if (params.infill) {
         b.llama_sampler_chain_add(
           chain,
@@ -201,10 +207,6 @@ final class SamplerFactory {
         chain,
         b.llama_sampler_init_temp(params.temperature),
       );
-    }
-
-    if (params.grammar.enabled) {
-      _addGrammar(chain, params.grammar, requireVocab('grammar'));
     }
 
     if (params.infill) {

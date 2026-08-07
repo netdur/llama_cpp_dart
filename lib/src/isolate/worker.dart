@@ -648,8 +648,8 @@ Future<void> _streamSampleAfterPrefill({
         break;
       }
 
+      // See generator.dart: llama_sampler_sample() already accepted this.
       final token = samplerHandle.sample(ctx);
-      samplerHandle.accept(token);
       final isEog = state.model.vocab.isEog(token);
       final bytes = tokenizer.encodeToken(token);
 
