@@ -31,6 +31,18 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '14.0'
   s.osx.deployment_target = '11.0'
 
+  s.prepare_command = <<-CMD
+    set -e
+    if [ ! -d "build/apple/llama.xcframework" ]; then
+      echo "llama_cpp: build/apple/llama.xcframework not found; downloading prebuilt xcframework..."
+      mkdir -p build/apple
+      curl -sL https://github.com/netdur/llama_cpp_dart/releases/download/v0.9.0-dev.12/llama-xcframework.zip -o build/apple/llama-xcframework.zip
+      unzip -q -o build/apple/llama-xcframework.zip -d build/apple/
+      rm -f build/apple/llama-xcframework.zip
+      echo "llama_cpp: prebuilt xcframework downloaded and extracted successfully."
+    fi
+  CMD
+
   s.vendored_frameworks = 'build/apple/llama.xcframework'
 
   # System frameworks the dynamic llama.framework links against. They are

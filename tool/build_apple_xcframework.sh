@@ -112,13 +112,14 @@ build_slice() {
   local sys_name="$2"
   local sysroot="$3"
   local min_version="$4"
+  local arch="${5:-arm64}"
 
   local build_dir="$OUT_ROOT/build-$slice"
   local fw_dir="$build_dir/framework/llama.framework"
 
   echo
   echo "==== building slice: $slice"
-  echo "      system=$sys_name sysroot=$sysroot deployment=$min_version"
+  echo "      system=$sys_name sysroot=$sysroot deployment=$min_version arch=$arch"
 
   rm -rf "$build_dir"
   mkdir -p "$fw_dir/Headers" "$fw_dir/Modules"
@@ -126,7 +127,7 @@ build_slice() {
   cmake -G Xcode -B "$build_dir" -S "$LLAMA_SRC" \
     -DCMAKE_SYSTEM_NAME="$sys_name" \
     -DCMAKE_OSX_SYSROOT="$sysroot" \
-    -DCMAKE_OSX_ARCHITECTURES=arm64 \
+    -DCMAKE_OSX_ARCHITECTURES="$arch" \
     -DCMAKE_OSX_DEPLOYMENT_TARGET="$min_version" \
     "${COMMON_ARGS[@]}"
 
@@ -159,9 +160,9 @@ build_slice() {
     macosx)          min_flag="-mmacosx-version-min=$min_version" ;;
     *) echo "error: unknown sysroot $sysroot" >&2; exit 1 ;;
   esac
-  echo "  linking ${#archives[@]} archives into dynamic framework binary"
+  echo "  linking ${#archives[@]} archives into dynamic framework binary ($arch)"
   xcrun --sdk "$sysroot" clang++ -dynamiclib \
-    -arch arm64 -isysroot "$sdk_path" "$min_flag" \
+    -arch "$arch" -isysroot "$sdk_path" "$min_flag" \
     -install_name @rpath/llama.framework/llama \
     -Wl,-all_load "${archives[@]}" \
     -framework Foundation -framework Metal -framework MetalKit -framework Accelerate \
@@ -235,16 +236,36 @@ EOF
 }
 
 # ----- build each slice -----
-build_slice "ios-arm64"           "iOS"    "iphoneos"        "$IOS_MIN"
-build_slice "ios-arm64-simulator" "iOS"    "iphonesimulator" "$IOS_MIN"
-build_slice "macos-arm64"         "Darwin" "macosx"          "$MACOS_MIN"
+build_slice "ios-arm64"           "iOS"    "iphoneos"        "$IOS_MIN"   "arm64"
+build_slice "ios-arm64-simulator" "iOS"    "iphonesimulator" "$IOS_MIN"   "arm64"
+build_slice "ios-x86_64-simulator" "iOS"   "iphonesimulator" "$IOS_MIN"   "x86_64"
+build_slice "macos-arm64"         "Darwin" "macosx"          "$MACOS_MIN" "arm64"
+build_slice "macos-x86_64"        "Darwin" "macosx"          "$MACOS_MIN" "x86_64"
+
+# Combine macos slices into a universal binary framework
+mkdir -p "$OUT_ROOT/build-macos-universal/framework/llama.framework/Versions/A/Resources"
+cp -R "$OUT_ROOT/build-macos-arm64/framework/llama.framework/" "$OUT_ROOT/build-macos-universal/framework/llama.framework/"
+lipo -create \
+  "$OUT_ROOT/build-macos-arm64/framework/llama.framework/Versions/A/llama" \
+  "$OUT_ROOT/build-macos-x86_64/framework/llama.framework/Versions/A/llama" \
+  -output "$OUT_ROOT/build-macos-universal/framework/llama.framework/Versions/A/llama"
+codesign --force --sign - "$OUT_ROOT/build-macos-universal/framework/llama.framework"
+
+# Combine ios-simulator slices into a universal simulator framework
+mkdir -p "$OUT_ROOT/build-ios-simulator-universal/framework/llama.framework"
+cp -R "$OUT_ROOT/build-ios-arm64-simulator/framework/llama.framework/" "$OUT_ROOT/build-ios-simulator-universal/framework/llama.framework/"
+lipo -create \
+  "$OUT_ROOT/build-ios-arm64-simulator/framework/llama.framework/llama" \
+  "$OUT_ROOT/build-ios-x86_64-simulator/framework/llama.framework/llama" \
+  -output "$OUT_ROOT/build-ios-simulator-universal/framework/llama.framework/llama"
+codesign --force --sign - "$OUT_ROOT/build-ios-simulator-universal/framework/llama.framework"
 
 # ----- assemble xcframework -----
 rm -rf "$XCF_OUT"
 xcodebuild -create-xcframework \
   -framework "$OUT_ROOT/build-ios-arm64/framework/llama.framework" \
-  -framework "$OUT_ROOT/build-ios-arm64-simulator/framework/llama.framework" \
-  -framework "$OUT_ROOT/build-macos-arm64/framework/llama.framework" \
+  -framework "$OUT_ROOT/build-ios-simulator-universal/framework/llama.framework" \
+  -framework "$OUT_ROOT/build-macos-universal/framework/llama.framework" \
   -output "$XCF_OUT"
 
 echo
