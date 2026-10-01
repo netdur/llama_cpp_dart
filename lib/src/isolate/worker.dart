@@ -264,6 +264,18 @@ Future<void> _dispatch(
       case LoadSessionStateCommand():
         _runLoadSessionState(cmd, state, reply);
 
+      case CaptureSessionStateCommand():
+        _runCaptureSessionState(cmd, state, reply);
+
+      case RestoreSessionStateCommand():
+        _runRestoreSessionState(cmd, state, reply);
+
+      case SessionInfoCommand():
+        _runSessionInfo(cmd, state, reply);
+
+      case RenderChatCommand():
+        _runRenderChat(cmd, state, reply);
+
       case CancelCommand():
       case ShutdownCommand():
         // Handled in the receive-port listener directly.
@@ -576,6 +588,104 @@ void _runLoadSessionState(
   } catch (e, st) {
     reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
   }
+}
+
+void _runRenderChat(
+  RenderChatCommand cmd,
+  _WorkerState state,
+  SendPort reply,
+) {
+  final template = cmd.templateOverride ?? state.modelTemplate;
+  if (template == null) {
+    reply.send(
+      EngineErrorResponse(
+        cmd.requestId,
+        'no chat template available; pass templateOverride or load a model with one',
+      ),
+    );
+    return;
+  }
+  try {
+    final prompt = ChatTemplate.apply(
+      template: template,
+      messages: cmd.messages,
+      addAssistant: cmd.addAssistant,
+    );
+    reply.send(RenderChatResponse(cmd.requestId, prompt: prompt));
+  } catch (e, st) {
+    reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
+  }
+}
+
+void _runCaptureSessionState(
+  CaptureSessionStateCommand cmd,
+  _WorkerState state,
+  SendPort reply,
+) {
+  final session = state.sessions[cmd.sessionId];
+  if (session == null) {
+    reply.send(
+      EngineErrorResponse(cmd.requestId, 'no session ${cmd.sessionId}'),
+    );
+    return;
+  }
+  try {
+    final kvHead = session.kvHead;
+    // Only committed tokens belong to the KV state; pending tokens appended
+    // after the last prefill are not in the cache and must not be replayed.
+    final committed = session.tokens.sublist(0, kvHead);
+    reply.send(
+      SessionStateCapturedResponse(
+        cmd.requestId,
+        bytes: session.captureRawState(),
+        tokens: committed,
+        kvHead: kvHead,
+      ),
+    );
+  } catch (e, st) {
+    reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
+  }
+}
+
+void _runRestoreSessionState(
+  RestoreSessionStateCommand cmd,
+  _WorkerState state,
+  SendPort reply,
+) {
+  final session = state.sessions[cmd.sessionId];
+  if (session == null) {
+    reply.send(
+      EngineErrorResponse(cmd.requestId, 'no session ${cmd.sessionId}'),
+    );
+    return;
+  }
+  try {
+    session.restoreRawState(cmd.bytes, cmd.tokens, cmd.kvHead);
+    reply.send(EngineAckResponse(cmd.requestId));
+  } catch (e, st) {
+    reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
+  }
+}
+
+void _runSessionInfo(
+  SessionInfoCommand cmd,
+  _WorkerState state,
+  SendPort reply,
+) {
+  final session = state.sessions[cmd.sessionId];
+  if (session == null) {
+    reply.send(
+      EngineErrorResponse(cmd.requestId, 'no session ${cmd.sessionId}'),
+    );
+    return;
+  }
+  reply.send(
+    SessionInfoResponse(
+      cmd.requestId,
+      tokenCount: session.tokenCount,
+      kvHead: session.kvHead,
+    ),
+  );
 }
 
 StateMetadata _currentMetadata({

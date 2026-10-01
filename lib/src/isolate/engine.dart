@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import '../chat/chat_message.dart';
 import '../context/context_params.dart';
@@ -250,6 +251,29 @@ final class LlamaEngine {
     _ensureAlive();
     final session = await createSession(seqId: seqId);
     return EngineChat._(this, session);
+  }
+
+  /// Render the model's chat template for [messages] without generating.
+  ///
+  /// Runs on the worker, where the native bindings and the model's template
+  /// are available — callers don't need to load the library on their own
+  /// isolate. Useful for building a prompt to split into a cacheable prefix
+  /// and a variable suffix.
+  Future<String> renderChat(
+    List<ChatMessage> messages, {
+    String? templateOverride,
+    bool addAssistant = true,
+  }) async {
+    _ensureAlive();
+    final response = await _request<RenderChatResponse>(
+      (id) => RenderChatCommand(
+        id,
+        messages: messages,
+        templateOverride: templateOverride,
+        addAssistant: addAssistant,
+      ),
+    );
+    return response.prompt;
   }
 
   /// Create a session bound to this engine. Sessions hold their own token
@@ -543,6 +567,33 @@ final class LlamaEngine {
     );
   }
 
+  Future<SessionStateCapturedResponse> _captureSessionState(int sessionId) {
+    return _request<SessionStateCapturedResponse>(
+      (id) => CaptureSessionStateCommand(id, sessionId: sessionId),
+    );
+  }
+
+  Future<void> _restoreSessionState({
+    required int sessionId,
+    required SessionSnapshot snapshot,
+  }) async {
+    await _request<EngineAckResponse>(
+      (id) => RestoreSessionStateCommand(
+        id,
+        sessionId: sessionId,
+        bytes: snapshot.bytes,
+        tokens: snapshot.tokens,
+        kvHead: snapshot.kvHead,
+      ),
+    );
+  }
+
+  Future<SessionInfoResponse> _sessionInfo(int sessionId) {
+    return _request<SessionInfoResponse>(
+      (id) => SessionInfoCommand(id, sessionId: sessionId),
+    );
+  }
+
   void _handleResponse(dynamic msg) {
     if (msg is! EngineResponse) return;
     final id = msg.requestId;
@@ -577,6 +628,34 @@ final class LlamaEngine {
       throw const LlamaLibraryException('LlamaEngine has been disposed.');
     }
   }
+}
+
+/// In-memory snapshot of a session's committed KV state.
+///
+/// Produced by [EngineSession.captureState] and consumed by
+/// [EngineSession.restoreState]. [bytes] is opaque to callers. [tokens] holds
+/// only the tokens committed to the KV cache; [kvHead] is the position one
+/// past the last committed token, so `tokens.length == kvHead`.
+///
+/// Snapshots are tied to the model + context that produced them: restoring
+/// one into a differently configured engine yields garbage. Keep them in RAM
+/// and dispose with the engine.
+final class SessionSnapshot {
+  final Uint8List bytes;
+  final List<int> tokens;
+  final int kvHead;
+
+  const SessionSnapshot({
+    required this.bytes,
+    required this.tokens,
+    required this.kvHead,
+  });
+
+  /// Number of tokens committed to the KV cache.
+  int get tokenCount => tokens.length;
+
+  /// Size of the raw KV blob in bytes.
+  int get sizeInBytes => bytes.length;
 }
 
 /// A handle to a session running inside the engine worker isolate.
@@ -671,6 +750,50 @@ final class EngineSession {
       path: path,
     );
     return response.extra;
+  }
+
+  /// Snapshot the session's committed KV state into memory.
+  ///
+  /// Unlike [saveState] this performs no file I/O: the raw KV bytes are
+  /// returned to the caller so a fixed prefix can be captured once and
+  /// restored before every subsequent request. Useful for prompt-prefix
+  /// caching, where the constant system/instruction prefix dominates TTFT.
+  ///
+  /// The snapshot contains only tokens already committed to the KV cache;
+  /// tokens appended but not yet prefilled are excluded.
+  Future<SessionSnapshot> captureState() async {
+    _ensureAlive();
+    final response = await _engine._captureSessionState(sessionId);
+    return SessionSnapshot(
+      bytes: response.bytes,
+      tokens: response.tokens,
+      kvHead: response.kvHead,
+    );
+  }
+
+  /// Restore an in-memory snapshot produced by [captureState], replacing the
+  /// session's token history and KV cache.
+  ///
+  /// The snapshot must come from a session on the same engine, loaded with
+  /// the same model and context parameters.
+  Future<void> restoreState(SessionSnapshot snapshot) async {
+    _ensureAlive();
+    await _engine._restoreSessionState(sessionId: sessionId, snapshot: snapshot);
+  }
+
+  /// Number of tokens in the session's history (committed + pending).
+  Future<int> tokenCount() async {
+    _ensureAlive();
+    final info = await _engine._sessionInfo(sessionId);
+    return info.tokenCount;
+  }
+
+  /// Position one past the last token committed to the KV cache. Tokens at
+  /// index `>= kvHead` still need prefill before sampling.
+  Future<int> kvHead() async {
+    _ensureAlive();
+    final info = await _engine._sessionInfo(sessionId);
+    return info.kvHead;
   }
 
   Future<void> dispose() async {

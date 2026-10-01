@@ -261,6 +261,90 @@ final class LoadSessionStateCommand extends EngineCommand {
   });
 }
 
+/// Snapshot the session's KV state into memory (no disk round-trip).
+///
+/// Unlike [SaveSessionStateCommand] this keeps the raw KV bytes in RAM and
+/// returns them to the caller, so a prefix can be captured once and restored
+/// many times without file I/O.
+final class CaptureSessionStateCommand extends EngineCommand {
+  final int sessionId;
+  const CaptureSessionStateCommand(
+    super.requestId, {
+    required this.sessionId,
+  });
+}
+
+/// Restore an in-memory snapshot produced by [CaptureSessionStateCommand].
+final class RestoreSessionStateCommand extends EngineCommand {
+  final int sessionId;
+  final Uint8List bytes;
+  final List<int> tokens;
+  final int kvHead;
+  const RestoreSessionStateCommand(
+    super.requestId, {
+    required this.sessionId,
+    required this.bytes,
+    required this.tokens,
+    required this.kvHead,
+  });
+}
+
+/// Render the model's chat template for [messages] without generating.
+///
+/// Lets callers build a prompt (e.g. to split a constant prefix from a
+/// variable suffix for KV caching) on the worker, where the native bindings
+/// and the model's template are available.
+final class RenderChatCommand extends EngineCommand {
+  final List<ChatMessage> messages;
+  final String? templateOverride;
+  final bool addAssistant;
+  const RenderChatCommand(
+    super.requestId, {
+    required this.messages,
+    this.templateOverride,
+    this.addAssistant = true,
+  });
+}
+
+/// Query the session's token count and committed KV cursor without capturing
+/// the KV bytes.
+final class SessionInfoCommand extends EngineCommand {
+  final int sessionId;
+  const SessionInfoCommand(super.requestId, {required this.sessionId});
+}
+
+/// Returned for [SessionInfoCommand].
+final class SessionInfoResponse extends EngineResponse {
+  final int tokenCount;
+  final int kvHead;
+  const SessionInfoResponse(
+    super.requestId, {
+    required this.tokenCount,
+    required this.kvHead,
+  });
+}
+
+/// Returned for [RenderChatCommand].
+final class RenderChatResponse extends EngineResponse {
+  final String prompt;
+  const RenderChatResponse(super.requestId, {required this.prompt});
+}
+
+/// Returned for [CaptureSessionStateCommand]. [tokens] holds only the tokens
+/// committed to the KV cache (trimmed to [kvHead]); tokens appended but not
+/// yet prefilled are not part of the snapshot.
+final class SessionStateCapturedResponse extends EngineResponse {
+  final Uint8List bytes;
+  final List<int> tokens;
+  final int kvHead;
+  const SessionStateCapturedResponse(
+    super.requestId, {
+    required this.bytes,
+    required this.tokens,
+    required this.kvHead,
+  });
+}
+
 /// Returned for [LoadSessionStateCommand]; carries the wrapper-supplied
 /// `extra` map (e.g. chat history) so the caller can rehydrate it.
 final class SessionStateLoadedResponse extends EngineResponse {

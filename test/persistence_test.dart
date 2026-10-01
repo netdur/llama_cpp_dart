@@ -177,6 +177,60 @@ void main() {
     });
   });
 
+  group('LlamaEngine.renderChat', () {
+    test('renders the model template without generating', () async {
+      if (engine.modelChatTemplate == null) {
+        markTestSkipped('model has no embedded chat template');
+        return;
+      }
+      final prompt = await engine.renderChat(const [
+        ChatMessage.system('Be brief.'),
+        ChatMessage.user('Hello'),
+      ]);
+      expect(prompt, contains('Hello'));
+      expect(prompt, contains('Be brief.'));
+    });
+  });
+
+  group('EngineSession.captureState / restoreState', () {
+    test('captures and restores a KV prefix in memory', () async {
+      final session = await engine.createSession();
+      addTearDown(session.dispose);
+
+      // Prefill a constant prefix; generate one token so the prompt is decoded.
+      session.append('The capital of France is', addSpecial: true);
+      await for (final _ in session.generate(
+        sampler: SamplerParams.greedyDefault,
+        maxTokens: 1,
+      )) {
+        /* drain */
+      }
+
+      final snapshot = await session.captureState();
+      expect(snapshot.tokenCount, greaterThan(0));
+      expect(snapshot.kvHead, snapshot.tokens.length);
+      expect(snapshot.bytes, isNotEmpty);
+      expect(await session.kvHead(), snapshot.kvHead);
+      expect(await session.tokenCount(), greaterThanOrEqualTo(snapshot.kvHead));
+
+      // Restoring resets the session back to the captured prefix.
+      await session.restoreState(snapshot);
+      expect(await session.kvHead(), snapshot.kvHead);
+      expect(await session.tokenCount(), snapshot.tokenCount);
+
+      // Generation continues from the restored prefix.
+      session.append(' Paris');
+      var emitted = 0;
+      await for (final ev in session.generate(
+        sampler: SamplerParams.greedyDefault,
+        maxTokens: 2,
+      )) {
+        if (ev is TokenEvent) emitted++;
+      }
+      expect(emitted, greaterThan(0));
+    });
+  });
+
   group('EngineChat.saveState / loadState', () {
     test('persists message history and lets us continue the chat', () async {
       if (engine.modelChatTemplate == null) {

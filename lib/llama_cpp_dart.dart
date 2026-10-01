@@ -36,7 +36,8 @@ export 'src/generation/speculative.dart'
     show SpeculativeDecoder, SpeculativeResult;
 export 'src/generation/stop.dart'
     show StopReason, StopEog, StopMaxTokens, StopUserAbort;
-export 'src/isolate/engine.dart' show EngineChat, EngineSession, LlamaEngine;
+export 'src/isolate/engine.dart'
+    show EngineChat, EngineSession, LlamaEngine, SessionSnapshot;
 export 'src/model/model.dart' show LlamaModel;
 export 'src/model/model_params.dart'
     show KvOverride, KvOverrideType, ModelParams, RopeType, SplitMode;
