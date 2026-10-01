@@ -177,6 +177,21 @@ void main() {
     });
   });
 
+  group('LlamaEngine.renderChat', () {
+    test('renders the model template without generating', () async {
+      if (engine.modelChatTemplate == null) {
+        markTestSkipped('model has no embedded chat template');
+        return;
+      }
+      final prompt = await engine.renderChat(const [
+        ChatMessage.system('Be brief.'),
+        ChatMessage.user('Hello'),
+      ]);
+      expect(prompt, contains('Hello'));
+      expect(prompt, contains('Be brief.'));
+    });
+  });
+
   group('EngineSession.captureState / restoreState', () {
     test('captures and restores a KV prefix in memory', () async {
       final session = await engine.createSession();

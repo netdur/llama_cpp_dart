@@ -273,6 +273,9 @@ Future<void> _dispatch(
       case SessionInfoCommand():
         _runSessionInfo(cmd, state, reply);
 
+      case RenderChatCommand():
+        _runRenderChat(cmd, state, reply);
+
       case CancelCommand():
       case ShutdownCommand():
         // Handled in the receive-port listener directly.
@@ -582,6 +585,33 @@ void _runLoadSessionState(
         kvHead: decoded.metadata.kvHead,
       ),
     );
+  } catch (e, st) {
+    reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
+  }
+}
+
+void _runRenderChat(
+  RenderChatCommand cmd,
+  _WorkerState state,
+  SendPort reply,
+) {
+  final template = cmd.templateOverride ?? state.modelTemplate;
+  if (template == null) {
+    reply.send(
+      EngineErrorResponse(
+        cmd.requestId,
+        'no chat template available; pass templateOverride or load a model with one',
+      ),
+    );
+    return;
+  }
+  try {
+    final prompt = ChatTemplate.apply(
+      template: template,
+      messages: cmd.messages,
+      addAssistant: cmd.addAssistant,
+    );
+    reply.send(RenderChatResponse(cmd.requestId, prompt: prompt));
   } catch (e, st) {
     reply.send(EngineErrorResponse(cmd.requestId, '$e\n$st'));
   }

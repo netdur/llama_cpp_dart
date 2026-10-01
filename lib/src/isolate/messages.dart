@@ -289,6 +289,23 @@ final class RestoreSessionStateCommand extends EngineCommand {
   });
 }
 
+/// Render the model's chat template for [messages] without generating.
+///
+/// Lets callers build a prompt (e.g. to split a constant prefix from a
+/// variable suffix for KV caching) on the worker, where the native bindings
+/// and the model's template are available.
+final class RenderChatCommand extends EngineCommand {
+  final List<ChatMessage> messages;
+  final String? templateOverride;
+  final bool addAssistant;
+  const RenderChatCommand(
+    super.requestId, {
+    required this.messages,
+    this.templateOverride,
+    this.addAssistant = true,
+  });
+}
+
 /// Query the session's token count and committed KV cursor without capturing
 /// the KV bytes.
 final class SessionInfoCommand extends EngineCommand {
@@ -305,6 +322,12 @@ final class SessionInfoResponse extends EngineResponse {
     required this.tokenCount,
     required this.kvHead,
   });
+}
+
+/// Returned for [RenderChatCommand].
+final class RenderChatResponse extends EngineResponse {
+  final String prompt;
+  const RenderChatResponse(super.requestId, {required this.prompt});
 }
 
 /// Returned for [CaptureSessionStateCommand]. [tokens] holds only the tokens

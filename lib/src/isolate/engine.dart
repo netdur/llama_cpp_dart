@@ -253,6 +253,29 @@ final class LlamaEngine {
     return EngineChat._(this, session);
   }
 
+  /// Render the model's chat template for [messages] without generating.
+  ///
+  /// Runs on the worker, where the native bindings and the model's template
+  /// are available — callers don't need to load the library on their own
+  /// isolate. Useful for building a prompt to split into a cacheable prefix
+  /// and a variable suffix.
+  Future<String> renderChat(
+    List<ChatMessage> messages, {
+    String? templateOverride,
+    bool addAssistant = true,
+  }) async {
+    _ensureAlive();
+    final response = await _request<RenderChatResponse>(
+      (id) => RenderChatCommand(
+        id,
+        messages: messages,
+        templateOverride: templateOverride,
+        addAssistant: addAssistant,
+      ),
+    );
+    return response.prompt;
+  }
+
   /// Create a session bound to this engine. Sessions hold their own token
   /// history and KV-cache cursor.
   ///
